@@ -1,0 +1,17 @@
+{
+  "name": "angara",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": ""
+  },
+  "workspaces": [
+    "html/"
+  ],
+  "dependencies": {
+    "vue": "latest"
+  },
+  "devDependencies": {
+
+  }
+}

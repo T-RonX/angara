@@ -1,0 +1,49 @@
+services:
+    app:
+        build: ./docker/app/.
+        container_name: angara-app
+        restart: always
+        working_dir: /var/www/html
+        volumes:
+            - .:/var/www/html
+        networks:
+            - angara-network
+        ports:
+            - '5173:5173'
+
+    web:
+        image: nginx:alpine
+        container_name: angara-web
+        restart: always
+        working_dir: /var/www/html
+        ports:
+            - '8003:80'
+        volumes:
+            - .:/var/www/html
+            - ./docker/web/nginx/conf.d/:/etc/nginx/conf.d/
+        networks:
+            - angara-network
+
+    db:
+        image: mysql:8.0.34
+        container_name: angara-db
+        restart: always
+        environment:
+            - MYSQL_DATABASE=angara
+            - MYSQL_USER=angara
+            - MYSQL_PASSWORD=angara
+            - MYSQL_ROOT_PASSWORD=root
+        volumes:
+            - ./docker/db/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+            - mysql_data:/var/lib/mysql:cached
+        ports:
+            - '8983:3306'
+        networks:
+            - angara-network
+
+networks:
+    angara-network:
+        driver: bridge
+
+volumes:
+    mysql_data:

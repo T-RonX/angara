@@ -1,0 +1,68 @@
+doctrine:
+    dbal:
+        default_connection: 'default'
+        connections:
+            default:
+                host: '%env(MYSQL_HOST)%'
+                port: '%env(MYSQL_PORT)%'
+                server_version: '%env(MYSQL_SERVER_VERSION)%'
+                charset: '%env(MYSQL_CHARSET)%'
+                user: '%env(MYSQL_USER)%'
+                password: '%env(MYSQL_PASSWORD)%'
+                dbname: '%env(MYSQL_DBNAME)%'
+                profiling_collect_backtrace: '%kernel.debug%'
+#                use_savepoints: true
+    orm:
+        auto_generate_proxy_classes: true
+        enable_lazy_ghost_objects: true
+        report_fields_where_declared: true
+#        validate_xml_mapping: true
+        naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
+        auto_mapping: true
+        mappings:
+            App:
+                type: attribute
+#                is_bundle: false
+                dir: '%kernel.project_dir%/src/Security/Entity'
+                prefix: 'App\Security\Entity'
+#                alias: 'App\Security\Entity'
+            Player:
+                type: attribute
+#                is_bundle: false
+                dir: '%kernel.project_dir%/src/Game/Player/Entity'
+                prefix: 'App\Game\Player\Entity'
+#                alias: 'App\Game\Player\Entity'
+            User:
+                type: attribute
+#                is_bundle: false
+                dir: '%kernel.project_dir%/src/User/Entity'
+                prefix: 'App\User\Entity'
+#                alias: 'App\User\Entity'
+        controller_resolver:
+            auto_mapping: true
+
+when@test:
+    doctrine:
+        dbal:
+            # "TEST_TOKEN" is typically set by ParaTest
+            #dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+
+when@prod:
+    doctrine:
+        orm:
+            auto_generate_proxy_classes: false
+            proxy_dir: '%kernel.build_dir%/doctrine/orm/Proxies'
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system
