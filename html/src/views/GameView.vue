@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import RenderViewport from '@/components/Rendering/RenderViewport.vue'
+import LeftMenu from '@/components/Layout/LeftMenu.vue'
+import RightMenu from '@/components/Layout/RightMenu.vue'
 </script>
 
 <template>
   <div id="main-container">
     <div id="left-pane" class="pane">
-      Left Pane (Fixed Width)
+      <LeftMenu />
     </div>
     <div id="middle-pane" class="pane">
       <RenderViewport :showFps="true" />
     </div>
     <div id="right-pane" class="pane">
-      Right Pane (Fixed Width)
+      <RightMenu />
     </div>
   </div>
 </template>

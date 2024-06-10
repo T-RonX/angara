@@ -11,6 +11,8 @@ import { ClearCanvas } from '@/Renderer/Sprite/Type/ClearCanvas/ClearCanvas'
 import { IdGenerator } from '@/Renderer/RenderStack/IdGenerator'
 import type { StaticTextRenderer } from '@/Renderer/Sprite/Type/Text/StaticTextRenderer'
 import type { StaticImageRenderer } from '@/Renderer/Sprite/Type/Image/StaticImageRenderer'
+import { Path } from '@/Renderer/Sprite/Type/Path/Path'
+import type { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
 
 export class SpriteFactory {
   private idGenerator: IdGenerator = new IdGenerator()
@@ -22,6 +24,7 @@ export class SpriteFactory {
     private fixedTextRenderer: FixedTextRenderer,
     private staticTextRenderer: StaticTextRenderer,
     private staticImageRenderer: StaticImageRenderer,
+    private pathRenderer: PathRenderer,
   ) {
   }
 
@@ -58,6 +61,12 @@ export class SpriteFactory {
   public createStaticImage(src: string, position: Vector, width: number, height: number): Image {
     return new Image(src, position, width, height)
       .setTypeRenderer(this.staticImageRenderer)
+      .setId(this.idGenerator.getNextId())
+  }
+
+  public createPath(color: string, points: Vector[]): Path {
+    return new Path(color, points)
+      .setTypeRenderer(this.pathRenderer)
       .setId(this.idGenerator.getNextId())
   }
 }

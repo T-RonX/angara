@@ -9,6 +9,8 @@ export class RenderContext {
   constructor(
     private canvas: HTMLCanvasElement,
     private viewport: Viewport,
+    private innerWidth: number,
+    private innerHeight: number,
   ) {
   }
 
@@ -38,5 +40,13 @@ export class RenderContext {
 
   public getStopwatch(): Stopwatch {
     return this.timer
+  }
+
+  public getInnerWidth(): number {
+    return this.innerWidth
+  }
+
+  public getInnerHeight(): number {
+    return this.innerHeight
   }
 }

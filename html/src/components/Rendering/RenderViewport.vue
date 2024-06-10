@@ -107,11 +107,15 @@ const updateIsDragging = () => {
 
 <template>
   <!-- <img :src="testImage" alt="Test Image" /> -->
-  <button @click="continueRendering">Start</button>
-  <button @click="stopRendering">Stop</button>
-  <button @click="stepRendering">Step</button>
-  <span>{{ isDragging }}</span>
+
   <div ref="canvas_wrap" class="canvas_wrap">
+    <div id="render_debug">
+      <button @click="continueRendering">Start</button>
+      <button @click="stopRendering">Stop</button>
+      <button @click="stepRendering">Step</button>
+      <br/>
+      <span>dragging: {{ isDragging }}</span>
+    </div>
     <span id="fps">{{ fps }} fps</span>
     <canvas
       @mousedown="mouseDown"
@@ -127,10 +131,19 @@ const updateIsDragging = () => {
 .canvas_wrap {
   padding-bottom: 0;
   box-sizing: border-box;
+  position: relative;
+}
+
+#render_debug {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: whitesmoke;
+  text-align: left;
 }
 
 .canvas {
-  height: 750px;
+  height: calc(100vh - 150px);
   width: 100%;
   box-sizing: border-box;
 }
@@ -138,9 +151,10 @@ const updateIsDragging = () => {
 .canvas.dragging {
   cursor: move;
 }
+
 #fps {
   position: absolute;
-  top: 52px;
+  top: 10px;
   right: 30px;
   color: red;
   font-size: 24px;

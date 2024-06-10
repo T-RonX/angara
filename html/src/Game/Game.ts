@@ -19,6 +19,8 @@ import { CenterImageSprite } from '@/Game/Sprite/CenterImageSprite'
 import { Input } from '@/Game/Input/Input'
 import { CameraMouseEvents } from '@/Game/Camera/CameraMouseEvents'
 import { BlockClick } from '@/Game/Events/BlockClick'
+import { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
+import { CenterArrow } from '@/Game/Sprite/CenterArrow'
 
 export class Game {
   private readonly renderer: CanvasRenderer
@@ -44,11 +46,12 @@ export class Game {
       new FixedTextRenderer(),
       new StaticTextRenderer(),
       new StaticImageRenderer(),
+      new PathRenderer(),
     )
 
     const viewport: Viewport = new Viewport(this.canvas)
 
-    this.renderContext = new RenderContext(this.canvas, viewport)
+    this.renderContext = new RenderContext(this.canvas, viewport, viewportInnerWidth, viewportInnerHeight)
 
     this.renderer = new CanvasRenderer(this.showFps, this.renderContext, spriteFactory, viewportInnerWidth, viewportInnerHeight)
     this.renderer.getRenderStack().addSpriteGenerator(new ClearCanvasSprite(SpriteType.Static).setFactory(spriteFactory))
@@ -56,6 +59,7 @@ export class Game {
     this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(spriteFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(spriteFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(spriteFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static).setFactory(spriteFactory))
     this.renderer.initialize()
 
     this.camera = new Camera(this.renderContext, map)

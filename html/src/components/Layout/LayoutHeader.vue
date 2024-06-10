@@ -12,6 +12,7 @@
 <style scoped>
 #nav {
   background-color: #4CAF50; /* Green background */
+  box-sizing: border-box;
   height: 100px; /* Fixed height */
   width: 100%; /* Full width */
   text-align: center;
