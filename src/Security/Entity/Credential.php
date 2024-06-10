@@ -4,8 +4,9 @@ namespace App\Security\Entity;
 
 use App\Doctrine\Uuid\Entity\EntityUuidTrait;
 use Doctrine\ORM\Mapping as ORM;
-use Gesdinet\JWTRefreshTokenBundle\Entity\RefreshToken as BaseRefreshToken;
+use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
+#[Exclude]
 #[ORM\Entity]
 #[ORM\Table(name: 'credential')]
 class Credential

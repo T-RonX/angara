@@ -12,10 +12,13 @@ use App\UserPreference\Entity\UserPreference;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\DependencyInjection\Attribute\Exclude;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
+#[Exclude]
 #[ORM\Entity(repositoryClass: UserRepository::class)]
+#[ORM\Table(name: 'user',)]
 class User implements EntityUuidInterface, UserInterface, PasswordAuthenticatedUserInterface
 {
     use EntityUuidTrait;

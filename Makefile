@@ -25,8 +25,8 @@ database:
 	docker exec -t angara-app php /var/www/html/bin/console doctrine:database:drop --if-exists --force \
 	&& docker exec -t angara-app php /var/www/html/bin/console doctrine:database:create --no-interaction \
 	&& docker exec -t angara-app php /var/www/html/bin/console doctrine:schema:create --no-interaction \
-#	&& docker exec -t angara-app php /var/www/html/bin/console doctrine:migrations:version --add --all --no-interaction \
-#    && docker exec -t angara-app php /var/www/html/bin/console doctrine:migrations:sync-metadata-storage --no-interaction
+	&& docker exec -t angara-app php /var/www/html/bin/console doctrine:migrations:version --add --all --no-interaction \
+    && docker exec -t angara-app php /var/www/html/bin/console doctrine:migrations:sync-metadata-storage --no-interaction
 	make fixtures
 
 fixtures:

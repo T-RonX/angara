@@ -9,7 +9,9 @@ use App\Doctrine\Uuid\Entity\EntityUuidTrait;
 use App\Game\Player\Repository\PlayerRepository;
 use App\User\Entity\User;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
+#[Exclude]
 #[ORM\Entity(repositoryClass: PlayerRepository::class)]
 #[ORM\Table(name: 'player')]
 class Player implements EntityUuidInterface

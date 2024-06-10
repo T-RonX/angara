@@ -59,7 +59,10 @@ export class Game {
     this.renderer.initialize()
 
     this.camera = new Camera(this.renderContext, map)
-    this.camera.setInitialPosition()
+    this.camera.setPosition(
+      Math.trunc((viewportInnerWidth / 2) - (this.canvas.clientWidth / 2)),
+      Math.trunc((viewportInnerHeight / 2) - (this.canvas.clientHeight / 2)),
+    )
 
     const cameraMouseEvents: CameraMouseEvents = new CameraMouseEvents(this.camera)
     const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera)

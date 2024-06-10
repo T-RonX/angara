@@ -28,7 +28,7 @@ export class GridSprite extends AbstractSpriteGenerator implements SpriteGenerat
 
     // this.createGrid()
     this.createBorder()
-    this.createBlocks()
+    // this.createBlocks()
 
     this.isGridComplete = true
 

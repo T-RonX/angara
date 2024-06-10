@@ -48,9 +48,9 @@ export class Camera {
   ) {
   }
 
-  public setInitialPosition(): void {
-    this.rendererContext.getViewport().getPosition().x = -this.MAX_CAMERA_OVERFLOW
-    this.rendererContext.getViewport().getPosition().y = -this.MAX_CAMERA_OVERFLOW
+  public setPosition(x: number, y: number): void {
+    this.rendererContext.getViewport().getPosition().x = x
+    this.rendererContext.getViewport().getPosition().y = y
   }
 
   /**

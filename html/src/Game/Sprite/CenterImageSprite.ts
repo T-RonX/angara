@@ -31,11 +31,12 @@ export class CenterImageSprite extends AbstractSpriteGenerator implements Sprite
   }
 
   private generateRandom(): Image {
+    console.log(this.map.getWidth(), this.map.getHeight())
     return this.getFactory().createStaticImage(
-      './src/assets/l3r9nszl9pj71.jpg',
+      './src/assets/map.jpg',
       new Vector(Math.trunc(this.rand(1, 1)), Math.trunc(1)),
-      this.rand(this.map.getWidth(), this.map.getHeight()),
-      this.rand(this.map.getWidth(), this.map.getHeight()),
+      this.map.getWidth(),
+      this.map.getHeight(),
     )
   }
 
