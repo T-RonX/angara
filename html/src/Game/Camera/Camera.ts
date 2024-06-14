@@ -31,7 +31,7 @@ export class Camera {
    * Modifies the time it takes for the inertia drag to complete
    * Lower slightly for slower decay.
    */
-  private PANNING_INERTIA_DECAY_MODIFIER_60HZ: number = .085
+  private PANNING_INERTIA_DECAY_MODIFIER_60HZ: number = .065
 
   private panningThreshold: [x: number, y: number] = [this.DRAG_THRESHOLD, this.DRAG_THRESHOLD]
   private latestPanningDeltas: [number, number][] = []
@@ -142,9 +142,9 @@ export class Camera {
     this.rendererContext.getViewport().getPosition().x = newX
     this.rendererContext.getViewport().getPosition().y = newY
 
-    const speedModifier: number = (this.getPanningInertiaDecayModifier() * this.panningVelocity) * 2
+    const speedModifier: number = Math.max((this.getPanningInertiaDecayModifier() * this.panningVelocity) * 2, .01)
 
-    this.panningVelocity = this.panningVelocity - speedModifier
+    this.panningVelocity -= speedModifier
 
     if (this.panningVelocity < 0){
       this.isInertiaPanning = false

@@ -9,12 +9,11 @@ import { MathX } from '@/Math/MathX'
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 
 export class CenterArrow extends AbstractSpriteGenerator implements SpriteGeneratorInterface, AnimatorInterface {
-  private angle: number = 0
   private angles: number[] = []
   private arrowDefaultRotationAngle: number = (Math.PI / 180) * 270
 
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
-    const mapCenterDot = this.createMapCenterDot(renderContext)
+    const mapCenterDot: Rectangle = this.createMapCenterDot(renderContext)
     const arrow: Path = this.createArrow()
     this.angles = this.getArrowAngles(arrow)
 
@@ -24,7 +23,7 @@ export class CenterArrow extends AbstractSpriteGenerator implements SpriteGenera
   private createMapCenterDot(renderContext: RenderContext): Rectangle {
     return this.getFactory().createRectangle(
       new Vector(
-        Math.trunc((renderContext.getInnerWidth() / 2) - 4),
+        Math.trunc(renderContext.getInnerWidth() / 2) - 4,
         Math.trunc(renderContext.getInnerHeight() / 2) - 4,
       ),
       8, 8, 'yellow',
@@ -46,7 +45,7 @@ export class CenterArrow extends AbstractSpriteGenerator implements SpriteGenera
 
   private getArrowAngles(arrow: Path): number[] {
     const angles: number[] = []
-    const arrowCentered: Path = new Path(arrow.shift(arrow.getCentroid()), arrow.getFillColor(), arrow.getStrokeColor())
+    const arrowCentered: Path = new Path(arrow.shift(arrow.getCentroid()))
     const points: Vector[] = arrowCentered.getPoints()
 
     angles[0] = Math.atan2(points[0].y, points[0].x)
@@ -58,12 +57,9 @@ export class CenterArrow extends AbstractSpriteGenerator implements SpriteGenera
   }
 
   public animate(path: Path, renderContext: RenderContext): void {
-    // Update the new angle
-    this.angle = Math.atan2(renderContext.getViewport().getPosition().x, renderContext.getViewport().getPosition().y)
-
     // Get point relative to center
     const pathCentered: Path = new Path(path.shift(path.getCentroid()))
-    let points: Vector[] = pathCentered.getPoints()
+    const points: Vector[] = pathCentered.getPoints()
 
     // Viewport center
     const viewPortCenterX: number = renderContext.getCanvas().getBoundingClientRect().width / 2
@@ -80,8 +76,7 @@ export class CenterArrow extends AbstractSpriteGenerator implements SpriteGenera
     if (MathX.isPointInRectangle(mapCenter.x, mapCenter.y, renderContext.getViewport().getBoundingBox())) {
       path.setDoRender(false)
       return
-    }
-    else {
+    } else {
       path.setDoRender(true)
     }
 
@@ -104,20 +99,18 @@ export class CenterArrow extends AbstractSpriteGenerator implements SpriteGenera
     // Rotate and align the arrow
     const baseAngle: number = this.getAngle(mapCenter, renderContext.getViewport().getPosition().add(newPos))
 
-    points = [
-      this.rotatePoint(pathCentered.getCentroid(), 0, 0, points[0], this.angles[0] + baseAngle + this.arrowDefaultRotationAngle),
-      this.rotatePoint(pathCentered.getCentroid(), 0, 0, points[1], this.angles[1] + baseAngle + this.arrowDefaultRotationAngle),
-      this.rotatePoint(pathCentered.getCentroid(), 0, 0, points[2], this.angles[2] + baseAngle + this.arrowDefaultRotationAngle),
-      this.rotatePoint(pathCentered.getCentroid(), 0, 0, points[3], this.angles[3] + baseAngle + this.arrowDefaultRotationAngle),
-    ]
-
-    // Move to new position in viewport
-    path.setPoints([
-      points[0].add(newPos),
-      points[1].add(newPos),
-      points[2].add(newPos),
-      points[3].add(newPos),
-    ])
+    // Update the path points with rotation to center and position in viewport
+    for (const [i, point] of points.entries()) {
+      path.setPoint(i,
+        this.rotatePoint(
+          pathCentered.getCentroid(),
+          0,
+          0,
+          point,
+          this.angles[i] + baseAngle + this.arrowDefaultRotationAngle
+        ).add(newPos)
+      )
+    }
   }
 
   private rotatePoint(origin: Vector, offsetToOriginX: number, offsetToOriginY: number, point: Vector, angle: number): Vector {

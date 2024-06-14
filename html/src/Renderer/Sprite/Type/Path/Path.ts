@@ -20,6 +20,10 @@ export class Path extends AbstractSprite implements SpriteInterface {
     this.points = points
   }
 
+  public setPoint(i: number, point: Vector): void {
+    this.points[i] = point
+  }
+
   public getFillColor(): string|null {
     return this.fillColor
   }
