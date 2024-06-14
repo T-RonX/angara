@@ -1,8 +1,31 @@
 import type { TypeRendererInterface } from '@/Renderer/Sprite/Type/TypeRendererInterface'
+import type { AnimatorInterface } from '@/Renderer/Animation/AnimatorInterface'
 
 export class AbstractSprite {
-  protected typeRenderer: TypeRendererInterface|null = null
   private id: number = 0
+  protected typeRenderer: TypeRendererInterface|null = null
+  protected animator: AnimatorInterface|null = null
+  protected doRender: boolean = true
+
+  public setId(id: number): this {
+    this.id = id
+
+    return this
+  }
+
+  public getId(): number {
+    return this.id
+  }
+
+  public setDoRender(doRender: boolean): this {
+    this.doRender = doRender
+
+    return this
+  }
+
+  public getDoRender(): boolean {
+    return this.doRender
+  }
 
   public setTypeRenderer(typeRenderer: TypeRendererInterface): this {
     this.typeRenderer = typeRenderer
@@ -18,13 +41,21 @@ export class AbstractSprite {
     return this.typeRenderer
   }
 
-  public setId(id: number): this {
-    this.id = id
+  public setAnimator(animator: AnimatorInterface|null): this {
+    this.animator = animator
 
     return this
   }
 
-  public getId(): number {
-    return this.id
+  public hasAnimator(): boolean {
+    return this.animator !== null
+  }
+
+  public getAnimator(): AnimatorInterface {
+    if (this.animator === null) {
+      throw new Error('No animator set.')
+    }
+
+    return this.animator
   }
 }

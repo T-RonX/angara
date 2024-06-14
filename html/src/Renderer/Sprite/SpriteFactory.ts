@@ -13,9 +13,12 @@ import type { StaticTextRenderer } from '@/Renderer/Sprite/Type/Text/StaticTextR
 import type { StaticImageRenderer } from '@/Renderer/Sprite/Type/Image/StaticImageRenderer'
 import { Path } from '@/Renderer/Sprite/Type/Path/Path'
 import type { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
+import { SpriteAnimators } from '@/Renderer/Animation/SpriteAnimators'
+import type { AnimatorInterface } from '@/Renderer/Animation/AnimatorInterface'
 
 export class SpriteFactory {
   private idGenerator: IdGenerator = new IdGenerator()
+  private spriteAnimators: SpriteAnimators = new SpriteAnimators()
 
   constructor(
     private clearCanvasRenderer: ClearCanvasRenderer,
@@ -26,6 +29,10 @@ export class SpriteFactory {
     private staticImageRenderer: StaticImageRenderer,
     private pathRenderer: PathRenderer,
   ) {
+  }
+
+  public getAnimatedSprites(): SpriteAnimators {
+    return this.spriteAnimators
   }
 
   public createClearCanvas(to: number, from: number, width: number, height: number): ClearCanvas {
@@ -64,9 +71,10 @@ export class SpriteFactory {
       .setId(this.idGenerator.getNextId())
   }
 
-  public createPath(color: string, points: Vector[]): Path {
-    return new Path(color, points)
+  public createPath(points: Vector[], fillColor: string|null = null, strokeColor: string|null = null, animator: AnimatorInterface|null = null): Path {
+    return new Path(points, fillColor, strokeColor)
       .setTypeRenderer(this.pathRenderer)
       .setId(this.idGenerator.getNextId())
+      .setAnimator(animator)
   }
 }

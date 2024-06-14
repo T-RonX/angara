@@ -17,7 +17,6 @@ export class CanvasRenderer {
   private readonly fpsMonitor: DefaultFpsMonitor = new DefaultFpsMonitor()
   private ctx: CanvasRenderingContext2D
   private readonly renderStack: RenderStack = new RenderStack()
-  private readonly spriteFactory: SpriteFactory
   private readonly spacialPartitioningOcclusion: SpatialPartitioning = new SpatialPartitioning()
   private doRender: boolean = true
   private occlusionTree: Quadrant = new Quadrant(new Vector(0, 0), new Vector(0, 0))
@@ -27,13 +26,11 @@ export class CanvasRenderer {
   constructor(
     private showFps: boolean,
     private context: RenderContext,
-    spriteFactory: SpriteFactory,
+    private spriteFactory: SpriteFactory,
     private spaceWidth: number,
     private spaceHeight: number,
   ) {
-    this.spriteFactory = spriteFactory
     this.ctx = this.getCanvasContext()
-
 
     // this.ctx.translate(0.5, 0.5)
     // this.sharpenCanvas()
@@ -117,7 +114,15 @@ export class CanvasRenderer {
     const count: number = this.activeSprites.length
 
     for (let i: number = 0; i < count; i++) {
-      this.activeSprites[i].getTypeRenderer().render(this.ctx, this.activeSprites[i], this.context)
+      const sprite: SpriteInterface = this.activeSprites[i]
+
+      if (sprite.hasAnimator()) {
+        sprite.getAnimator().animate(sprite, this.context)
+      }
+
+      if (sprite.getDoRender()) {
+        sprite.getTypeRenderer().render(this.ctx, sprite, this.context)
+      }
     }
 
     for (let i: number = 0; i < this.renderStack.getMonitors().length; i += 1) {

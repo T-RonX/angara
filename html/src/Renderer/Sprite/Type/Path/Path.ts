@@ -5,8 +5,9 @@ import { Vector } from '@/Renderer/Positioning/Vector'
 
 export class Path extends AbstractSprite implements SpriteInterface {
   constructor(
-    private color: string,
     private points: Vector[],
+    private fillColor: string|null = null,
+    private strokeColor: string|null = null,
   ) {
     super()
   }
@@ -19,8 +20,12 @@ export class Path extends AbstractSprite implements SpriteInterface {
     this.points = points
   }
 
-  public getColor(): string {
-    return this.color
+  public getFillColor(): string|null {
+    return this.fillColor
+  }
+
+  public getStrokeColor(): string|null {
+    return this.strokeColor
   }
 
   public shift(vector: Vector): Vector[] {
