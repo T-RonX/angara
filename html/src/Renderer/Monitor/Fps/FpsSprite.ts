@@ -1,7 +1,6 @@
 import type { FpsMonitorInterface } from '@/Renderer/Monitor/Fps/FpsMonitorInterface'
 import type { RenderContext } from '@/Renderer/Context/RenderContext'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
-import { Vector } from '@/Renderer/Positioning/Vector'
 import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator'
 import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/SpriteGeneratorInterface'
 import type { SpriteType } from '@/Renderer/Sprite/SpriteType'

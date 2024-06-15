@@ -1,14 +1,14 @@
 import type { RenderContext } from '@/Renderer/Context/RenderContext'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
 import { Vector } from '@/Renderer/Positioning/Vector'
-import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator'
 import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/SpriteGeneratorInterface'
 import type { AnimatorInterface } from '@/Renderer/Animation/AnimatorInterface'
 import { Path } from '@/Renderer/Sprite/Type/Path/Path'
 import { MathX } from '@/Math/MathX'
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
+import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 
-export class CenterArrow extends AbstractSpriteGenerator implements SpriteGeneratorInterface, AnimatorInterface {
+export class CenterArrow extends AbstractAssetGenerator implements SpriteGeneratorInterface, AnimatorInterface {
   private angles: number[] = []
   private arrowDefaultRotationAngle: number = (Math.PI / 180) * 270
 

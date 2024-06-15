@@ -1,9 +1,9 @@
-import { SpriteFactory } from '@/Renderer/Sprite/SpriteFactory'
 import { SpriteType } from '@/Renderer/Sprite/SpriteType'
+import type { SpriteFactory } from '@/Renderer/Sprite/SpriteFactory'
 
-export class AbstractSpriteGenerator {
-  private spriteType: SpriteType
-  private factory: SpriteFactory|null = null
+export abstract class AbstractSpriteGenerator {
+  protected spriteType: SpriteType
+  protected factory: SpriteFactory|null = null
 
   constructor(spriteType: SpriteType) {
     this.spriteType = spriteType

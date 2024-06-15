@@ -1,10 +1,10 @@
 import type { RenderContext } from '@/Renderer/Context/RenderContext'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
 import { Vector } from '@/Renderer/Positioning/Vector'
-import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator'
 import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/SpriteGeneratorInterface'
+import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 
-export class BlockSprite extends AbstractSpriteGenerator implements SpriteGeneratorInterface {
+export class BlockSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private x: number = 50
   private y: number = 50
 

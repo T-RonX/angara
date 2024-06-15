@@ -1,5 +1,4 @@
 import { Map } from '@/Game/Map/Map'
-import { SpriteFactory } from '@/Renderer/Sprite/SpriteFactory'
 import { LineRenderer } from '@/Renderer/Sprite/Type/Line/LineRenderer'
 import { ClearCanvasRenderer } from '@/Renderer/Sprite/Type/ClearCanvas/ClearCanvasRenderer'
 import { RectangleRenderer } from '@/Renderer/Sprite/Type/Rectangle/RectangleRenderer'
@@ -21,6 +20,9 @@ import { CameraMouseEvents } from '@/Game/Camera/CameraMouseEvents'
 import { BlockClick } from '@/Game/Events/BlockClick'
 import { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
 import { CenterArrow } from '@/Game/Sprite/CenterArrow'
+import { BlockMouseMove } from '@/Game/Events/BlockMouseMove'
+import { AssetFactory } from '@/Game/Assets/AssetFactory'
+import { AssetStore } from '@/Game/Assets/AssetStore'
 
 export class Game {
   private readonly renderer: CanvasRenderer
@@ -39,7 +41,9 @@ export class Game {
     const viewportInnerHeight: number = mapHeight * mapScale
     const map: Map = new Map(viewportInnerWidth, viewportInnerHeight)
 
-    const spriteFactory: SpriteFactory = new SpriteFactory(
+    const assetStore: AssetStore<any> = new AssetStore<any>()
+    const assetFactory: AssetFactory = new AssetFactory(
+      assetStore,
       new ClearCanvasRenderer(),
       new LineRenderer(),
       new RectangleRenderer(),
@@ -53,13 +57,13 @@ export class Game {
 
     this.renderContext = new RenderContext(this.canvas, viewport, viewportInnerWidth, viewportInnerHeight)
 
-    this.renderer = new CanvasRenderer(this.showFps, this.renderContext, spriteFactory, viewportInnerWidth, viewportInnerHeight)
-    this.renderer.getRenderStack().addSpriteGenerator(new ClearCanvasSprite(SpriteType.Static).setFactory(spriteFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new CenterImageSprite(SpriteType.Static, map).setFactory(spriteFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(spriteFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(spriteFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(spriteFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static).setFactory(spriteFactory))
+    this.renderer = new CanvasRenderer(this.showFps, this.renderContext, assetFactory, viewportInnerWidth, viewportInnerHeight)
+    this.renderer.getRenderStack().addSpriteGenerator(new ClearCanvasSprite(SpriteType.Static).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new CenterImageSprite(SpriteType.Static, map).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static).setFactory(assetFactory))
     this.renderer.initialize()
 
     this.camera = new Camera(this.renderContext, map)
@@ -69,13 +73,14 @@ export class Game {
     )
 
     const cameraMouseEvents: CameraMouseEvents = new CameraMouseEvents(this.camera)
-    const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera)
+    const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera, assetStore)
+    const blockMouseMove: BlockMouseMove = new BlockMouseMove(this.canvas, viewport, this.renderer, this.camera)
 
     this.input = new Input(
       [],
       [cameraMouseEvents],
       [blockClick, cameraMouseEvents],
-      [cameraMouseEvents],
+      [cameraMouseEvents, blockMouseMove],
       [cameraMouseEvents],
     )
     this.input.initialize(this.canvas)

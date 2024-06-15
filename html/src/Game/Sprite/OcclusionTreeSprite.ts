@@ -1,12 +1,12 @@
 import type { RenderContext } from '@/Renderer/Context/RenderContext'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
 import { Vector } from '@/Renderer/Positioning/Vector'
-import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator'
 import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/SpriteGeneratorInterface'
 import type { Quadrant } from '@/Renderer/OcclusionCulling/Quadrant'
 import type { BoundingBox } from '@/Renderer/Positioning/BoundingBox'
+import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 
-export class OcclusionTreeSprite extends AbstractSpriteGenerator implements SpriteGeneratorInterface {
+export class OcclusionTreeSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private grid: SpriteInterface[] = []
   private isGridComplete: boolean = false
 

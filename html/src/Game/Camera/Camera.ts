@@ -31,7 +31,7 @@ export class Camera {
    * Modifies the time it takes for the inertia drag to complete
    * Lower slightly for slower decay.
    */
-  private PANNING_INERTIA_DECAY_MODIFIER_60HZ: number = .065
+  private PANNING_INERTIA_DECAY_MODIFIER_60HZ: number = .070
 
   private panningThreshold: [x: number, y: number] = [this.DRAG_THRESHOLD, this.DRAG_THRESHOLD]
   private latestPanningDeltas: [number, number][] = []

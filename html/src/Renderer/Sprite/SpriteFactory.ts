@@ -17,22 +17,18 @@ import { SpriteAnimators } from '@/Renderer/Animation/SpriteAnimators'
 import type { AnimatorInterface } from '@/Renderer/Animation/AnimatorInterface'
 
 export class SpriteFactory {
-  private idGenerator: IdGenerator = new IdGenerator()
-  private spriteAnimators: SpriteAnimators = new SpriteAnimators()
+  protected idGenerator: IdGenerator = new IdGenerator()
+  protected spriteAnimators: SpriteAnimators = new SpriteAnimators()
 
   constructor(
-    private clearCanvasRenderer: ClearCanvasRenderer,
-    private lineRenderer: LineRenderer,
-    private rectangleRenderer: RectangleRenderer,
-    private fixedTextRenderer: FixedTextRenderer,
-    private staticTextRenderer: StaticTextRenderer,
-    private staticImageRenderer: StaticImageRenderer,
-    private pathRenderer: PathRenderer,
+    protected clearCanvasRenderer: ClearCanvasRenderer,
+    protected lineRenderer: LineRenderer,
+    protected rectangleRenderer: RectangleRenderer,
+    protected fixedTextRenderer: FixedTextRenderer,
+    protected staticTextRenderer: StaticTextRenderer,
+    protected staticImageRenderer: StaticImageRenderer,
+    protected pathRenderer: PathRenderer,
   ) {
-  }
-
-  public getAnimatedSprites(): SpriteAnimators {
-    return this.spriteAnimators
   }
 
   public createClearCanvas(to: number, from: number, width: number, height: number): ClearCanvas {

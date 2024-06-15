@@ -3,13 +3,12 @@ import type { Map } from '@/Game/Map/Map'
 import { MathX } from '@/Math/MathX'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
 import { Vector } from '@/Renderer/Positioning/Vector'
-import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator'
 import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/SpriteGeneratorInterface'
-import type { Line } from '@/Renderer/Sprite/Type/Line/Line'
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import type { SpriteType } from '@/Renderer/Sprite/SpriteType'
+import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 
-export class GridSprite extends AbstractSpriteGenerator implements SpriteGeneratorInterface {
+export class GridSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private grid: SpriteInterface[] = []
   private isGridComplete: boolean = false
 
@@ -28,7 +27,7 @@ export class GridSprite extends AbstractSpriteGenerator implements SpriteGenerat
 
     // this.createGrid()
     this.createBorder()
-    // this.createBlocks()
+    this.createBlocks()
 
     this.isGridComplete = true
 
@@ -38,22 +37,20 @@ export class GridSprite extends AbstractSpriteGenerator implements SpriteGenerat
   private createBlocks(): void {
     const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
     const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)
-    let c = 0
 
     for (let iy: number = 0; iy <= y.length; ++iy) {
       for (let ix: number = 0; ix <= x.length; ++ix) {
-        const block = this.getFactory().createRectangle(
+        const block: Rectangle = this.getFactory().MapBlockAsset(
           new Vector(x[ix], y[iy]),
           this.scale + 1,
           this.scale + 1,
           this.randomColor()
         )
 
-        if (this.randomNumber(0, 100) > 0) {
+        if (this.randomNumber(0, 100) > 75) {
           this.grid.push(block)
+          // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
         }
-
-        ++c
       }
     }
   }

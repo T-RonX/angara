@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, type Ref, ref } from 'vue'
 import { Game } from '@/Game/Game'
-import { useGameStore } from "@/stores/GameStore";
+import { useGameStore } from '@/stores/GameStore'
 
 const gameStore = useGameStore();
 

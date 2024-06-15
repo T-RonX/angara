@@ -35,13 +35,13 @@ export class Rectangle extends AbstractSprite implements SpriteInterface {
     this.color = color
   }
 
-  public toggleColor(color: string): void {
+  public toggleColor(color: string = ''): void {
     if (this.oldColor === '') {
       this.oldColor = this.color
       this.color = color
     } else {
-      this.oldColor = ''
       this.color = this.oldColor
+      this.oldColor = ''
     }
   }
 

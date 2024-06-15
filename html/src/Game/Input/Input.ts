@@ -14,7 +14,7 @@ export class Input {
   ) {
   }
 
-  public initialize(canvas: HTMLCanvasElement) {
+  public initialize(canvas: HTMLCanvasElement): void {
     this.clickListeners.forEach((c: CanvasClickInterface) => canvas.addEventListener('click', (e) => c.onClick(e)))
     this.mouseDownListeners.forEach((c: CanvasMouseDownInterface) => canvas.addEventListener('mousedown', (e) => c.onMouseDown(e)))
     this.mouseUpListeners.forEach((c: CanvasMouseUpInterface) => canvas.addEventListener('mouseup', (e) => c.onMouseUp(e)))
