@@ -7,6 +7,7 @@ import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/Sprit
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import type { SpriteType } from '@/Renderer/Sprite/SpriteType'
 import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
+import { useGameStore } from '@/stores/GameStore'
 
 export class GridSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private grid: SpriteInterface[] = []
@@ -17,6 +18,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
     private scale: number,
     spriteType: SpriteType
   ) {
+
     super(spriteType)
   }
 
@@ -27,7 +29,8 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
 
     // this.createGrid()
     this.createBorder()
-    this.createBlocks()
+    // this.createBlocks()
+    this.createMap()
 
     this.isGridComplete = true
 
@@ -53,6 +56,39 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
         }
       }
     }
+  }
+
+  private createMap(): void {
+    const gameStore = useGameStore()
+
+    const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
+    const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)
+
+    for (let iy: number = 0; iy <= y.length; ++iy) {
+      for (let ix: number = 0; ix <= x.length; ++ix) {
+        const block: Rectangle = this.getFactory().MapBlockAsset(
+          new Vector(x[ix], y[iy]),
+          this.scale + 1,
+          this.scale + 1,
+          this.rgbToHex(gameStore.map[iy][ix]),
+        )
+
+        if (this.randomNumber(0, 100) > 0) {
+          this.grid.push(block)
+          // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
+        }
+      }
+    }
+
+    gameStore.setMap([])
+  }
+
+  private rgbToHex(rgb: number[]): string {
+    const hex = rgb.map(value => {
+      const component = value.toString(16);
+      return component.length === 1 ? `0${component}` : component;
+    }).join('');
+    return `#${hex}`;
   }
 
   private randomColor(): string {

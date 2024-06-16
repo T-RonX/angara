@@ -5,6 +5,7 @@ import { useGameStore } from '@/stores/GameStore'
 
 const gameStore = useGameStore();
 
+
 const props = defineProps({
   showFps: { type: Boolean, default: true },
 })

@@ -3,6 +3,9 @@ import { ref, type Ref } from 'vue'
 import { api } from '@/Game/Api'
 import { tokenStorage } from '@/Api/Jwt/TokenStorage'
 import router from '@/router'
+import { useGameStore } from '@/stores/GameStore'
+
+const gameStore = useGameStore();
 
 const username: Ref<string> = ref('')
 const usernameError: Ref<string> = ref('')
@@ -18,13 +21,16 @@ const handleSubmit = async() => {
     .finally(() => isLoggedIn.value = tokenStorage.hasValidAccessToken())
     .finally(() => {
       api.getInitData()
-        .then(data => results2.value = data.playerName)
+        .then(data => {
+          results2.value = data.playerName
+          gameStore.setMap(JSON.parse(data.map))
+        })
         .finally(() => {
           router.push({ name: 'canvas' })
         })
     })
 }
-</script>§
+</script>
 
 <template>
 <form @submit.prevent="handleSubmit">

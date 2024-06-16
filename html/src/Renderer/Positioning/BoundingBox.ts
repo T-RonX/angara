@@ -8,4 +8,11 @@ export class BoundingBox extends Rectangle {
   ) {
     super(topLeft.x, topLeft.y, lowerRight.x, lowerRight.y)
   }
+
+  public getCenter(): Vector {
+    return new Vector(
+      this.topLeftX + Math.trunc((this.lowerRightX - this.topLeftX) / 2),
+      this.topLeftY + Math.trunc((this.lowerRightY - this.topLeftY) / 2),
+    )
+  }
 }

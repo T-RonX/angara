@@ -1,21 +1,19 @@
 import type { Viewport } from '@/Renderer/Viewport/Viewport'
 import type { CanvasRenderer } from '@/Renderer/CanvasRenderer'
 import { MathX } from '@/Math/MathX'
-import { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import type { CanvasMouseUpInterface } from '@/Game/Input/CanvasMouseUpInterface'
 import type { Camera } from '@/Game/Camera/Camera'
 import type { SpriteInterface } from '@/Renderer/Sprite/SpriteInterface'
-import type { AssetStore } from '@/Game/Assets/AssetStore'
+import type { State } from '@/Game/State/State'
+import { MapBlockAsset } from '@/Game/Assets/MapBlockAsset'
 
 export class BlockClick implements CanvasMouseUpInterface {
-  private currentSelected: number = 0
-
   constructor(
     private canvas: HTMLCanvasElement,
     private viewport: Viewport,
     private renderer: CanvasRenderer,
     private camera: Camera,
-    private assetStore: AssetStore<any>,
+    private gameState: State,
   ) {
   }
 
@@ -33,17 +31,19 @@ export class BlockClick implements CanvasMouseUpInterface {
 
     for (let i: number = 0; i < spriteLength; ++i) {
       const sprite: SpriteInterface = sprites[i]
-      if (sprite instanceof Rectangle && MathX.isPointInRectangle(x, y, sprites[i].getBoundingBox())) {
-        if (this.currentSelected === sprite.getId()) {
+      if (sprite instanceof MapBlockAsset && MathX.isPointInRectangle(x, y, sprites[i].getBoundingBox())) {
+        if (this.gameState.isSelectedAssetId(sprite.getId())) {
+          (this.gameState.getSelectedAsset() as MapBlockAsset).toggleColor()
+          this.gameState.setSelectedAsset(null)
           return
         }
 
-        if (this.currentSelected) {
-          this.assetStore.get(this.currentSelected).toggleColor()
+        if (this.gameState.hasSelectedAsset()) {
+          (this.gameState.getSelectedAsset() as MapBlockAsset).toggleColor()
         }
 
         sprite.toggleColor('crimson')
-        this.currentSelected = sprite.getId()
+        this.gameState.setSelectedAsset(sprite)
         break
       }
     }

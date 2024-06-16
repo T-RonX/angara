@@ -55,6 +55,11 @@ RUN yes | pecl install xdebug \
     && echo "xdebug.mode=\"debug,coverage\"" >> /usr/local/etc/php/conf.d/xdebug.ini \
     && echo "xdebug.start_with_request=trigger" >> /usr/local/etc/php/conf.d/xdebug.ini
 
+# ext-gd
+RUN apt-get install -y \
+        libpng-dev \
+    && docker-php-ext-install gd
+
 WORKDIR /var/www
 
 EXPOSE 5173

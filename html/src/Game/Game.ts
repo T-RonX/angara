@@ -23,12 +23,14 @@ import { CenterArrow } from '@/Game/Sprite/CenterArrow'
 import { BlockMouseMove } from '@/Game/Events/BlockMouseMove'
 import { AssetFactory } from '@/Game/Assets/AssetFactory'
 import { AssetStore } from '@/Game/Assets/AssetStore'
+import { State } from '@/Game/State/State'
 
 export class Game {
   private readonly renderer: CanvasRenderer
   private readonly renderContext: RenderContext
   private readonly camera: Camera
   private readonly input: Input
+  private readonly gameState: State
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -40,8 +42,9 @@ export class Game {
     const viewportInnerWidth: number = mapWidth * mapScale
     const viewportInnerHeight: number = mapHeight * mapScale
     const map: Map = new Map(viewportInnerWidth, viewportInnerHeight)
-
     const assetStore: AssetStore<any> = new AssetStore<any>()
+    this.gameState = new State(assetStore)
+
     const assetFactory: AssetFactory = new AssetFactory(
       assetStore,
       new ClearCanvasRenderer(),
@@ -63,7 +66,7 @@ export class Game {
     this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
     this.renderer.initialize()
 
     this.camera = new Camera(this.renderContext, map)
@@ -73,7 +76,7 @@ export class Game {
     )
 
     const cameraMouseEvents: CameraMouseEvents = new CameraMouseEvents(this.camera)
-    const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera, assetStore)
+    const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera, this.gameState)
     const blockMouseMove: BlockMouseMove = new BlockMouseMove(this.canvas, viewport, this.renderer, this.camera)
 
     this.input = new Input(

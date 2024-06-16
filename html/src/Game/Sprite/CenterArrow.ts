@@ -7,27 +7,25 @@ import { Path } from '@/Renderer/Sprite/Type/Path/Path'
 import { MathX } from '@/Math/MathX'
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
+import type { State } from '@/Game/State/State'
+import { SpriteType } from '@/Renderer/Sprite/SpriteType'
 
 export class CenterArrow extends AbstractAssetGenerator implements SpriteGeneratorInterface, AnimatorInterface {
   private angles: number[] = []
   private arrowDefaultRotationAngle: number = (Math.PI / 180) * 270
 
+  constructor(
+    spriteType: SpriteType,
+    private gameState: State
+  ) {
+    super(spriteType)
+  }
+
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
-    const mapCenterDot: Rectangle = this.createMapCenterDot(renderContext)
     const arrow: Path = this.createArrow()
     this.angles = this.getArrowAngles(arrow)
 
-    return [arrow, mapCenterDot]
-  }
-
-  private createMapCenterDot(renderContext: RenderContext): Rectangle {
-    return this.getFactory().createRectangle(
-      new Vector(
-        Math.trunc(renderContext.getInnerWidth() / 2) - 4,
-        Math.trunc(renderContext.getInnerHeight() / 2) - 4,
-      ),
-      8, 8, 'yellow',
-    )
+    return [arrow]
   }
 
   private createArrow(): Path {
@@ -66,14 +64,16 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
     const viewportCenterY: number = renderContext.getCanvas().getBoundingClientRect().height / 2
     const viewportCenter: Vector = new Vector(viewPortCenterX, viewportCenterY)
 
-    // Map center
-    const mapCenter: Vector = new Vector(
-      Math.trunc(renderContext.getInnerWidth() / 2),
-      Math.trunc(renderContext.getInnerHeight() / 2),
-    )
+    // Focus center
+    const focusPoint: Vector|undefined = this.gameState.hasSelectedAsset() ? this.gameState.getSelectedAsset().getBoundingBox()?.getCenter() : undefined
+
+    if (focusPoint === undefined) {
+      path.setDoRender(false)
+      return
+    }
 
     // Only show arrow when center of map is not visible
-    if (MathX.isPointInRectangle(mapCenter.x, mapCenter.y, renderContext.getViewport().getBoundingBox())) {
+    if (MathX.isPointInRectangle(focusPoint.x, focusPoint.y, renderContext.getViewport().getBoundingBox())) {
       path.setDoRender(false)
       return
     } else {
@@ -85,7 +85,7 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
       Math.trunc(renderContext.getViewport().getPosition().x + viewPortCenterX),
       Math.trunc(renderContext.getViewport().getPosition().y + viewportCenterY),
     )
-    const angleToMapCenter: number = this.getAngle(mapCenter, pathCentered.getCentroid().add(mapCoordInViewport)) + Math.PI
+    const angleToMapCenter: number = this.getAngle(focusPoint, pathCentered.getCentroid().add(mapCoordInViewport)) + Math.PI
 
     // Get the new position
     const newPos: Vector = this.rotatePoint(
@@ -97,7 +97,7 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
     )
 
     // Rotate and align the arrow
-    const baseAngle: number = this.getAngle(mapCenter, renderContext.getViewport().getPosition().add(newPos))
+    const baseAngle: number = this.getAngle(focusPoint, renderContext.getViewport().getPosition().add(newPos))
 
     // Update the path points with rotation to center and position in viewport
     for (const [i, point] of points.entries()) {
