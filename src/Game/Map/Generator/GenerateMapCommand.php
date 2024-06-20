@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Game\Map\Generator;
 
+use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorGradiant;
+use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorRgb;
+use App\Game\Map\Generator\MapDescriptor\Gradiant\GradiantStop;
+use App\Game\Map\Generator\MapDescriptor\MapDescriptor;
 use MapGenerator\PerlinNoiseGenerator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -14,7 +18,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 class GenerateMapCommand extends Command
 {
     public function __construct(
-        private MapGenerator $mapGenerator,
+        private readonly MapGenerator $mapGenerator,
+        private readonly StyleProvider $styleProvider,
     ) {
         parent::__construct();
     }
@@ -27,8 +32,10 @@ class GenerateMapCommand extends Command
 
     public function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->mapGenerator->generate($input->getOption('seed'));
+        $mapDescriptor = $this->styleProvider->getStyle();
 
-        return 1;
+        $this->mapGenerator->generate($input->getOption('seed'), $mapDescriptor);
+
+        return 0;
     }
 }

@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace App\Game\Map\Generator;
 
+use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorGradiant;
+use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorRgb;
+use App\Game\Map\Generator\MapDescriptor\Gradiant\GradiantStop;
+use App\Game\Map\Generator\MapDescriptor\MapDescriptor;
+use App\Game\Map\Generator\Planet\PlanetGenerator;
 use MapGenerator\PerlinNoiseGenerator;
 use SplFixedArray;
 use InvalidArgumentException;
@@ -11,19 +16,26 @@ use Symfony\Component\DependencyInjection\Attribute\AutowireInline;
 
 class MapGenerator
 {
+    private MapDescriptor $mapDescriptor;
+
     public function __construct(
-        #[AutowireInline(class: PerlinNoiseGenerator::class)] private PerlinNoiseGenerator $perlinNoiseGenerator,
+        #[AutowireInline(class: PerlinNoiseGenerator::class)] private readonly PerlinNoiseGenerator $perlinNoiseGenerator,
+        private readonly PlanetGenerator $planetGenerator,
+        private readonly MapTiler $mapTiler,
+        private readonly MapDecorator $mapDecorator,
     ) {
     }
 
-    public function generate(?string $seed): array
+    public function generate(?string $seed, MapDescriptor $mapDescriptor, bool $thumbnail = true): array
     {
-        $memLim = ini_get('memory_limit');
+        $targetFile = '/var/www/html/src/map.png';
+        $this->mapDescriptor = $mapDescriptor;
+
         ini_set('memory_limit', '-1');
 
-        $size = 1000;
+        $size = $this->mapDescriptor->getSize();
 
-        $this->perlinNoiseGenerator->setPersistence(.60);
+        $this->perlinNoiseGenerator->setPersistence($this->mapDescriptor->getRoughness());
         $this->perlinNoiseGenerator->setSize($size);
 
         if ($seed)
@@ -32,86 +44,83 @@ class MapGenerator
         }
 
         $map = $this->perlinNoiseGenerator->generate();
-        $mapColor = $this->createImage($size, $map);
+        $mapColor = $this->createImage($size, $map, $targetFile);
 
-//        ini_set('memory_limit', $memLim);
+        $this->mapDecorator->decorate($targetFile, $mapDescriptor);
+
+        if ($thumbnail === true)
+        {
+            $this->planetGenerator->generate($targetFile, '/var/www/html/src/map_planet.png', $this->mapDescriptor->getSize());
+        }
+
+        $this->mapTiler->tile($targetFile, 100);
 
         return $mapColor;
     }
 
-    private function getColorGradient(array $controlPoints, int $colorCount): array
+    /**
+     * @return array
+     */
+    private function getColorGradient(ColorGradiant $colorGradiant): array
     {
         // Validate input
-        if ($colorCount < 3)
+        if ($colorGradiant->getColorCount() < 3)
         {
             throw new InvalidArgumentException('Color count must be greater than or equal to 3');
         }
 
         // Validate control points
-        $numControlPoints = count($controlPoints);
+        $numControlPoints = count($colorGradiant->getStops());
 
         if ($numControlPoints < 2)
         {
             throw new InvalidArgumentException('Control points array must contain at least two elements');
         }
 
-        foreach ($controlPoints as $point)
-        {
-            if (!isset($point['color']) || !is_array($point['color']) || count($point['color']) !== 3)
-            {
-                throw new InvalidArgumentException('Control points must be arrays with a "color" key containing an RGB array');
-            }
-
-            if ($point['position'] < 0 || $point['position'] > 1)
-            {
-                throw new InvalidArgumentException('Control point positions must be between 0 and 1');
-            }
-        }
+        $stops = $colorGradiant->getStops();
 
         // Ensure control points are sorted by position
-        usort($controlPoints, function ($a, $b) {
-            return $a['position'] <=> $b['position'];
-        });
+        usort($stops, static fn (GradiantStop $a, GradiantStop $b) => $a->getPosition() <=> $b->getPosition());
 
         $gradient = [];
         $controlPointIndex = 0;
 
-        for ($i = 0; $i < $colorCount; $i++)
+        for ($i = 0, $colorCount = $colorGradiant->getColorCount(); $i < $colorCount; ++$i)
         {
             // Calculate the relative position of the current gradient point
             $t = $i / ($colorCount - 1);
 
             // Move to the next control point if needed
-            while ($controlPointIndex < $numControlPoints - 1 && $t > $controlPoints[$controlPointIndex + 1]['position'])
+            while ($controlPointIndex < $numControlPoints - 1 && $t > $stops[$controlPointIndex + 1]->getPosition())
             {
                 $controlPointIndex++;
             }
 
             // Determine the start and end control points for interpolation
-            $startPoint = $controlPoints[$controlPointIndex];
-            $endPoint = ($controlPointIndex < $numControlPoints - 1) ? $controlPoints[$controlPointIndex + 1] : $startPoint;
+            $startPoint = $stops[$controlPointIndex];
+            $endPoint = ($controlPointIndex < $numControlPoints - 1) ? $stops[$controlPointIndex + 1] : $startPoint;
 
             // Calculate the local position between the start and end control points
-            $localT = ($t - $startPoint['position']) / ($endPoint['position'] - $startPoint['position']);
+            $localT = ($t - $startPoint->getPosition()) / ($endPoint->getPosition() - $startPoint->getPosition());
 
             // Lerp between the start and end colors
-            $gradient[] = $this->lerpColor($startPoint['color'], $endPoint['color'], $localT);
+            $gradient[] = $this->lerpColor($startPoint->getColor(), $endPoint->getColor(), $localT);
         }
 
         return $gradient;
     }
 
-    private function lerpColor(array $startColor, array $endColor, float $t): array
+    private function lerpColor(ColorRgb $startColor, ColorRgb $endColor, float $t): array
     {
         return [
-            (int)round($startColor[0] + ($endColor[0] - $startColor[0]) * $t),
-            (int)round($startColor[1] + ($endColor[1] - $startColor[1]) * $t),
-            (int)round($startColor[2] + ($endColor[2] - $startColor[2]) * $t)
+            (int)round($startColor->getRed() + ($endColor->getRed() - $startColor->getRed()) * $t),
+            (int)round($startColor->getGreen() + ($endColor->getGreen() - $startColor->getGreen()) * $t),
+            (int)round($startColor->getBlue() + ($endColor->getBlue() - $startColor->getBlue()) * $t)
         ];
     }
 
 
-    private function createImage(int $size, SplFixedArray $map)
+    private function createImage(int $size, SplFixedArray $map, $destinationPath): array
     {
         $mapColors = [];
 
@@ -126,18 +135,7 @@ class MapGenerator
         $color_w_mid = '#B90F16';
         $color_w_peaks = '#563227';
 
-        $colors = $this->getColorGradient([
-                ['color' => [0, 0, 59], 'position' => 0],
-                ['color' => [0, 0, 176], 'position' => .01],
-                ['color' => [15, 133, 50], 'position' => .02],
-                ['color' => [29, 161, 7], 'position' => .05],
-                ['color' => [29, 181, 7], 'position' => .95],
-                ['color' => [157, 199, 4], 'position' => .98],
-                ['color' => [185, 15, 22], 'position' => .99],
-                ['color' => [86, 50, 39], 'position' => 1],
-            ],
-            128
-        );
+        $colors = $this->getColorGradient($this->mapDescriptor->getElevationColorGradiant());
 
         $image = imagecreatetruecolor($size, $size);
 
@@ -178,8 +176,8 @@ class MapGenerator
             }
         }
 
-        @unlink('/var/www/html/src/dla.png');
-        imagepng($image, '/var/www/html/src/dla.png');
+        @unlink($destinationPath);
+        imagepng($image, $destinationPath);
         imagedestroy($image);
 
         return $mapColors;
@@ -188,6 +186,6 @@ class MapGenerator
     private function sigmoid($value): float
     {
         // -12 to -20
-        return 1 / (1 + exp(-14.7 * ($value - 0.5)));
+        return 1 / (1 + exp($this->mapDescriptor->getElevationLevel() * ($value - 0.5)));
     }
 }
