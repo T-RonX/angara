@@ -8,6 +8,7 @@ import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import type { SpriteType } from '@/Renderer/Sprite/SpriteType'
 import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 import { useGameStore } from '@/stores/GameStore'
+import { StringDeflater } from '@/composables/Compression'
 
 export class GridSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private grid: SpriteInterface[] = []
@@ -60,6 +61,36 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
 
   private createMap(): void {
     const gameStore = useGameStore()
+
+    // const len = gameStore.map.length
+    const size = 6250;
+
+    // console.log(len)
+    // return
+
+    for (const tile of gameStore.map) {
+      this.grid.push(this.getFactory().createStaticImage(
+        'data:image/webp;base64,' + btoa(StringDeflater.inflate(tile['data'])),
+        new Vector(tile['x'] * size, tile['y'] * size),
+        size,
+        size,
+      ))
+    }
+
+    // for (let y: number = 0; y < 10; ++y) {
+    //   for (let x: number = 0; x < 10; ++x) {
+    //     this.grid.push(this.getFactory().createStaticImage(
+    //       'data:image/png;base64,' + btoa(StringDeflater.inflate(gameStore.map[y][x])),
+    //       new Vector(x * size, y * size),
+    //       size,
+    //       size,
+    //       ))
+    //   }
+    // }
+
+    gameStore.setMap([])
+
+    return;
 
     const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
     const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)

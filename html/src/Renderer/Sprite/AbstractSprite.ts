@@ -58,4 +58,8 @@ export class AbstractSprite {
 
     return this.animator
   }
+
+  public logType() {
+    console.log(this.constructor.name, this.id)
+  }
 }

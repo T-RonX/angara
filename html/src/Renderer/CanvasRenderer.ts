@@ -135,10 +135,15 @@ export class CanvasRenderer {
   private resetActiveSprites(): void {
     const tree: Quadrant[] = this.occlusionTree.getSubQuadrants()
     this.activeSprites = []
+    this.numbers = new Int32Array(100)
+    this.count = 0
 
     this.setActiveQuadrantSprites(tree, this.context.getViewport().getBoundingBox())
     this.activeSprites.sort((a: SpriteInterface, b: SpriteInterface) => a.getId() - b.getId())
   }
+
+  private numbers: Int32Array = new Int32Array(100)
+  private count: number = 0
 
   private setActiveQuadrantSprites(quadrants: Quadrant[], viewPort: BoundingBox): void {
     for (let i: number = 0; i < quadrants.length; ++i) {
@@ -148,7 +153,22 @@ export class CanvasRenderer {
 
         for (let j: number = 0; j < spriteCount; j++) {
           if (MathX.doesRectangleOverlap(sprites[j].getBoundingBox(), viewPort)) {
-            this.activeSprites.push(sprites[j])
+
+
+            let hasNumber: boolean = false
+            for (let i = 0; i < this.count; ++i) {
+              if (this.numbers[i] === sprites[j].getId()) {
+                hasNumber = true
+                break
+              }
+            }
+
+            if (!hasNumber) {
+              this.activeSprites.push(sprites[j])
+              this.numbers[this.count++] = sprites[j].getId()
+            }
+
+
           }
         }
       } else {

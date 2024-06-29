@@ -14,6 +14,7 @@ export class BlockSprite extends AbstractAssetGenerator implements SpriteGenerat
   private centerY: number = 200
 
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
+    return []
     const centerX: number = this.centerX
     const centerY: number = this.centerY
 

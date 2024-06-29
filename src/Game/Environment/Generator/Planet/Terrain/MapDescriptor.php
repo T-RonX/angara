@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Map\Generator\MapDescriptor;
+namespace App\Game\Environment\Generator\Planet\Terrain;
 
-use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorGradiant;
+use App\Game\Environment\Generator\Planet\Terrain\Color\ColorGradiant;
+use App\Game\Environment\Generator\Planet\Terrain\Type\TerrainType;
 
 class MapDescriptor
 {
@@ -12,13 +13,13 @@ class MapDescriptor
      * @param int $size Size of one edge of the square map.
      * @param float $roughness How intensely elevation changes on the map, range around 0.3 to 0.8.
      * @param float $elevationLevel Modifier for how aggressively elevation is applied, range around -10 to -20. Lower is more elevation spread.
-     * @param ColorGradiant $elevationColorGradiant Colors gradiant to apply to elevation levels.
+     * @param TerrainDescriptor $terrain Terrain gradiant to apply to elevation levels.
      */
     public function __construct(
         private int $size,
         private float $roughness,
         private float $elevationLevel,
-        private ColorGradiant $elevationColorGradiant,
+        private TerrainDescriptor $terrain,
     ) {
     }
 
@@ -58,14 +59,14 @@ class MapDescriptor
         return $this;
     }
 
-    public function getElevationColorGradiant(): ColorGradiant
+    public function getTerrain(): TerrainDescriptor
     {
-        return $this->elevationColorGradiant;
+        return $this->terrain;
     }
 
-    public function setElevationColorGradiant(ColorGradiant $elevationColorGradiant): self
+    public function setTerrain(TerrainDescriptor $terrain): self
     {
-        $this->elevationColorGradiant = $elevationColorGradiant;
+        $this->terrain = $terrain;
 
         return $this;
     }

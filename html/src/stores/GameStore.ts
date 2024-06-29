@@ -4,7 +4,7 @@ import { Game } from '@/Game/Game'
 export const useGameStore = defineStore('GameStore', {
   state: () => ({
     game: null as Game|null,
-    map: [] as number[][],
+    map: [] as {x: number, y: number, data: string }[],
   }),
   // getters: {
   //   game(): Game|null {
@@ -15,7 +15,7 @@ export const useGameStore = defineStore('GameStore', {
     setGame(game: Game): void {
       this.game = game
     },
-    setMap(map: number[][]): void {
+    setMap(map: {x: number, y: number, data: string }[]): void {
       this.map = map
     },
   }

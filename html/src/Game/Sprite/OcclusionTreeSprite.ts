@@ -11,6 +11,7 @@ export class OcclusionTreeSprite extends AbstractAssetGenerator implements Sprit
   private isGridComplete: boolean = false
 
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
+
     if (this.isGridComplete) {
       return this.grid
     }

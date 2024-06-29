@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Game\Context\PlayerContext;
-use App\Game\Map\Generator\MapGenerator;
-use App\Game\Map\Generator\StyleProvider;
+use App\Game\Environment\Generator\Planet\PlanetGenerator;
+use App\Game\Environment\Generator\Planet\Terrain\MapGenerator;
+use App\Game\Environment\Generator\Planet\Terrain\StyleProvider;
 use App\Game\SendDailySalesReports;
+use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Finder\Finder;
 
 #[AsController]
 class HomeController // extends AbstractController
@@ -20,19 +23,35 @@ class HomeController // extends AbstractController
     public function index(
         PlayerContext $playerContext,
         MessageBusInterface $messenger,
-        MapGenerator $mapGenerator,
-        StyleProvider $styleProvider
+        PlanetGenerator $planetGenerator,
+        StyleProvider $styleProvider,
     ): JsonResponse
     {
         $messenger->dispatch(new SendDailySalesReports(33));
 
         $mapDescriptor = $styleProvider->getStyle();
-        $map = $mapGenerator->generate(null, $mapDescriptor);
+//        $map = $planetGenerator->generate(null, $mapDescriptor, '/var/www/html/src/map.webp');
+
+        $finder = (new Finder())->files()->in('/var/www/html/src/map/');
+        $map = [];
+
+        foreach ($finder as $file)
+        {
+            preg_match_all('#^tile_(?<y>\d+)_(?<x>\d+).webp#', $file->getFilename(), $matches);
+
+            $map[] = [
+                'x' => (int) $matches['x'][0],
+                'y' => (int) $matches['y'][0],
+                'data' => base64_encode(gzdeflate($file->getContents())),
+            ];
+        }
 
         return new JsonResponse(
             [
                 'playerName' => $playerContext->getPlayer()->getName() . ' ('.$playerContext->getPlayer()->getUser()->getUsername() . ')',
-                'map' => json_encode($map),
-            ]);
+                'map' => $map,
+            ], 200, [
+                'Access-Control-Allow-Origin' => '*',
+        ]);
     }
 }

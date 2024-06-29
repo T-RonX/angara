@@ -1,4 +1,4 @@
-FROM php:8.2.8-fpm
+FROM php:8.3.8-fpm
 
 # System packages
 RUN apt-get update
@@ -57,8 +57,12 @@ RUN yes | pecl install xdebug \
 
 # ext-gd
 RUN apt-get install -y \
-        libpng-dev \
-    && docker-php-ext-install gd
+      libpng-dev -y \
+      libwebp-dev -y \
+      libjpeg-dev -y \
+      libfreetype6-dev -y \
+  && docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp \
+  && docker-php-ext-install gd
 
 WORKDIR /var/www
 

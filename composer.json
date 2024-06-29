@@ -4,10 +4,11 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {
-        "php": ">=8.2",
+        "php": ">=8.3",
         "ext-ctype": "*",
         "ext-iconv": "*",
         "ext-gd": "*",
+        "ext-zlib": "*",
         "doctrine/doctrine-bundle": "^2.12",
         "doctrine/doctrine-fixtures-bundle": "^3.6",
         "doctrine/doctrine-migrations-bundle": "^3.3",

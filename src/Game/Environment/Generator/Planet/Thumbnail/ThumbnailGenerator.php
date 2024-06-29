@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Map\Generator\Planet;
+namespace App\Game\Environment\Generator\Planet\Thumbnail;
 
 use GdImage;
 use RuntimeException as Exception;
 
-class PlanetGenerator
+class ThumbnailGenerator
 {
     public function generate(string $sourcePath, string $destinationPath, $size = 200)
     {
@@ -20,15 +20,15 @@ class PlanetGenerator
         $this->normalize($direction);
 
         $image = $this->createSurfaceCircle($size, $sourcePath);
-        $image = $this->createSphereLighting($size / 2, 1.5, 0.1, 190, $direction, $image);
+        $image = $this->createSphereLighting(($size / 2) + 1, 1.5, 0.1, 190, $direction, $image);
 
-        imagepng($image, $destinationPath);
+        imagewebp($image, $destinationPath, IMG_WEBP_LOSSLESS);
     }
 
     private function createSurfaceCircle(int $size, $inputImagePath): GdImage
     {
         // Load the existing image
-        $srcImage = imagecreatefrompng($inputImagePath);
+        $srcImage = imagecreatefromwebp($inputImagePath);
 
         if (!$srcImage)
         {

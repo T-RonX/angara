@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Map\Generator\MapDescriptor\Gradiant;
+namespace App\Game\Environment\Generator\Planet\Terrain\Color;
 
 use InvalidArgumentException;
 

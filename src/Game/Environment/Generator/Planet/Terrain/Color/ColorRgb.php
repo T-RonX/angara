@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Map\Generator\MapDescriptor\Gradiant;
+namespace App\Game\Environment\Generator\Planet\Terrain\Color;
 
 use InvalidArgumentException;
 
@@ -39,6 +39,15 @@ class ColorRgb
         }
 
         return new static($red, $green, $blue);
+    }
+
+    public function toArray(): array
+    {
+        return [
+            $this->red,
+            $this->green,
+            $this->blue,
+        ];
     }
 
     public function getRed(): int

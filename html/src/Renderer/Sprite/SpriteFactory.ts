@@ -1,6 +1,6 @@
 import type { LineRenderer } from '@/Renderer/Sprite/Type/Line/LineRenderer'
 import { Line } from '@/Renderer/Sprite/Type/Line/Line'
-import { Image } from '@/Renderer/Sprite/Type/Image/Image'
+import { StaticImage } from '@/Renderer/Sprite/Type/Image/StaticImage'
 import { Vector } from '@/Renderer/Positioning/Vector'
 import { RectangleRenderer } from '@/Renderer/Sprite/Type/Rectangle/RectangleRenderer'
 import { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
@@ -61,8 +61,8 @@ export class SpriteFactory {
       .setId(this.idGenerator.getNextId())
   }
 
-  public createStaticImage(src: string, position: Vector, width: number, height: number): Image {
-    return new Image(src, position, width, height)
+  public createStaticImage(src: string, position: Vector, width: number, height: number): StaticImage {
+    return new StaticImage(src, position, width, height)
       .setTypeRenderer(this.staticImageRenderer)
       .setId(this.idGenerator.getNextId())
   }

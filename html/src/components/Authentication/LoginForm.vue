@@ -23,7 +23,7 @@ const handleSubmit = async() => {
       api.getInitData()
         .then(data => {
           results2.value = data.playerName
-          gameStore.setMap(JSON.parse(data.map))
+          gameStore.setMap(data.map)
         })
         .finally(() => {
           router.push({ name: 'canvas' })

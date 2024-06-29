@@ -2,15 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Map\Generator;
+namespace App\Game\Environment\Command;
 
-use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorGradiant;
-use App\Game\Map\Generator\MapDescriptor\Gradiant\ColorRgb;
-use App\Game\Map\Generator\MapDescriptor\Gradiant\GradiantStop;
-use App\Game\Map\Generator\MapDescriptor\MapDescriptor;
-use MapGenerator\PerlinNoiseGenerator;
+use App\Game\Environment\Generator\Planet\PlanetGenerator;
+use App\Game\Environment\Generator\Planet\Terrain\NoiseGenerator;
+use App\Game\Environment\Generator\Planet\Terrain\StyleProvider;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -18,7 +15,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class GenerateMapCommand extends Command
 {
     public function __construct(
-        private readonly MapGenerator $mapGenerator,
+        private readonly PlanetGenerator $planetGenerator,
         private readonly StyleProvider $styleProvider,
     ) {
         parent::__construct();
@@ -26,15 +23,15 @@ class GenerateMapCommand extends Command
 
     public function configure()
     {
-        $this->setName('angara:map:generate');
+        $this->setName('angara:generate:planet');
         $this->addOption('seed', 's', InputOption::VALUE_OPTIONAL);
     }
 
     public function execute(InputInterface $input, OutputInterface $output): int
     {
-        $mapDescriptor = $this->styleProvider->getStyle();
+        $mapDescriptor = $this->styleProvider->getStyle('fictional_1');
 
-        $this->mapGenerator->generate($input->getOption('seed'), $mapDescriptor);
+        $this->planetGenerator->generate($input->getOption('seed'), $mapDescriptor, '/var/www/html/src/map.webp', true);
 
         return 0;
     }

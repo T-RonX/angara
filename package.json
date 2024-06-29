@@ -12,6 +12,6 @@
     "vue": "latest"
   },
   "devDependencies": {
-
+    "pako": "^2.1.0"
   }
 }
