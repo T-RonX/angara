@@ -4,7 +4,10 @@ import { BoundingBox } from '@/Renderer/Positioning/BoundingBox'
 import { Vector } from '@/Renderer/Positioning/Vector'
 
 export class StaticImage extends AbstractSprite implements SpriteInterface {
-  private image
+  private image: HTMLImageElement
+  private bitmap: ImageBitmap | null = null
+  private isLoaded: boolean = false
+  private loadPromise: Promise<void>
 
   constructor(
     public src: string,
@@ -15,6 +18,13 @@ export class StaticImage extends AbstractSprite implements SpriteInterface {
     super()
 
     this.image = new Image()
+    this.loadPromise = new Promise((resolve) => {
+      this.image.onload = async () => {
+        this.bitmap = await createImageBitmap(this.image)
+        this.isLoaded = true
+        resolve()
+      }
+    })
     this.image.src = src
   }
 
@@ -34,11 +44,19 @@ export class StaticImage extends AbstractSprite implements SpriteInterface {
     return this.height
   }
 
-  public getImage() {
-    return this.image
+  public getBitmap(): ImageBitmap | null {
+    return this.bitmap
   }
 
-  public getBoundingBox(): BoundingBox|null {
+  public isImageLoaded(): boolean {
+    return this.isLoaded
+  }
+
+  public async waitForLoad(): Promise<void> {
+    return this.loadPromise
+  }
+
+  public getBoundingBox(): BoundingBox | null {
     const bottomRightX: number = this.position.x + this.width
     const bottomRightY: number = this.position.y + this.height
 

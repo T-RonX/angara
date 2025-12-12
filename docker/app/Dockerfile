@@ -64,6 +64,18 @@ RUN apt-get install -y \
   && docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp \
   && docker-php-ext-install gd
 
+# wasm
+#RUN git clone https://github.com/wasmerio/wasmer-php \
+#    && cd wasmer-php/ext \
+#    && phpize \
+#    && ./configure --enable-wasmer \
+#    && make \
+#    && make install \
+#    && docker-php-ext-enable wasm
+
+RUN printf "\nalias ll='ls -alh --color=auto'\n" >> /root/.bashrc
+RUN printf "\nalias phpd='php -dxdebug.mode=debug -dxdebug.start_with_request=1'\n" >> /root/.bashrc
+
 WORKDIR /var/www
 
-EXPOSE 5173
+EXPOSE 5000

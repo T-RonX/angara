@@ -147,6 +147,14 @@ class StyleProvider
                 new TerrainType(0.0, 0.35, $terrain['water'], new ColorGradiant(8, [new GradiantStop(ColorRgb::fromHex('364653'), 0), new GradiantStop(ColorRgb::fromHex('364653'), .8), new GradiantStop(ColorRgb::fromHex('748B69'), 1)])),
         ]));
 
+            $planetFictional5 = new MapDescriptor(250, .50, -30, new TerrainDescriptor([
+                new TerrainType(0.75, 1.0, $terrain['mountain'], new ColorGradiant(4, [new GradiantStop(ColorRgb::fromHex('787536'), 0), new GradiantStop(ColorRgb::fromHex('4A4425'), 1)])),
+                new TerrainType(0.57, 0.75, $terrain['land'], new ColorGradiant(8, [new GradiantStop(ColorRgb::fromHex('94B76E'), 0), new GradiantStop(ColorRgb::fromHex('7EAA5C'), 1)])),
+                new TerrainType(0.53, 0.57, $terrain['land'], new ColorGradiant(6, [new GradiantStop(ColorRgb::fromHex('C4BB44'), 0), new GradiantStop(ColorRgb::fromHex('C2C66D'), .5), new GradiantStop(ColorRgb::fromHex('C4BB44'), 1)])),
+                new TerrainType(0.35, 0.53, $terrain['land'], new ColorGradiant(8, [new GradiantStop(ColorRgb::fromHex('7EAA5C'), 0), new GradiantStop(ColorRgb::fromHex('94B76E'), 1)])),
+                new TerrainType(0.0, 0.35, $terrain['water'], new ColorGradiant(8, [new GradiantStop(ColorRgb::fromHex('364653'), 0), new GradiantStop(ColorRgb::fromHex('364653'), .8), new GradiantStop(ColorRgb::fromHex('748B69'), 1)])),
+        ]));
+
 //        $planetFictional2Small = new MapDescriptor(1000, .82, -22, new ColorGradiant(64, [
 //            new GradiantStop(ColorRgb::fromHex('F5BD5A'), 0),
 //            new GradiantStop(ColorRgb::fromHex('EFA72A'), .01),
@@ -169,6 +177,7 @@ class StyleProvider
 //            'fictional_2_small' => $planetFictional2Small,
             'fictional_3' => $planetFictional3,
             'fictional_4' => $planetFictional4,
+            'fictional_5' => $planetFictional5,
         ];
 
         $style1 = $styleName ?: array_rand($styles);

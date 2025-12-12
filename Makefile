@@ -1,16 +1,19 @@
 bash:
 	docker exec -it angara-app bash
 
-rebuild: rebuild-app rebuild-db rebuild-web up vendors database
+rebuild: rebuild-app rebuild-db rebuild-spacetimedb rebuild-web up vendors database
 
 rebuild-app:
-	docker stop angara-app && docker remove angara-app && docker rmi angara-app && docker-compose up -d
+	docker stop angara-app && docker rm angara-app && docker rmi angara-app && make up
 
 rebuild-db:
-	docker stop angara-db && docker remove angara-db && docker rmi mysql:8.0.34 && docker-compose up -d
+	docker stop angara-db && docker rm angara-db && docker rmi mysql:8.4.0 && make up
+
+rebuild-spacetimedb:
+	docker stop angara-spacetimedb && docker rm angara-spacetimedb && make up
 
 rebuild-web:
-	docker stop angara-web && docker remove angara-web && docker rmi nginx:alpine && docker-compose up -d
+	docker stop angara-web && docker rm angara-web && docker rmi nginx:alpine && docker-compose up -d
 
 up:
 	docker-compose up -d

@@ -17,22 +17,22 @@
         "lexik/jwt-authentication-bundle": "^3.0",
         "nelmio/cors-bundle": "^2.4",
         "a1essandro/perlin-noise": "^1.2",
-        "symfony/console": "7.1.*",
-        "symfony/doctrine-bridge": "7.1.*",
-        "symfony/doctrine-messenger": "7.1.*",
-        "symfony/dotenv": "7.1.*",
-        "symfony/expression-language": "7.1.*",
+        "symfony/console": "7.4.*",
+        "symfony/doctrine-bridge": "7.4.*",
+        "symfony/doctrine-messenger": "7.4.*",
+        "symfony/dotenv": "7.4.*",
+        "symfony/expression-language": "7.4.*",
         "symfony/flex": "^2",
-        "symfony/framework-bundle": "7.1.*",
-        "symfony/http-foundation": "7.1.*",
-        "symfony/messenger": "7.1.*",
-        "symfony/runtime": "7.1.*",
-        "symfony/security-bundle": "7.1.*",
-        "symfony/scheduler": "7.1.*",
-        "symfony/twig-bundle": "7.1.*",
-        "symfony/uid": "7.1.*",
-        "symfony/validator": "7.1.*",
-        "symfony/yaml": "7.1.*"
+        "symfony/framework-bundle": "7.4.*",
+        "symfony/http-foundation": "7.4.*",
+        "symfony/messenger": "7.4.*",
+        "symfony/runtime": "7.4.*",
+        "symfony/security-bundle": "7.4.*",
+        "symfony/scheduler": "7.4.*",
+        "symfony/twig-bundle": "7.4.*",
+        "symfony/uid": "7.4.*",
+        "symfony/validator": "7.4.*",
+        "symfony/yaml": "7.4.*"
     },
     "require-dev": {
         "roave/security-advisories": "dev-latest"
@@ -83,7 +83,7 @@
     "extra": {
         "symfony": {
             "allow-contrib": false,
-            "require": "7.1.*"
+            "require": "7.4.*"
         }
     }
 }

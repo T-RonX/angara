@@ -6,10 +6,11 @@ services:
         working_dir: /var/www/html
         volumes:
             - .:/var/www/html
+            - /mnt/c/Users/T_Ron/Desktop:/var/www/html/tmp
         networks:
             - angara-network
         ports:
-            - '5173:5173'
+            - '5000:5173'
 
     web:
         image: nginx:alpine
@@ -41,9 +42,40 @@ services:
         networks:
             - angara-network
 
+#    spacetimedb:
+#        image: clockworklabs/spacetime:latest
+#        container_name: angara-spacetimedb
+#        user: 1000:1000
+#        restart: always
+#        command: start --data-dir=/spacetimedb_data
+#        volumes:
+#            - ./data/standalone:/usr/src/app/data/standalone
+#            - ./data/core:/usr/src/app/data/core
+#            - ./data/client-api:/usr/src/app/data/client-api
+#            - ./data/lib:/usr/src/app/data/lib
+#            - ./data/sats:/usr/src/app/data/sats
+#            - ./data/bindings:/usr/src/app/data/bindings
+#            - ./data/bindings-macro:/usr/src/app/data/bindings-macro
+#            - ./data/bindings-sys:/usr/src/app/data/bindings-sys
+#            - ./data/vm:/usr/src/app/data/vm
+#            - ./data/metrics:/usr/src/app/data/metrics
+#            - ./data/keyfiles:/etc/spacetimedb
+#            - /home/developer/spacetimedb_config:/home/spacetime/.config/spacetime
+#            - ./spacetimedb_data:/spacetimedb_data
+#            - ./rust:/app
+#        ulimits:
+#            core:
+#                soft: -1
+#                hard: -1
+#        ports:
+#            - '3000:3000'
+#        networks:
+#            - angara-network
+
 networks:
     angara-network:
         driver: bridge
 
 volumes:
     mysql_data:
+#    spacetimedb_data:

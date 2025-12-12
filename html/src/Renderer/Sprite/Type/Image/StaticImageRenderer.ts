@@ -4,12 +4,20 @@ import type { StaticImage as ImageSprite } from '@/Renderer/Sprite/Type/Image/St
 
 export class StaticImageRenderer implements TypeRendererInterface {
   public render(c: CanvasRenderingContext2D, image: ImageSprite, renderContext: RenderContext): void {
-    c.drawImage(
-      image.getImage(),
-      image.getPosition().x - renderContext.getViewport().getPosition().x,
-      image.getPosition().y - renderContext.getViewport().getPosition().y,
-      image.getWidth(),
-      image.getHeight(),
-    )
+    if (!image.isImageLoaded()) {
+      // Optionally render a placeholder or skip rendering
+      return
+    }
+
+    const bitmap = image.getBitmap()
+    if (bitmap) {
+      c.drawImage(
+        bitmap,
+        image.getPosition().x - renderContext.getViewport().getPosition().x,
+        image.getPosition().y - renderContext.getViewport().getPosition().y,
+        image.getWidth(),
+        image.getHeight(),
+      )
+    }
   }
 }

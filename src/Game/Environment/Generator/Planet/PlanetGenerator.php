@@ -28,10 +28,11 @@ class PlanetGenerator
 
         $noise = $this->noiseGenerator->generate($mapDescriptor, $seed);
 
+
         $terrain = $this->terrainGenerator->generate($mapDescriptor, $mapDescriptor->getSize(), $noise, $targetFile);
         $regions = $this->terrainRegionDetector->detect($terrain);
 
-        $this->terrainTiler->tile($mapDescriptor, $terrain, 250, 45);
+        $this->terrainTiler->tile($mapDescriptor, $terrain, 50, 15);
 
         if ($thumbnail === true)
         {

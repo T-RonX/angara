@@ -21,26 +21,24 @@ export class Camera {
    * before inertia panning is initiated. This way we allow dragging without
    * engaging the inertia panning all the time. It makes you 'throw' the map more.
    */
-  private MIN_INERTIA_PANNING_START_IDLE_TIMEOUT: number = 10
+  private MIN_INERTIA_PANNING_START_IDLE_TIMEOUT: number = 100
 
   /**
-   * The amount of mouse move ticks to log used for determining the direction of the inertia panning
+   * The duration in milliseconds over which to measure the velocity for inertia.
    */
-  private MOUSE_MOVE_DELTA_LOG_COUNT_60HZ: number = 3
-  /**
-   * Modifies the time it takes for the inertia drag to complete
-   * Lower slightly for slower decay.
-   */
-  private PANNING_INERTIA_DECAY_MODIFIER_60HZ: number = .070
+  private PANNING_VELOCITY_MEASUREMENT_DURATION: number = 50
 
   private panningThreshold: [x: number, y: number] = [this.DRAG_THRESHOLD, this.DRAG_THRESHOLD]
-  private latestPanningDeltas: [number, number][] = []
+  private panningHistory: {t: number, x: number, y: number}[] = []
   private isInertiaPanning: boolean = false
-  private lastMoveTime: number = 0
   private panningDirection: number = 0
   private panningVelocity: number = 0
   private isPanning: boolean = false
   private refreshRate: number = 60
+  private lastFrameTime: number = 0
+  private movementX: number = 0
+  private movementY: number = 0
+  private isRunning: boolean = false
 
   constructor(
     private rendererContext: RenderContext,
@@ -57,16 +55,10 @@ export class Camera {
    * Pan the actual viewport according to the physical movement of the pointer
    */
   public panViewport(e: MouseEvent): void {
-    const coord: ViewportVector = this.rendererContext.getViewport().getPosition()
+    this.movementX = e.movementX
+    this.movementY = e.movementY
 
-    // Get the new viewport position coordinates based on the current movement delta, limited to the map borders
-    const newX: number = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(coord.x - e.movementX, -this.MAX_CAMERA_OVERFLOW, this.map.getWidth() - this.rendererContext.getCanvas().width + this.MAX_CAMERA_OVERFLOW))
-    const newY: number = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(coord.y - e.movementY, -this.MAX_CAMERA_OVERFLOW, this.map.getHeight() - this.rendererContext.getCanvas().height + this.MAX_CAMERA_OVERFLOW))
-
-    coord.x = newX
-    coord.y = newY
-
-    this.monitorMouseMoveDeltaForInertiaPan(e)
+    this.logPanningState()
   }
 
   /**
@@ -74,38 +66,50 @@ export class Camera {
    * sets it to the viewport
    */
   public setInertiaPanningParameters(): void {
-    const isInertiaIdleTimeoutReached: boolean = performance.now() - this.lastMoveTime < this.MIN_INERTIA_PANNING_START_IDLE_TIMEOUT
-
-    if (isInertiaIdleTimeoutReached) {
-      let xSum: number = 0
-      let ySum: number = 0
-
-      for (const [x, y] of this.latestPanningDeltas) {
-        xSum += x
-        ySum += y
-      }
-
-      const xAvg: number = xSum / this.latestPanningDeltas.length
-      const yAvg: number = ySum / this.latestPanningDeltas.length
-
-      const angleRad = Math.atan2(-yAvg, xAvg)
-      const velocity = Math.abs(xAvg) + Math.abs(yAvg)
-
-      this.panningDirection = angleRad
-      this.panningVelocity = velocity
+    const now = performance.now()
+    if (now - this.panningHistory[this.panningHistory.length - 1].t > this.MIN_INERTIA_PANNING_START_IDLE_TIMEOUT) {
+      this.panningVelocity = 0
+      return
     }
+
+    const first = this.panningHistory.find(log => now - log.t <= this.PANNING_VELOCITY_MEASUREMENT_DURATION) ?? this.panningHistory[0]
+    const last = this.panningHistory[this.panningHistory.length - 1]
+
+    if (!first || first === last) {
+      this.panningVelocity = 0
+      return
+    }
+
+    const deltaTime = (last.t - first.t) / 1000 // time in seconds
+    if (deltaTime <= 0) {
+        this.panningVelocity = 0
+        return
+    }
+
+    const deltaX = last.x - first.x
+    const deltaY = last.y - first.y
+
+    const velocityX = deltaX / deltaTime
+    const velocityY = deltaY / deltaTime
+
+    this.panningDirection = Math.atan2(velocityY, velocityX)
+    this.panningVelocity = Math.sqrt(velocityX**2 + velocityY**2)
   }
 
   /**
    * Log the latest pointer move deltas. Used for calculating the speed and angle of inertia panning.
    */
-  public monitorMouseMoveDeltaForInertiaPan(e: MouseEvent): void {
-    this.latestPanningDeltas.push([e.movementX, e.movementY])
-    this.lastMoveTime = performance.now()
+  public logPanningState(): void {
+    const now = performance.now()
+    this.panningHistory.push({
+      t: now,
+      x: this.rendererContext.getViewport().getPosition().x,
+      y: this.rendererContext.getViewport().getPosition().y,
+    })
 
-    // Only log the last 10 delta increments
-    if (this.latestPanningDeltas.length > this.getMouseMoveDeltaLogCount()) {
-      this.latestPanningDeltas.shift()
+    // Keep the history buffer from growing too large
+    if (this.panningHistory.length > 20) {
+      this.panningHistory.shift()
     }
   }
 
@@ -120,6 +124,7 @@ export class Camera {
 
     if (isDeadzoneThresholdIsReached) {
       this.isPanning = true
+      this.start()
     }
   }
 
@@ -128,31 +133,58 @@ export class Camera {
 
     if (requireInertiaPanning) {
       this.isInertiaPanning = true
-      this.doInertiaPanning()
+      this.start()
     }
   }
 
-  private doInertiaPanning = (): void => {
-    const deltaX: number = this.panningVelocity * Math.cos(this.panningDirection)
-    const deltaY: number = this.panningVelocity * Math.sin(this.panningDirection)
+  private update = (): void => {
+    if (!this.isRunning) {
+      return
+    }
 
-    const newX = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(this.rendererContext.getViewport().getPosition().x - deltaX, -this.MAX_CAMERA_OVERFLOW, this.map.getWidth() - this.rendererContext.getCanvas().width + this.MAX_CAMERA_OVERFLOW))
-    const newY = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(this.rendererContext.getViewport().getPosition().y + deltaY, -this.MAX_CAMERA_OVERFLOW, this.map.getHeight() - this.rendererContext.getCanvas().height + this.MAX_CAMERA_OVERFLOW))
+    const now = performance.now()
+    const deltaTime = (now - this.lastFrameTime) / 1000 // Time in seconds
+    this.lastFrameTime = now
+
+    let newX = this.rendererContext.getViewport().getPosition().x
+    let newY = this.rendererContext.getViewport().getPosition().y
+
+    // Handle direct panning
+    if (this.isPanning) {
+      newX -= this.movementX
+      newY -= this.movementY
+      this.movementX = 0
+      this.movementY = 0
+    }
+    // Handle inertia panning
+    else if (this.isInertiaPanning) {
+      const deltaX: number = this.panningVelocity * Math.cos(this.panningDirection)
+      const deltaY: number = this.panningVelocity * Math.sin(this.panningDirection)
+
+      newX += deltaX * deltaTime
+      newY += deltaY * deltaTime
+
+      // Exponential damping
+      const dampingFactor = 0.95; // Adjust this value for more or less damping
+      this.panningVelocity *= Math.pow(dampingFactor, deltaTime * 60); // Normalize to 60 FPS
+
+      if (this.panningVelocity < 1){
+        this.panningVelocity = 0
+        this.isInertiaPanning = false
+      }
+    }
+
+    // Clamp position to boundaries
+    newX = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(newX, -this.MAX_CAMERA_OVERFLOW, this.map.getWidth() - this.rendererContext.getCanvas().width + this.MAX_CAMERA_OVERFLOW))
+    newY = Math.max(-this.MAX_CAMERA_OVERFLOW, MathX.clamp(newY, -this.MAX_CAMERA_OVERFLOW, this.map.getHeight() - this.rendererContext.getCanvas().height + this.MAX_CAMERA_OVERFLOW))
 
     this.rendererContext.getViewport().getPosition().x = newX
     this.rendererContext.getViewport().getPosition().y = newY
 
-    const speedModifier: number = Math.max((this.getPanningInertiaDecayModifier() * this.panningVelocity) * 2, .01)
-
-    this.panningVelocity -= speedModifier
-
-    if (this.panningVelocity < 0){
-      this.isInertiaPanning = false
-
-      return
-    }
-    else {
-      window.requestAnimationFrame(this.doInertiaPanning)
+    if (!this.isPanning && !this.isInertiaPanning) {
+      this.stop()
+    } else {
+      window.requestAnimationFrame(this.update)
     }
   }
 
@@ -166,7 +198,8 @@ export class Camera {
 
   public stopPhysicalPanning(): void {
     this.isPanning = false
-
+    this.movementX = 0
+    this.movementY = 0
     this.resetPanningDeadzoneThreshold()
   }
 
@@ -182,11 +215,15 @@ export class Camera {
     this.refreshRate = refreshRate
   }
 
-  public getMouseMoveDeltaLogCount(): number {
-    return Math.trunc(this.MOUSE_MOVE_DELTA_LOG_COUNT_60HZ * (this.refreshRate / 60))
+  public start(): void {
+    if (!this.isRunning) {
+      this.isRunning = true
+      this.lastFrameTime = performance.now()
+      window.requestAnimationFrame(this.update)
+    }
   }
 
-  public getPanningInertiaDecayModifier(): number {
-    return this.PANNING_INERTIA_DECAY_MODIFIER_60HZ / (this.refreshRate / 60)
+  public stop(): void {
+    this.isRunning = false
   }
 }

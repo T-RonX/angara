@@ -5,9 +5,8 @@ import { Vector } from '@/Renderer/Positioning/Vector'
 
 export class Path extends AbstractSprite implements SpriteInterface {
   constructor(
+    private color: string,
     private points: Vector[],
-    private fillColor: string|null = null,
-    private strokeColor: string|null = null,
   ) {
     super()
   }
@@ -16,53 +15,11 @@ export class Path extends AbstractSprite implements SpriteInterface {
     return this.points
   }
 
-  public setPoints(points: Vector[]): void {
-    this.points = points
-  }
-
-  public setPoint(i: number, point: Vector): void {
-    this.points[i] = point
-  }
-
-  public getFillColor(): string|null {
-    return this.fillColor
-  }
-
-  public getStrokeColor(): string|null {
-    return this.strokeColor
-  }
-
-  public shift(vector: Vector): Vector[] {
-    const newPoints: Vector[] = []
-
-    for (const point of this.points) {
-      newPoints.push(point.sub(vector))
-    }
-
-    return newPoints
-  }
-
-  public getCentroid(): Vector {
-    // Initialize sums for x and y coordinates
-    let sumX = 0
-    let sumY = 0
-
-    // Iterate through points and sum their coordinates
-    for (const point of this.points) {
-      sumX += point.x
-      sumY += point.y
-    }
-
-    // Calculate the average (centroid) for x and y
-    const centerX = sumX / this.points.length
-    const centerY = sumY / this.points.length
-
-    // Return the centroid coordinates as an array
-    return new Vector(centerX, centerY)
+  public getColor(): string {
+    return this.color
   }
 
   public getBoundingBox(): BoundingBox|null {
-    return null
     let maxX: number = 0
     let maxY: number = 0
     let minX: number = Number.MAX_VALUE
@@ -88,6 +45,7 @@ export class Path extends AbstractSprite implements SpriteInterface {
 
     const topLeftCoord: Vector = new Vector(maxX, minY)
     const bottomRightCoord: Vector = new Vector(maxX, maxY)
+
     return new BoundingBox(topLeftCoord, bottomRightCoord)
   }
 }

@@ -19,7 +19,6 @@ import { Input } from '@/Game/Input/Input'
 import { CameraMouseEvents } from '@/Game/Camera/CameraMouseEvents'
 import { BlockClick } from '@/Game/Events/BlockClick'
 import { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
-import { CenterArrow } from '@/Game/Sprite/CenterArrow'
 import { BlockMouseMove } from '@/Game/Events/BlockMouseMove'
 import { AssetFactory } from '@/Game/Assets/AssetFactory'
 import { AssetStore } from '@/Game/Assets/AssetStore'
@@ -66,7 +65,7 @@ export class Game {
     this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
+    //this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
     this.renderer.initialize()
 
     this.camera = new Camera(this.renderContext, map)

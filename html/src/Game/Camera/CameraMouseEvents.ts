@@ -23,8 +23,6 @@ export class CameraMouseEvents implements CanvasMouseDownInterface, CanvasMouseM
       this.camera.panViewport(e)
     } else if (this.isMouseDown) {
       this.camera.enablePanningWhenDeadzoneThresholdIsReached(e)
-    } else if (!this.camera.getIsInertiaPanning()) {
-      this.camera.initiateInertiaPanningWhenRequired()
     }
   }
 
@@ -32,6 +30,7 @@ export class CameraMouseEvents implements CanvasMouseDownInterface, CanvasMouseM
     if (e.button == 0) {
       if (this.camera.getIsPanning()) {
         this.camera.setInertiaPanningParameters()
+        this.camera.initiateInertiaPanningWhenRequired()
       }
 
       this.isMouseDown = false

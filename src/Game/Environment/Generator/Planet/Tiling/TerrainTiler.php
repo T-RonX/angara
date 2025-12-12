@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\Environment\Generator\Planet\Tiling;
 
-use App\Game\Environment\Generator\Exception;
+use Exception;
 use App\Game\Environment\Generator\Planet\Decorator\TerrainDecorator;
 use App\Game\Environment\Generator\Planet\Terrain\MapDescriptor;
 
@@ -12,6 +12,7 @@ class TerrainTiler
 {
     public function __construct(
         private readonly TerrainDecorator $terrainDecorator,
+        private readonly string $appRootDir,
     ) {
     }
 
@@ -51,7 +52,7 @@ class TerrainTiler
                     }
                 }
 
-                $tileFilename = sprintf('%s/tile_%d_%d.%s', '/var/www/html/src/map/', $y, $x, 'webp');
+                $tileFilename = sprintf('%s/tile_%d_%d.%s', $this->appRootDir . '/tmp/map/', $y, $x, 'webp');
 
                 $this->terrainDecorator->decorate($image, $mapDescriptor);
 

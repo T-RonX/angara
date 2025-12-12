@@ -14,9 +14,9 @@ const canvas: Ref<HTMLCanvasElement|undefined> = ref()
 
 const fps = ref(0)
 
-const MAP_WIDTH = 1000
-const MAP_HEIGHT = 1000
-const MAP_SCALE = 25
+const MAP_WIDTH = 500
+const MAP_HEIGHT = 500
+const MAP_SCALE = 50
 
 onMounted(() => {
   if (canvas.value === undefined) {

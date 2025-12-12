@@ -28,9 +28,9 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
       return this.grid
     }
 
-    // this.createGrid()
+     this.createGrid()
     this.createBorder()
-    // this.createBlocks()
+     this.createBlocks()
     this.createMap()
 
     this.isGridComplete = true
