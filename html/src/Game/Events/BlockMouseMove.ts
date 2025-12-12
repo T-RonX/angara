@@ -25,14 +25,11 @@ export class BlockMouseMove implements CanvasMouseMoveInterface {
     const x: number = Math.round(e.clientX - rect.left + this.viewport.getPosition().x)
     const y: number = Math.round(e.clientY - rect.top + this.viewport.getPosition().y)
 
-    const sprites: SpriteInterface[] = this.renderer.getActiveSprites()
-    const spriteLength: number = this.renderer.getActiveSprites().length
+    const sprites: SpriteInterface[] = this.renderer.getSpritesAtPoint(x, y)
 
-    for (let i: number = 0; i < spriteLength; ++i) {
-      const sprite: SpriteInterface = sprites[i]
-      if (this.isSelectable(sprite) && MathX.isPointInRectangle(x, y, sprites[i].getBoundingBox())) {
+    for (const sprite of sprites) {
+      if (this.isSelectable(sprite) && MathX.isPointInRectangle(x, y, sprite.getBoundingBox())) {
         this.canvas.style.cursor = 'pointer'
-
         return
       }
     }

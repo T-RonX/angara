@@ -16,7 +16,7 @@ const fps = ref(0)
 
 const MAP_WIDTH = 500
 const MAP_HEIGHT = 500
-const MAP_SCALE = 50
+const MAP_SCALE = 25
 
 onMounted(() => {
   if (canvas.value === undefined) {
@@ -84,25 +84,15 @@ const stepRendering = () => {
 const isDragging: Ref<boolean> = ref(false)
 
 const mouseDown = () => {
-  updateIsDragging()
-}
-
-const mouseMove = () => {
-  updateIsDragging()
+  isDragging.value = true
 }
 
 const mouseUp = () => {
-  updateIsDragging()
+  isDragging.value = false
 }
 
 const mouseOut = () => {
-  updateIsDragging()
-}
-
-const updateIsDragging = () => {
-  if (gameStore.game) {
-    isDragging.value = gameStore.game.getIsDragging()
-  }
+  isDragging.value = false
 }
 </script>
 
@@ -122,7 +112,6 @@ const updateIsDragging = () => {
       @mousedown="mouseDown"
       @mouseup="mouseUp"
       @mouseout="mouseOut"
-      @mousemove="mouseMove"
       ref="canvas" :class="{ canvas: true, dragging: isDragging }"
     />
   </div>

@@ -66,7 +66,10 @@ export class Game {
     this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
     //this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
-    this.renderer.initialize()
+
+    setTimeout(() => {
+      this.renderer.initialize()
+    }, 0)
 
     this.camera = new Camera(this.renderContext, map)
     this.camera.setPosition(

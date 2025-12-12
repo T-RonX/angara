@@ -31,7 +31,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
      this.createGrid()
     this.createBorder()
      this.createBlocks()
-    this.createMap()
+    // this.createMap()
 
     this.isGridComplete = true
 
@@ -51,7 +51,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
           this.randomColor()
         )
 
-        if (this.randomNumber(0, 100) > 75) {
+        if (this.randomNumber(0, 100) > -1) { // -1 was 75 for a 25% density
           this.grid.push(block)
           // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
         }

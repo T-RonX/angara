@@ -21,6 +21,7 @@ export class CanvasRenderer {
   private doRender: boolean = true
   private occlusionTree: Quadrant = new Quadrant(new Vector(0, 0), new Vector(0, 0))
   private activeSprites: SpriteInterface[] = []
+  private readonly activeIds: Set<number> = new Set()
   private stopwatch: Stopwatch = new Stopwatch()
 
   constructor(
@@ -134,45 +135,32 @@ export class CanvasRenderer {
 
   private resetActiveSprites(): void {
     const tree: Quadrant[] = this.occlusionTree.getSubQuadrants()
-    this.activeSprites = []
-    this.numbers = new Int32Array(100)
-    this.count = 0
+    this.activeIds.clear()
+    this.activeSprites.length = 0
 
-    this.setActiveQuadrantSprites(tree, this.context.getViewport().getBoundingBox())
+    this.setActiveQuadrantSprites(tree, this.context.getViewport().getBoundingBox(), this.activeIds)
     this.activeSprites.sort((a: SpriteInterface, b: SpriteInterface) => a.getId() - b.getId())
   }
 
-  private numbers: Int32Array = new Int32Array(100)
-  private count: number = 0
-
-  private setActiveQuadrantSprites(quadrants: Quadrant[], viewPort: BoundingBox): void {
+  private setActiveQuadrantSprites(quadrants: Quadrant[], viewPort: BoundingBox, activeIds: Set<number>): void {
     for (let i: number = 0; i < quadrants.length; ++i) {
-      if (quadrants[i].isLeaf() && MathX.doesRectangleOverlap(quadrants[i], viewPort)) {
-        const sprites: SpriteInterface[] = quadrants[i].getSprites()
+      const quadrant = quadrants[i]
+      if (quadrant.isLeaf() && MathX.doesRectangleOverlap(quadrant, viewPort)) {
+        const sprites: SpriteInterface[] = quadrant.getSprites()
         const spriteCount: number = sprites.length
 
         for (let j: number = 0; j < spriteCount; j++) {
-          if (MathX.doesRectangleOverlap(sprites[j].getBoundingBox(), viewPort)) {
-
-
-            let hasNumber: boolean = false
-            for (let i = 0; i < this.count; ++i) {
-              if (this.numbers[i] === sprites[j].getId()) {
-                hasNumber = true
-                break
-              }
+          const sprite = sprites[j]
+          if (MathX.doesRectangleOverlap(sprite.getBoundingBox(), viewPort)) {
+            const spriteId = sprite.getId()
+            if (!activeIds.has(spriteId)) {
+              this.activeSprites.push(sprite)
+              activeIds.add(spriteId)
             }
-
-            if (!hasNumber) {
-              this.activeSprites.push(sprites[j])
-              this.numbers[this.count++] = sprites[j].getId()
-            }
-
-
           }
         }
-      } else {
-        this.setActiveQuadrantSprites(quadrants[i].getSubQuadrants(), viewPort)
+      } else if (!quadrant.isLeaf()) {
+        this.setActiveQuadrantSprites(quadrant.getSubQuadrants(), viewPort, activeIds)
       }
     }
   }
@@ -199,6 +187,28 @@ export class CanvasRenderer {
 
   public getActiveSprites(): SpriteInterface[] {
     return this.activeSprites
+  }
+
+  public getSpritesAtPoint(x: number, y: number): SpriteInterface[] {
+    let quadrant: Quadrant = this.occlusionTree
+    let subQuadrants: Quadrant[] = quadrant.getSubQuadrants()
+
+    while(subQuadrants.length > 0) {
+      let found: boolean = false
+      for (let i: number = 0; i < subQuadrants.length; ++i) {
+        if (MathX.isPointInRectangle(x, y, subQuadrants[i])) {
+          quadrant = subQuadrants[i]
+          subQuadrants = quadrant.getSubQuadrants()
+          found = true
+          break
+        }
+      }
+      if (!found) { // Should not happen if point is within the map
+        return []
+      }
+    }
+
+    return quadrant.getSprites()
   }
 
   public getFpsMonitor(): FpsMonitorInterface {

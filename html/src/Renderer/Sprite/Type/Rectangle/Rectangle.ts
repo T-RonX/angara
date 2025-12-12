@@ -4,6 +4,8 @@ import { BoundingBox } from '@/Renderer/Positioning/BoundingBox'
 import { Vector } from '@/Renderer/Positioning/Vector'
 
 export class Rectangle extends AbstractSprite implements SpriteInterface {
+  private cachedBoundingBox: BoundingBox | null = null
+
   constructor(
     public topLeft: Vector,
     private width: number,
@@ -45,9 +47,19 @@ export class Rectangle extends AbstractSprite implements SpriteInterface {
     }
   }
 
+  public invalidateBoundingBox(): void {
+    this.cachedBoundingBox = null
+  }
+
   public getBoundingBox(): BoundingBox|null {
+    if (this.cachedBoundingBox) {
+      return this.cachedBoundingBox
+    }
+
     const bottomRightCoord: Vector = new Vector(this.topLeft.x + this.width, this.topLeft.y + this.height)
 
-    return new BoundingBox(this.topLeft, bottomRightCoord)
+    this.cachedBoundingBox = new BoundingBox(this.topLeft, bottomRightCoord)
+
+    return this.cachedBoundingBox
   }
 }
