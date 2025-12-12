@@ -66,11 +66,11 @@ export class SpriteFactory {
       .setTypeRenderer(this.staticImageRenderer)
   }
 
-  public createPath(color: string, points: Vector[]): Path {
-    return new Path(color, points)
-      .setTypeRenderer(this.pathRenderer)
-      .setId(this.idGenerator.getNextId())
-  }
+  // public createPath(color: string, points: Vector[]): Path {
+  //   return new Path(color, points)
+  //     .setTypeRenderer(this.pathRenderer)
+  //     .setId(this.idGenerator.getNextId())
+  // }
 
   public createPath(points: Vector[], fillColor: string|null = null, strokeColor: string|null = null, animator: AnimatorInterface|null = null): Path {
     return new Path(points, fillColor, strokeColor)
