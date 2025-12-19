@@ -23,6 +23,7 @@ import { BlockMouseMove } from '@/Game/Events/BlockMouseMove'
 import { AssetFactory } from '@/Game/Assets/AssetFactory'
 import { AssetStore } from '@/Game/Assets/AssetStore'
 import { State } from '@/Game/State/State'
+import { CenterArrow } from '@/Game/Sprite/CenterArrow'
 
 export class Game {
   private readonly renderer: CanvasRenderer
@@ -61,11 +62,11 @@ export class Game {
 
     this.renderer = new CanvasRenderer(this.showFps, this.renderContext, assetFactory, viewportInnerWidth, viewportInnerHeight)
     this.renderer.getRenderStack().addSpriteGenerator(new ClearCanvasSprite(SpriteType.Static).setFactory(assetFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new CenterImageSprite(SpriteType.Static, map).setFactory(assetFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(assetFactory))
+    // this.renderer.getRenderStack().addSpriteGenerator(new CenterImageSprite(SpriteType.Static, map).setFactory(assetFactory))
+    // this.renderer.getRenderStack().addSpriteGenerator(new BlockSprite(SpriteType.Animated).setFactory(assetFactory))
     this.renderer.getRenderStack().addSpriteGenerator(new GridSprite(map, this.mapScale, SpriteType.Static).setFactory(assetFactory))
-    this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
-    //this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
+    // this.renderer.getRenderStack().addSpriteGenerator(new OcclusionTreeSprite(SpriteType.Static).setFactory(assetFactory))
+    this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
 
     setTimeout(() => {
       this.renderer.initialize()
