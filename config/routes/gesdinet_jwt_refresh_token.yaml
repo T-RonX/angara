@@ -1,8 +1,0 @@
-api.authentication.authenticate:
-    path: /api/access/authenticate
-
-api.authentication.refresh_access_token:
-    path: /api/access/refresh-access-token
-
-api.authentication.invalidate_refresh_token:
-    path: /api/access/invalidate-refresh-token

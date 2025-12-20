@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Game\Environment\Generator\Planet\Terrain;
 
 use MapGenerator\PerlinNoiseGenerator;
-use Symfony\Component\DependencyInjection\Attribute\AutowireInline;
 use SplFixedArray;
+use Symfony\Component\DependencyInjection\Attribute\AutowireInline;
 
 class NoiseGenerator
 {

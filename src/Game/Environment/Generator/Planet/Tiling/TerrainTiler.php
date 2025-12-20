@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Game\Environment\Generator\Planet\Tiling;
 
-use Exception;
 use App\Game\Environment\Generator\Planet\Decorator\TerrainDecorator;
 use App\Game\Environment\Generator\Planet\Terrain\MapDescriptor;
+use Exception;
 
 class TerrainTiler
 {

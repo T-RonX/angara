@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Game\Environment\Generator\Planet;
 
 use App\Game\Environment\Generator\Planet\Terrain\MapDescriptor;
-use App\Game\Environment\Generator\Planet\Terrain\TerrainGenerator;
 use App\Game\Environment\Generator\Planet\Terrain\NoiseGenerator;
+use App\Game\Environment\Generator\Planet\Terrain\TerrainGenerator;
 use App\Game\Environment\Generator\Planet\Terrain\TerrainRegionDetector;
 use App\Game\Environment\Generator\Planet\Thumbnail\ThumbnailGenerator;
 use App\Game\Environment\Generator\Planet\Tiling\TerrainTiler;

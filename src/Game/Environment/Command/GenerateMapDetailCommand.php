@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Game\Environment\Command;
 
-use App\Game\Environment\Generator\Planet\PlanetGenerator;
-use App\Game\Environment\Generator\Planet\Terrain\NoiseGenerator;
 use App\Game\Environment\Generator\Planet\Terrain\StyleProvider;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -32,7 +30,7 @@ class GenerateMapDetailCommand extends Command
         parent::__construct();
     }
 
-    public function configure()
+    public function configure(): void
     {
         $this->setName('angara:generate:detail');
         $this->addOption('seed', 's', InputOption::VALUE_OPTIONAL);

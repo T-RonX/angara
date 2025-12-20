@@ -9,12 +9,11 @@ use App\Game\Environment\Generator\Planet\PlanetGenerator;
 use App\Game\Environment\Generator\Planet\Terrain\MapGenerator;
 use App\Game\Environment\Generator\Planet\Terrain\StyleProvider;
 use App\Game\SendDailySalesReports;
-use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Finder\Finder;
 
 #[AsController]
 class HomeController // extends AbstractController

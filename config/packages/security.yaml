@@ -16,23 +16,23 @@ security:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
-        api:
-            pattern:   ^/api
-            stateless: true
-            entry_point: jwt
-            json_login:
-                check_path: api.authentication.authenticate
-                success_handler: lexik_jwt_authentication.handler.authentication_success
-                failure_handler: lexik_jwt_authentication.handler.authentication_failure
-            jwt: ~
-            refresh_jwt:
-                check_path: api.authentication.refresh_access_token # or, you may use the `api_refresh_token` route name
-                # or if you have more than one user provider
-                # provider: user_provider_name
-            # You can define a user checker to use for the firewall as part of the firewall configuration:
-            #user_checker: user_checker_service_id
-            logout:
-                path: api.authentication.invalidate_refresh_token
+#        api:
+#            pattern:   ^/api
+#            stateless: true
+#            entry_point: jwt
+#            json_login:
+#                check_path: api.authentication.authenticate
+#                success_handler: lexik_jwt_authentication.handler.authentication_success
+#                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+#            jwt: ~
+#            refresh_jwt:
+#                check_path: api.authentication.refresh_access_token # or, you may use the `api_refresh_token` route name
+#                # or if you have more than one user provider
+#                # provider: user_provider_name
+#            # You can define a user checker to use for the firewall as part of the firewall configuration:
+#            #user_checker: user_checker_service_id
+#            logout:
+#                path: api.authentication.invalidate_refresh_token
         main:
             lazy: true
             provider: app_user_provider

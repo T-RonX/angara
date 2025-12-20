@@ -17,8 +17,9 @@ RUN echo "export PHP_IDE_CONFIG=\"serverName=angara.dev\"" >> ~/.bashrc
 COPY --from=composer:2.9.2 /usr/bin/composer /usr/bin/composer
 
 # Symfony command
-RUN curl -sS https://get.symfony.com/cli/installer | bash
-RUN mv /root/.symfony5/bin/symfony /usr/local/bin/symfony
+COPY --link \
+    --from=ghcr.io/symfony-cli/symfony-cli:latest \
+    /usr/local/bin/symfony /usr/local/bin/symfony
 
 # php.ini
 RUN cp /usr/local/etc/php/php.ini-development /usr/local/etc/php/php.ini

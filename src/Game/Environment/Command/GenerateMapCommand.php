@@ -21,7 +21,7 @@ class GenerateMapCommand extends Command
         parent::__construct();
     }
 
-    public function configure()
+    public function configure(): void
     {
         $this->setName('angara:generate:planet');
         $this->addOption('seed', 's', InputOption::VALUE_OPTIONAL);

@@ -7,4 +7,3 @@ services:
 
     App\:
         resource: '../src/'
-

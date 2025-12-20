@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\Environment\Generator\Planet\Terrain;
 
-use App\Game\Environment\Generator\Planet\Terrain\Color\ColorGradiant;
 use App\Game\Environment\Generator\Planet\Terrain\Color\ColorRgb;
-use App\Game\Environment\Generator\Planet\Terrain\Type\TerrainType;
 
 class TerrainProperties
 {
