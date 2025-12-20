@@ -10,7 +10,7 @@ services:
         networks:
             - angara-network
         ports:
-            - '5000:5173'
+            - '4101:4101'
 
     web:
         image: nginx:alpine
@@ -18,7 +18,7 @@ services:
         restart: always
         working_dir: /var/www/html
         ports:
-            - '8003:80'
+            - '4100:80'
         volumes:
             - .:/var/www/html
             - ./docker/web/nginx/conf.d/:/etc/nginx/conf.d/
@@ -38,7 +38,7 @@ services:
             - ./docker/db/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
             - mysql_data:/var/lib/mysql:cached
         ports:
-            - '8983:3306'
+            - '4102:3306'
         networks:
             - angara-network
 

@@ -78,4 +78,4 @@ RUN printf "\nalias phpd='php -dxdebug.mode=debug -dxdebug.start_with_request=1'
 
 WORKDIR /var/www
 
-EXPOSE 5000
+EXPOSE 4101
