@@ -24,6 +24,11 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
     super(spriteType)
   }
 
+  public reset(): void {
+    this.grid = []
+    this.isGridComplete = false
+  }
+
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
     if (this.isGridComplete) {
       return this.grid
@@ -89,22 +94,22 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
   }
 
   private createMap(): void {
-    const gameStore = useGameStore()
-
-    // const len = gameStore.map.length
-    const size = 6250;
-
-    // console.log(len)
-    // return
-
-    for (const tile of gameStore.map) {
-      this.grid.push(this.getFactory().createStaticImage(
-        'data:image/webp;base64,' + btoa(StringDeflater.inflate(tile['data'])),
-        new Vector(tile['x'] * size, tile['y'] * size),
-        size,
-        size,
-      ))
-    }
+    // const gameStore = useGameStore()
+    //
+    // // const len = gameStore.map.length
+    // const size = 6250;
+    //
+    // // console.log(len)
+    // // return
+    //
+    // for (const tile of gameStore.map) {
+    //   this.grid.push(this.getFactory().createStaticImage(
+    //     'data:image/webp;base64,' + btoa(StringDeflater.inflate(tile['data'])),
+    //     new Vector(tile['x'] * size, tile['y'] * size),
+    //     size,
+    //     size,
+    //   ))
+    // }
 
     // for (let y: number = 0; y < 10; ++y) {
     //   for (let x: number = 0; x < 10; ++x) {
@@ -117,30 +122,30 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
     //   }
     // }
 
-    gameStore.setMap([])
-
-    return;
-
-    const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
-    const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)
-
-    for (let iy: number = 0; iy <= y.length; ++iy) {
-      for (let ix: number = 0; ix <= x.length; ++ix) {
-        const block: Rectangle = this.getFactory().MapBlockAsset(
-          new Vector(x[ix], y[iy]),
-          this.scale + 1,
-          this.scale + 1,
-          this.rgbToHex(gameStore.map[iy][ix]),
-        )
-
-        if (this.randomNumber(0, 100) > 0) {
-          this.grid.push(block)
-          // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
-        }
-      }
-    }
-
-    gameStore.setMap([])
+    // gameStore.setMap([])
+    //
+    // return;
+    //
+    // const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
+    // const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)
+    //
+    // for (let iy: number = 0; iy <= y.length; ++iy) {
+    //   for (let ix: number = 0; ix <= x.length; ++ix) {
+    //     const block: Rectangle = this.getFactory().MapBlockAsset(
+    //       new Vector(x[ix], y[iy]),
+    //       this.scale + 1,
+    //       this.scale + 1,
+    //       this.rgbToHex(gameStore.map[iy][ix]),
+    //     )
+    //
+    //     if (this.randomNumber(0, 100) > 0) {
+    //       this.grid.push(block)
+    //       // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
+    //     }
+    //   }
+    // }
+    //
+    // gameStore.setMap([])
   }
 
   private rgbToHex(rgb: number[]): string {

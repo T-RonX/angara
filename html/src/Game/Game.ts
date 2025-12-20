@@ -26,21 +26,27 @@ import { State } from '@/Game/State/State'
 import { CenterArrow } from '@/Game/Sprite/CenterArrow'
 
 export class Game {
-  private readonly renderer: CanvasRenderer
-  private readonly renderContext: RenderContext
-  private readonly camera: Camera
-  private readonly input: Input
-  private readonly gameState: State
+  private renderer: CanvasRenderer
+  private renderContext: RenderContext
+  private camera: Camera
+  private input: Input
+  private gameState: State
 
   constructor(
     private canvas: HTMLCanvasElement,
-    mapWidth: number,
-    mapHeight: number,
+    private mapWidth: number,
+    private mapHeight: number,
     private mapScale: number,
     private showFps: boolean,
   ) {
-    const viewportInnerWidth: number = mapWidth * mapScale
-    const viewportInnerHeight: number = mapHeight * mapScale
+    this.init()
+  }
+
+  private init() {
+    console.debug('Initializing game...')
+
+    const viewportInnerWidth: number = this.mapWidth * this.mapScale
+    const viewportInnerHeight: number = this.mapHeight * this.mapScale
     const map: Map = new Map(viewportInnerWidth, viewportInnerHeight)
     const assetStore: AssetStore<any> = new AssetStore<any>()
     this.gameState = new State(assetStore)
@@ -69,7 +75,9 @@ export class Game {
     this.renderer.getRenderStack().addSpriteGenerator(new CenterArrow(SpriteType.Static, this.gameState).setFactory(assetFactory))
 
     setTimeout(() => {
+      console.debug('Initializing renderer...')
       this.renderer.initialize()
+      console.debug('Renderer initialized')
     }, 0)
 
     this.camera = new Camera(this.renderContext, map)
@@ -90,6 +98,8 @@ export class Game {
       [cameraMouseEvents],
     )
     this.input.initialize(this.canvas)
+
+    console.debug('Game initialized')
   }
 
   private monitorFps() {
@@ -127,6 +137,22 @@ export class Game {
 
   public stepRendering() {
     this.renderer.step()
+  }
+
+  public reset() {
+    console.debug('Resetting input...')
+    this.input.reset()
+    console.debug('Input reset')
+    console.debug('Stopping Renderer...')
+    this.renderer.stop()
+    console.debug('Renderer stopped')
+    console.debug('Resetting renderer...')
+    this.renderer.reset()
+    console.debug('Renderer reset')
+  }
+
+  public cancelFrame(): void {
+    this.renderer.cancelFrame();
   }
 
   public getIsDragging(): boolean {

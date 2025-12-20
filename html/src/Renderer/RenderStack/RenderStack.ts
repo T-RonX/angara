@@ -22,4 +22,10 @@ export class RenderStack {
   public getMonitors(): MonitorInterface[] {
     return this.monitors
   }
+
+  public reset() {
+    for (let i: number = 0; i < this.renderers.length; ++i) {
+      this.renderers[i].reset();
+    }
+  }
 }

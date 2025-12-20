@@ -12,7 +12,7 @@ export const useGameStore = defineStore('GameStore', {
   //   },
   // },
   actions: {
-    setGame(game: Game): void {
+    setGame(game: Game|null): void {
       this.game = game
     },
     setMap(map: {x: number, y: number, data: string }[]): void {

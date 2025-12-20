@@ -23,6 +23,7 @@ export class CanvasRenderer {
   private activeSprites: SpriteInterface[] = []
   private readonly activeIds: Set<number> = new Set()
   private stopwatch: Stopwatch = new Stopwatch()
+  private requestAnimationFrameId: number|null = null
 
   constructor(
     private showFps: boolean,
@@ -110,7 +111,6 @@ export class CanvasRenderer {
   }
 
   private renderFrame(): void {
-
     this.resetActiveSprites()
     const count: number = this.activeSprites.length
 
@@ -130,7 +130,7 @@ export class CanvasRenderer {
       this.renderStack.getMonitors()[i].monitor()
     }
 
-    window.requestAnimationFrame(this.renderLoop)
+    this.requestAnimationFrameId = window.requestAnimationFrame(() => this.renderLoop())
   }
 
   private resetActiveSprites(): void {
@@ -213,5 +213,17 @@ export class CanvasRenderer {
 
   public getFpsMonitor(): FpsMonitorInterface {
     return this.fpsMonitor
+  }
+
+  public reset() {
+    this.cancelFrame()
+    this.getRenderStack().reset()
+    this.occlusionTree.reset()
+  }
+
+  public cancelFrame() {
+    if (this.requestAnimationFrameId !== null) {
+      window.cancelAnimationFrame(this.requestAnimationFrameId)
+    }
   }
 }

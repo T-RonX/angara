@@ -15,25 +15,25 @@ export class BlockSprite extends AbstractAssetGenerator implements SpriteGenerat
 
   public getSprites(renderContext: RenderContext): SpriteInterface[] {
     return []
-    const centerX: number = this.centerX
-    const centerY: number = this.centerY
-
-    this.x = centerX + (this.radius * Math.cos(this.angle))
-    this.y = centerY + (this.radius * Math.sin(this.angle))
-
-    this.angle += 0.01
-
-    if (this.angle >= Math.PI * 2) {
-      this.angle = 0
-    }
-
-    return [
-      this.getFactory().createRectangle(
-      new Vector(this.x, this.y),
-      100,
-      50,
-      '#ad3'
-    )
-    ]
+    // const centerX: number = this.centerX
+    // const centerY: number = this.centerY
+    //
+    // this.x = centerX + (this.radius * Math.cos(this.angle))
+    // this.y = centerY + (this.radius * Math.sin(this.angle))
+    //
+    // this.angle += 0.01
+    //
+    // if (this.angle >= Math.PI * 2) {
+    //   this.angle = 0
+    // }
+    //
+    // return [
+    //   this.getFactory().createRectangle(
+    //   new Vector(this.x, this.y),
+    //   100,
+    //   50,
+    //   '#ad3'
+    // )
+    // ]
   }
 }

@@ -26,4 +26,7 @@ export abstract class AbstractSpriteGenerator {
 
     return this.factory
   }
+
+  public reset(): void {
+  }
 }

@@ -17,4 +17,7 @@ export abstract class AbstractAssetGenerator extends AbstractSpriteGenerator {
 
     return this.factory
   }
+
+  public reset(): void {
+  }
 }

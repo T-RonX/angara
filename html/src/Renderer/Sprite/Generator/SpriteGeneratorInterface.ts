@@ -6,4 +6,6 @@ export interface SpriteGeneratorInterface {
   getSprites(renderContext: RenderContext): SpriteInterface[]
 
   getSpriteType(): SpriteType
+
+  reset(): void
 }

@@ -24,4 +24,9 @@ export class Quadrant extends BoundingBox {
   public getSprites(): SpriteInterface[] {
     return this.sprites
   }
+
+  reset() {
+    this.sprites = []
+    this.subQuadrants = []
+  }
 }

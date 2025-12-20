@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, type Ref, ref } from 'vue'
+import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, type Ref, ref } from 'vue'
 import { Game } from '@/Game/Game'
 import { useGameStore } from '@/stores/GameStore'
+import { markRaw } from 'vue'
 
 const gameStore = useGameStore();
-
-
 const props = defineProps({
   showFps: { type: Boolean, default: true },
 })
@@ -13,12 +12,13 @@ const props = defineProps({
 const canvas: Ref<HTMLCanvasElement|undefined> = ref()
 
 const fps = ref(0)
+let fpsTimer: number | null = null
 
 const MAP_WIDTH = 200
 const MAP_HEIGHT = 200
-const MAP_SCALE = 40
+const MAP_SCALE = 35
 
-onMounted(() => {
+const init = () => {
   if (canvas.value === undefined) {
     throw new Error('Unable to initiate render canvas.')
   }
@@ -27,13 +27,13 @@ onMounted(() => {
   updateCanvasSize()
 
   if (gameStore.game === null) {
-    const game: Game = new Game(
+    const game: Game = markRaw(new Game(
       canvas.value,
       MAP_WIDTH,
       MAP_HEIGHT,
       MAP_SCALE,
       props.showFps,
-    )
+    ))
 
     gameStore.setGame(game)
     game.render()
@@ -42,16 +42,36 @@ onMounted(() => {
   }
 
   const fpsHandler = () => {
-    if (gameStore.game !== null ) {
+    if (gameStore.game) {
       fps.value = gameStore.game.getFps()
     }
-    setTimeout(fpsHandler, 250)
+    fpsTimer = window.setTimeout(fpsHandler, 250)
   }
 
   setTimeout(fpsHandler, 250)
+}
+
+onBeforeMount(() => {
+  if (gameStore.game) {
+    console.debug('RenderViewport.onBeforeMount')
+    // gameStore.game.reset()
+    // gameStore.setGame(null)
+  }
+})
+
+onMounted(() => {
+  console.debug('RenderViewport.onMounted')
+  init()
 })
 
 onBeforeUnmount(() => {
+  console.debug('RenderViewport.onBeforeUnmount')
+  if (fpsTimer) clearTimeout(fpsTimer)
+  window.removeEventListener('resize', () => {})
+})
+
+onUnmounted(() => {
+  console.debug('RenderViewport.onUnmounted')
   window.removeEventListener('resize', () => {})
 })
 
@@ -81,6 +101,14 @@ const stepRendering = () => {
   }
 }
 
+const restartRendering = () => {
+  if (gameStore.game) {
+    gameStore.game.reset()
+    gameStore.setGame(null)
+    init()
+  }
+}
+
 const isDragging: Ref<boolean> = ref(false)
 
 const mouseDown = () => {
@@ -104,6 +132,7 @@ const mouseOut = () => {
       <button @click="continueRendering">Start</button>
       <button @click="stopRendering">Stop</button>
       <button @click="stepRendering">Step</button>
+      <button @click="restartRendering">Restart</button>
       <br/>
       <span>dragging: {{ isDragging }}</span>
     </div>
