@@ -14,6 +14,10 @@ export class StaticImage extends AbstractSprite implements SpriteInterface {
     private position: Vector,
     private width: number,
     private height: number,
+    private sourceX: number,
+    private sourceY: number,
+    private sourceWidth: number,
+    private sourceHeight: number,
   ) {
     super()
 
@@ -42,6 +46,22 @@ export class StaticImage extends AbstractSprite implements SpriteInterface {
 
   public getHeight(): number {
     return this.height
+  }
+
+  public getSourceX(): number {
+    return this.sourceX
+  }
+
+  public getSourceY(): number {
+    return this.sourceY
+  }
+
+  public getSourceWidth(): number {
+    return this.sourceWidth
+  }
+
+  public getSourceHeight(): number {
+    return this.sourceHeight
   }
 
   public getBitmap(): ImageBitmap | null {

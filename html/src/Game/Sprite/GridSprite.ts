@@ -9,6 +9,7 @@ import type { SpriteType } from '@/Renderer/Sprite/SpriteType'
 import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
 import { useGameStore } from '@/stores/GameStore'
 import { StringDeflater } from '@/composables/Compression'
+import type { StaticImage } from '@/Renderer/Sprite/Type/Image/StaticImage'
 
 export class GridSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface {
   private grid: SpriteInterface[] = []
@@ -30,6 +31,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
 
      // this.createGrid()
     this.createBorder()
+    this.createImageTiles()
     this.createBlocks()
     // this.createMap()
 
@@ -51,10 +53,37 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
           this.randomColor()
         )
 
-        if (this.randomNumber(0, 100) > -1) { // -1 was 75 for a 25% density
+        if (this.randomNumber(0, 100) > 90) { // -1 was 75 for a 25% density
           this.grid.push(block)
           // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
         }
+      }
+    }
+  }
+
+  private createImageTiles() {
+    const x: number[] = MathX.range(0, this.map.getWidth() - this.scale, this.scale)
+    const y: number[] = MathX.range(0, this.map.getHeight() - this.scale, this.scale)
+
+    const imgX = 4682;
+    const imgY = 4735;
+
+    const tileSizeX: number = imgX / x.length;
+    const tileSizeY: number = imgY / y.length;
+
+    for (let iy: number = 0; iy < y.length; ++iy) {
+      for (let ix: number = 0; ix < x.length; ++ix) {
+        const tile: StaticImage = this.getFactory().createStaticImage('/tile.png',
+          new Vector(x[ix], y[iy]),
+          this.scale + 1,
+          this.scale + 1,
+          (ix * tileSizeX),
+          (iy * tileSizeY),
+          tileSizeX,
+          tileSizeY,
+        )
+
+        this.grid.push(tile)
       }
     }
   }

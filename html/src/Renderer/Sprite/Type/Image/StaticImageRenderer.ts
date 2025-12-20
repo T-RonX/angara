@@ -11,8 +11,14 @@ export class StaticImageRenderer implements TypeRendererInterface {
 
     const bitmap = image.getBitmap()
     if (bitmap) {
+      // console.debug(image.getId(), image.getPosition().x - renderContext.getViewport().getPosition().x, image.getPosition().y - renderContext.getViewport().getPosition().y, image.getWidth(), image.getHeight());
+
       c.drawImage(
         bitmap,
+        image.getSourceX(),
+        image.getSourceY(),
+        image.getSourceWidth(),
+        image.getSourceHeight(),
         image.getPosition().x - renderContext.getViewport().getPosition().x,
         image.getPosition().y - renderContext.getViewport().getPosition().y,
         image.getWidth(),

@@ -50,3 +50,4 @@ This is just your typical Symfony project.
 - Do not remove commented out lines when rewriting a piece of code.
 - For PHP always use Allman style (opening braces on new line)
 - For Typescript always use typical K&R style.
+- Do not run style checks or build for TypeScript after code changes.

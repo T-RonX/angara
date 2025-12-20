@@ -61,9 +61,10 @@ export class SpriteFactory {
       .setId(this.idGenerator.getNextId())
   }
 
-  public createStaticImage(src: string, position: Vector, width: number, height: number): StaticImage {
-    return new StaticImage(src, position, width, height)
+  public createStaticImage(src: string, position: Vector, width: number, height: number, sourceX: number, sourceY: number, sourceWith: number, sourceHeight: number, ): StaticImage {
+    return new StaticImage(src, position, width, height, sourceX, sourceY, sourceHeight, sourceWith)
       .setTypeRenderer(this.staticImageRenderer)
+      .setId(this.idGenerator.getNextId())
   }
 
   // public createPath(color: string, points: Vector[]): Path {

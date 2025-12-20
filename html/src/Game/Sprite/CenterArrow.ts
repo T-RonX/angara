@@ -38,7 +38,6 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
       '#bd4131',
       '#c7958f',
       this,
-      'center-arrow',
     )
   }
 
@@ -46,7 +45,6 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
     const angles: number[] = []
     const arrowCentered: Path = new Path(arrow.shift(arrow.getCentroid()))
     const points: Vector[] = arrowCentered.getPoints()
-    console.debug('added');
 
     angles[0] = Math.atan2(points[0].y, points[0].x)
     angles[1] = Math.atan2(points[1].y, points[1].x)
@@ -57,8 +55,6 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
   }
 
   public animate(path: Path, renderContext: RenderContext): void {
-    console.debug('animate');
-
     // Get point relative to center
     const pathCentered: Path = new Path(path.shift(path.getCentroid()))
     const points: Vector[] = pathCentered.getPoints()
@@ -70,7 +66,7 @@ export class CenterArrow extends AbstractAssetGenerator implements SpriteGenerat
 
     // Focus center
     const focusPoint: Vector|undefined = this.gameState.hasSelectedAsset() ? this.gameState.getSelectedAsset().getBoundingBox()?.getCenter() : undefined
-    console.debug(focusPoint);
+
     if (focusPoint === undefined) {
       path.setDoRender(false)
       return
