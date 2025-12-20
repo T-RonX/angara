@@ -1,4 +1,4 @@
-FROM php:8.3.8-fpm
+FROM php:8.4.16-fpm
 
 # System packages
 RUN apt-get update
@@ -14,7 +14,7 @@ RUN echo "alias php-debug='php -dxdebug.mode=debug -dxdebug.start_with_request=1
 RUN echo "export PHP_IDE_CONFIG=\"serverName=angara.dev\"" >> ~/.bashrc
 
 # Composer
-COPY --from=composer:2.5.8 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.9.2 /usr/bin/composer /usr/bin/composer
 
 # Symfony command
 RUN curl -sS https://get.symfony.com/cli/installer | bash
@@ -78,4 +78,4 @@ RUN printf "\nalias phpd='php -dxdebug.mode=debug -dxdebug.start_with_request=1'
 
 WORKDIR /var/www
 
-EXPOSE 4101
+EXPOSE 5173

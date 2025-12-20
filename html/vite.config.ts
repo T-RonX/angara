@@ -9,7 +9,7 @@ export default defineConfig({
     vue(),
   ],
   server: {
-    port: 4101,
+    port: 5173,
     strictPort: true,
     host: true
   },
