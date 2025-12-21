@@ -6,6 +6,7 @@ export class AbstractSprite {
   protected typeRenderer: TypeRendererInterface|null = null
   protected animator: AnimatorInterface|null = null
   protected doRender: boolean = true
+  protected isSpriteVisible: boolean = false
 
   public setId(id: number): this {
     this.id = id
@@ -25,6 +26,16 @@ export class AbstractSprite {
 
   public getDoRender(): boolean {
     return this.doRender
+  }
+
+  public setIsVisible(isVisible: boolean): this {
+    this.isSpriteVisible = isVisible
+
+    return this
+  }
+
+  public isVisible(): boolean {
+    return this.isSpriteVisible
   }
 
   public setTypeRenderer(typeRenderer: TypeRendererInterface): this {

@@ -32,8 +32,7 @@ This is just your typical Symfony project.
 `config/`: Contains the typical YAML config for a Symfony project.  
 `docker/`: All the Docker containers the project uses (`app` (PHP), `db` (MySQL) and `web` (nginx)).  
 `public/`: Entry point for the application.  
-`rust/`: Ignore, never use it.  
-`spacetimedb_data/`: Ignore, never use it.  
+`rust/`: Ignore, never use it.
 `src/`: Contains the usual source code for a typical Symfony structure.  
 `templates/`: Contains the usual Twig templates for a typical Symfony structure.  
 

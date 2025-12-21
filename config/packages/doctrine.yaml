@@ -23,20 +23,20 @@ doctrine:
             App:
                 type: attribute
 #                is_bundle: false
-                dir: '%kernel.project_dir%/src/Security/Entity'
-                prefix: 'App\Security\Entity'
+                dir: '%kernel.project_dir%/src/System/Security/Entity'
+                prefix: 'App\System\Security\Entity'
 #                alias: 'App\Security\Entity'
             Player:
                 type: attribute
 #                is_bundle: false
-                dir: '%kernel.project_dir%/src/Game/Player/Entity'
-                prefix: 'App\Game\Player\Entity'
+                dir: '%kernel.project_dir%/src/Game/Game/Player/Entity'
+                prefix: 'App\System\Game\Player\Entity'
 #                alias: 'App\Game\Player\Entity'
             User:
                 type: attribute
 #                is_bundle: false
-                dir: '%kernel.project_dir%/src/User/Entity'
-                prefix: 'App\User\Entity'
+                dir: '%kernel.project_dir%/src/System/User/Entity'
+                prefix: 'App\System\User\Entity'
 #                alias: 'App\User\Entity'
 #        controller_resolver:
 #            auto_mapping: true

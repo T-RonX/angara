@@ -12,4 +12,6 @@ export interface SpriteInterface extends PositionableInterface {
   getAnimator(): AnimatorInterface
 
   getDoRender(): boolean
+
+  isVisible(): boolean
 }

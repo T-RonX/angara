@@ -9,6 +9,7 @@ import type { FixedTextRenderer } from '@/Renderer/Sprite/Type/Text/FixedTextRen
 import type { StaticTextRenderer } from '@/Renderer/Sprite/Type/Text/StaticTextRenderer'
 import type { StaticImageRenderer } from '@/Renderer/Sprite/Type/Image/StaticImageRenderer'
 import type { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
+import { MapCellAsset } from '@/Game/Assets/MapCellAsset'
 
 export class AssetFactory extends SpriteFactory {
   constructor(
@@ -24,8 +25,14 @@ export class AssetFactory extends SpriteFactory {
     super(clearCanvasRenderer, lineRenderer, rectangleRenderer, fixedTextRenderer, staticTextRenderer, staticImageRenderer, pathRenderer)
   }
 
-  public MapBlockAsset(topLeft: Vector, width: number, height: number, color: string): MapBlockAsset {
+  public createMapBlockAsset(topLeft: Vector, width: number, height: number, color: string): MapBlockAsset {
     return this.assets.add(new MapBlockAsset(topLeft, width, height, color)
+      .setTypeRenderer(this.rectangleRenderer)
+      .setId(this.idGenerator.getNextId()))
+  }
+
+  public createMapCellAsset(topLeft: Vector, width: number, height: number, selectedColor: string, roundedCorners: number): MapCellAsset {
+    return this.assets.add(new MapCellAsset(topLeft, width, height, selectedColor, false, roundedCorners)
       .setTypeRenderer(this.rectangleRenderer)
       .setId(this.idGenerator.getNextId()))
   }

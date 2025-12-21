@@ -6,7 +6,7 @@ security:
     providers:
         app_user_provider:
             entity:
-                class: App\User\Entity\User
+                class: App\System\User\Entity\User
                 property: username
 #        temp_users:
 #            memory:

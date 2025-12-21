@@ -17,7 +17,7 @@ import { StaticImageRenderer } from '@/Renderer/Sprite/Type/Image/StaticImageRen
 import { CenterImageSprite } from '@/Game/Sprite/CenterImageSprite'
 import { Input } from '@/Game/Input/Input'
 import { CameraMouseEvents } from '@/Game/Camera/CameraMouseEvents'
-import { BlockClick } from '@/Game/Events/BlockClick'
+import { MapCellClick } from '@/Game/Events/MapCellClick'
 import { PathRenderer } from '@/Renderer/Sprite/Type/Path/PathRenderer'
 import { BlockMouseMove } from '@/Game/Events/BlockMouseMove'
 import { AssetFactory } from '@/Game/Assets/AssetFactory'
@@ -87,13 +87,13 @@ export class Game {
     )
 
     const cameraMouseEvents: CameraMouseEvents = new CameraMouseEvents(this.camera)
-    const blockClick: BlockClick = new BlockClick(this.canvas, viewport, this.renderer, this.camera, this.gameState)
+    const mapCellClick: MapCellClick = new MapCellClick(this.canvas, viewport, this.renderer, this.camera, this.gameState)
     const blockMouseMove: BlockMouseMove = new BlockMouseMove(this.canvas, viewport, this.renderer, this.camera)
 
     this.input = new Input(
       [],
       [cameraMouseEvents],
-      [blockClick, cameraMouseEvents],
+      [mapCellClick, cameraMouseEvents],
       [cameraMouseEvents, blockMouseMove],
       [cameraMouseEvents],
     )
