@@ -39,10 +39,10 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
             return this.grid
         }
 
-        // this.createGrid()
         this.createBorder()
         this.createImageTiles()
         this.createBlocks()
+        this.createGrid()
         // this.createMap()
 
         this.isGridComplete = true
@@ -59,7 +59,6 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
         {
             for (let ix: number = 0; ix <= x.length; ++ix)
             {
-                console.debug((y.length / this.scale))
                 const block: Rectangle = this.getFactory().createMapCellAsset(
                     new Vector(x[ix], y[iy]),
                     this.scale + 1,
@@ -198,7 +197,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
                 new Vector(x[i], 0),
                 new Vector(x[i], this.map.getHeight()),
                 1,
-                '#ddd',
+                'rgba(67,67,67,0.15)',
             ))
         }
 
@@ -211,7 +210,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
                 new Vector(0, yStarts[i]),
                 new Vector(this.map.getWidth(), yStarts[i]),
                 1,
-                '#ddd',
+                'rgba(67,67,67,0.15)',
             ))
         }
     }

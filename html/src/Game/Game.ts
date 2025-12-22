@@ -88,7 +88,7 @@ export class Game {
 
     const cameraMouseEvents: CameraMouseEvents = new CameraMouseEvents(this.camera)
     const mapCellClick: MapCellClick = new MapCellClick(this.canvas, viewport, this.renderer, this.camera, this.gameState)
-    const blockMouseMove: BlockMouseMove = new BlockMouseMove(this.canvas, viewport, this.renderer, this.camera)
+    const blockMouseMove: BlockMouseMove = new BlockMouseMove(this.canvas, viewport, this.renderer, this.camera, this.gameState)
 
     this.input = new Input(
       [],

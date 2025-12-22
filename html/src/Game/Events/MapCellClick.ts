@@ -51,6 +51,7 @@ export class MapCellClick implements CanvasMouseUpInterface
                 }
 
                 sprite.setIsVisible(true)
+                sprite.setColor('rgba(33,114,181,0.5)');
                 this.gameState.setSelectedAsset(sprite)
 
                 break
