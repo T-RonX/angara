@@ -134,7 +134,7 @@ export class CanvasRenderer {
   }
 
   private resetActiveSprites(): void {
-    const tree: Quadrant[] = this.occlusionTree.getSubQuadrants()
+    const tree: Quadrant[] = [this.occlusionTree]
     this.activeIds.clear()
     this.activeSprites.length = 0
 

@@ -16,7 +16,7 @@ let fpsTimer: number | null = null
 
 const MAP_WIDTH = 200
 const MAP_HEIGHT = 200
-const MAP_SCALE = 35
+const MAP_SCALE = 40
 
 const init = () => {
   if (canvas.value === undefined) {
@@ -165,6 +165,8 @@ const mouseOut = () => {
   height: calc(100vh - 150px);
   width: 100%;
   box-sizing: border-box;
+  background-color: #ececec;
+  border: 1px #aaa solid;
 }
 
 .canvas.dragging {

@@ -27,7 +27,7 @@ export class SpatialPartitioning
 
         for (const sprite of sprites)
         {
-            this.assignSpritesToQuadrants(sprite, occlusionTree.getSubQuadrants())
+            this.assignSpritesToQuadrants(sprite, [occlusionTree])
         }
 
         return occlusionTree
