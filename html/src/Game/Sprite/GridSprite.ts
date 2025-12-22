@@ -217,8 +217,8 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
 
     private createBorder(): void
     {
-        const color: string = '#ccc'
-        const borderWidth: number = 10
+        const color: string = '#444'
+        const borderWidth: number = 4
 
         // Render border left
         this.grid.push(this.getFactory().createLine(
