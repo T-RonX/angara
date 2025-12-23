@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Game\Game\SpacialGrid;
+namespace App\Game\Game\SpatialGrid;
 
 use App\Game\Game\Noise\NoiseGrid;
 use SplFixedArray;

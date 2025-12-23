@@ -32,17 +32,17 @@ class PublicController
     ): JsonResponse
     {
         $seed = bin2hex(random_bytes(21));
-        $seed = 'a4c4ceac0e8ec397378891841b4a45aef983147a5e';
-        $style = null;
-        $style = 'fictional_7';
+//        $seed = 'a4c4ceac0e8ec397378891841b4a45aef983147a5e';
+//        $style = null;
+//        $style = 'fictional_7';
+//
+//        [$mapDescriptor, $styleName] = $styleProvider->getStyle($style);
+//        $body = $bodyGenerator->generate($seed, $mapDescriptor);
+//
+//        $terrainTypes = array_map(static fn (TerrainType $terrainType) => ['color' => $terrainType->color->toArray(), 'name' => $terrainType->getId()], $mapDescriptor->getTerrain()->getTypes());
 
-        [$mapDescriptor, $styleName] = $styleProvider->getStyle($style);
-        $body = $bodyGenerator->generate($seed, $mapDescriptor);
 
-        $terrainTypes = array_map(static fn (TerrainType $terrainType) => ['color' => $terrainType->color->toArray(), 'name' => $terrainType->getId()], $mapDescriptor->getTerrain()->getTypes());
-
-
-        $bodyx = $spacialEntityBuilder->buildCelestialBody(150, $seed)
+        $body = $spacialEntityBuilder->buildCelestialBody(150, $seed)
             ->setLocation(1, 1)
             ->addBiome(0.1, 'water', '104b06')
             ->addBiome(0.2, 'land', '524702')
@@ -55,18 +55,26 @@ class PublicController
             ->addBiome(null, 'mountain', '1a0c01')
             ->setBiomeGrid(.8)
             ->createBorderGrid(0.02)
-            ->build()
-        ;
+            ->build();
 
-        $terrainTypesx = array_map(
+        $terrainTypes = array_map(
             static fn (Biome $biome) => [
                 'color' => $biome->color,
                 'name' => $biome->name,
             ],
-            $bodyx->terrainMap->biomeGrid->biomes,
+            $body->terrainMap->biomeGrid->biomes,
         );
 
-
-        return new JsonResponse(json_encode(['map' => $bodyx->terrainMap->biomeGrid->getGrid(), 'border' => $bodyx->terrainMap->borderGrid->getGrid(), 'terrainTypes' => $terrainTypesx, 'styleName' => 'build', 'seed' => $seed], JSON_THROW_ON_ERROR));
+        return new JsonResponse(
+            json_encode([
+                    'map' => $body->terrainMap->biomeGrid->getGrid(),
+                    'border' => $body->terrainMap->borderGrid->getGrid(),
+                    'terrainTypes' => $terrainTypes,
+                    'styleName' => 'build',
+                    'seed' => $seed
+                ],
+                JSON_THROW_ON_ERROR,
+            )
+        );
     }
 }

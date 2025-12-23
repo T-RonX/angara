@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\Game\SpatialEntity\Builder\CelestialBody;
 
-use App\Game\Game\SpacialGrid\SpatialGrid;
+use App\Game\Game\SpatialGrid\SpatialGrid;
 use App\Game\Game\SpatialEntity\Coordinate;
 use App\Game\Game\SpatialEntity\Entity\CelestialBody\CelestialBody;
 use App\Game\Game\SpatialEntity\Entity\CelestialBody\TerrainMap\Biome;
