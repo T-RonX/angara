@@ -7,9 +7,9 @@ import type { SpriteGeneratorInterface } from '@/Renderer/Sprite/Generator/Sprit
 import type { Rectangle } from '@/Renderer/Sprite/Type/Rectangle/Rectangle'
 import type { SpriteType } from '@/Renderer/Sprite/SpriteType'
 import { AbstractAssetGenerator } from '@/Game/Assets/AbstractAssetGenerator'
-import { useGameStore } from '@/stores/GameStore'
 import { StringDeflater } from '@/composables/Compression'
 import type { StaticImage } from '@/Renderer/Sprite/Type/Image/StaticImage'
+import { useGameStore } from '@/stores/GameStore'
 
 export class GridSprite extends AbstractAssetGenerator implements SpriteGeneratorInterface
 {
@@ -40,7 +40,8 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
         }
 
         this.createBorder()
-        this.createImageTiles()
+        // this.createImageTiles()
+        this.createTilesFromData()
         this.createBlocks()
         this.createGrid()
         // this.createMap()
@@ -75,6 +76,89 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
                 }
             }
         }
+    }
+
+    private createTilesFromData(): void
+    {
+        const store = useGameStore()
+
+        const x: number[] = MathX.range(this.scale, this.map.getWidth() - this.scale, this.scale)
+        const y: number[] = MathX.range(this.scale, this.map.getHeight() - this.scale, this.scale)
+
+        if (!store.map)
+        {
+            return
+        }
+
+        const terrainName = (v: number): string =>
+            ({
+                0: "#282828",
+                1: "#000080",
+                2: "#DEB887",
+                3: "#A52A2A",
+                4: "#E6E6FA",
+            } as Record<number, string>)[v] ?? "#fff";
+
+        for (const [y, row] of store.map.getGrid())
+        {
+            for (const [x, cell] of row)
+            {
+
+                // const col = terrainName(cell.getTerrain().getLevel())
+                const color = store.map.getTerrainTypes().get(cell.getTerrain().getLevel()).getColor()
+                //const color = `rgb(${col[0]}, ${col[1]}, ${col[2]})`
+
+                const block: Rectangle = this.getFactory().createRectangle(
+                    new Vector(cell.getPosition().getX() * this.scale, cell.getPosition().getY() * this.scale),
+                    this.scale + 1,
+                    this.scale + 1,
+                    String('#' + color),
+                    //this.scale * .2,
+                )
+
+                this.grid.push(block)
+
+                const border = store.map.getBorders().get(y)?.get(x)
+
+                if (border)
+                {
+                    const borderBlock: Rectangle = this.getFactory().createRectangle(
+                        new Vector(
+                            cell.getPosition().getX() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2)),
+                            cell.getPosition().getY() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2))
+                        ),
+                        (this.scale / 2) * border,
+                        (this.scale / 2) * border,
+                        '#fff',
+                        (this.scale / 2) * border * .5
+                        //this.scale * .2,
+                    )
+                    this.grid.push(borderBlock)
+
+                }
+            }
+        }
+        //
+        // for (let iy: number = 0; iy <= y.length; ++iy)
+        // {
+        //     for (let ix: number = 0; ix <= x.length; ++ix)
+        //     {
+        //         const block: Rectangle = this.getFactory().createMapCellAsset(
+        //             new Vector(x[ix], y[iy]),
+        //             this.scale + 1,
+        //             this.scale + 1,
+        //             'rgba(33,114,181,0.5)',
+        //             this.scale * .2,
+        //             // this.randomColor(),
+        //         )
+        //
+        //         if (this.randomNumber(0, 100) > -1)
+        //         { // -1 was 75 for a 25% density
+        //             this.grid.push(block)
+        //             // this.grid.push(this.getFactory().createStaticText(String(block.getId()), block.getTopLeft().add(new Vector(4, 12)), '14px arial', 'yellow'))
+        //         }
+        //     }
+        // }
     }
 
     private createImageTiles()

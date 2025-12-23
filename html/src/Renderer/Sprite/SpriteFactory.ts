@@ -43,8 +43,8 @@ export class SpriteFactory {
       .setId(this.idGenerator.getNextId())
   }
 
-  public createRectangle(topLeft: Vector, width: number, height: number, color: string): Rectangle {
-    return new Rectangle(topLeft, width, height, color)
+  public createRectangle(topLeft: Vector, width: number, height: number, color: string, roundedCorners: number = 0): Rectangle {
+    return new Rectangle(topLeft, width, height, color, true, roundedCorners)
       .setTypeRenderer(this.rectangleRenderer)
       .setId(this.idGenerator.getNextId())
   }

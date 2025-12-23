@@ -31,7 +31,7 @@ export class RectangleRenderer implements TypeRendererInterface
             }
             else
             {
-                c.fillStyle = '#fff'
+                c.fillStyle = rectangle.getColor()
                 c.fillRect(
                     rectangle.getTopLeft().x - renderContext.getViewport().getPosition().x,
                     rectangle.getTopLeft().y - renderContext.getViewport().getPosition().y,

@@ -16,7 +16,7 @@ class NoiseGenerator
     }
 
     /**
-     * @return SplFixedArray<int, SplFixedArray>
+     * @return SplFixedArray<int, SplFixedArray<float>>
      */
     public function generate(MapDescriptor $mapDescriptor, ?string $seed): SplFixedArray
     {

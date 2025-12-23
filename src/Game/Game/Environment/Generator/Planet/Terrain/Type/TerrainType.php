@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Game\Game\Environment\Generator\Planet\Terrain\Type;
 
 use App\Game\Game\Environment\Generator\Planet\Terrain\Color\ColorGradiant;
+use App\Game\Game\Environment\Generator\Planet\Terrain\Color\ColorRgb;
 use App\Game\Game\Environment\Generator\Planet\Terrain\TerrainProperties;
 
 class TerrainType
@@ -12,15 +13,10 @@ class TerrainType
     private int $id;
 
     public function __construct(
-        private float $start,
-        private float $end,
+        public private(set) float|null $threshold,
         private TerrainProperties $properties,
-        private ColorGradiant $colorGradiant,
+        public ColorRgb $color,
     ) {
-        if ($this->end === 1.0)
-        {
-            $this->end = 1.1;
-        }
     }
 
     public function getId(): int

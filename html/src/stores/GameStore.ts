@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { Game } from '@/Game/Game'
+import { BodyMap } from '@/Game/Terrain/BodyMap'
 
 export const useGameStore = defineStore('GameStore', {
   state: () => ({
     game: null as Game|null,
-    map: [] as {x: number, y: number, data: string }[],
+    map: null as BodyMap|null,
   }),
   // getters: {
   //   game(): Game|null {
@@ -15,7 +16,7 @@ export const useGameStore = defineStore('GameStore', {
     setGame(game: Game|null): void {
       this.game = game
     },
-    setMap(map: {x: number, y: number, data: string }[]): void {
+    setMap(map: BodyMap): void {
       this.map = map
     },
   }

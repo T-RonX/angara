@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Game\Game\Environment\Generator\Planet\Terrain;
 
+use App\Game\Game\Environment\Generator\Planet\Terrain\Type\TerrainType;
+
 class MapDescriptor
 {
     /**
@@ -15,7 +17,7 @@ class MapDescriptor
     public function __construct(
         private int $size,
         private float $roughness,
-        private float $elevationLevel,
+        public float $borderThreshold,
         private TerrainDescriptor $terrain,
     ) {
     }
@@ -66,5 +68,13 @@ class MapDescriptor
         $this->terrain = $terrain;
 
         return $this;
+    }
+
+    /**
+     * @return float[]
+     */
+    public function getThresholds(): array
+    {
+        return array_map(static fn (TerrainType $terrainType) => $terrainType->threshold,  array_slice($this->terrain->getTypes(), 0, -1));
     }
 }

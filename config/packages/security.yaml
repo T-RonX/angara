@@ -16,6 +16,10 @@ security:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
+        public:
+            pattern: ^/public/
+            security: false
+            stateless: true
 #        api:
 #            pattern:   ^/api
 #            stateless: true
@@ -48,6 +52,7 @@ security:
     access_control:
         - { path: ^/api/access/, roles: PUBLIC_ACCESS }
         - { path: ^/api/, roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/public/, roles: PUBLIC_ACCESS }
 #        - { path: ^/api/login, roles: PUBLIC_ACCESS }
 #        - { path: ^/api/(login|access/refresh-access-token), roles: PUBLIC_ACCESS }
 #        - { path: ^/api,       roles: IS_AUTHENTICATED_FULLY }
