@@ -3,7 +3,7 @@ services:
         autowire: true
         autoconfigure: true
         bind:
-            $appRootDir: '%kernel.project_dir%'
+            # $appRootDir: '%kernel.project_dir%'
 
     App\:
         resource: '../src/'
