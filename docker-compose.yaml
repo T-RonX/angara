@@ -10,7 +10,9 @@ services:
         networks:
             - angara-network
         ports:
-            - '4101:5173'
+            - '4101:4101'
+      #  environment:
+          #  WEBPACK_DEV_SERVER_URL: "http://localhost:4101"
 
     web:
         image: nginx:alpine

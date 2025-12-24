@@ -30,7 +30,7 @@ class PublicController
             ],
             $body->terrainMap->biomeGrid->biomes,
         );
-
+        die ($_SERVER['WEBPACK_DEV_SERVER_URL'] ?? null);
         return new JsonResponse(
             json_encode([
                     'map' => $body->terrainMap->biomeGrid->getGrid(),

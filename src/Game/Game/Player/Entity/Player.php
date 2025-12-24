@@ -37,4 +37,32 @@ class Player implements EntityUuidInterface
 
     public function setId(?int $id): self
     {
-        $this->
+        $this->id = $id;
+
+        return $this;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): self
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function getUser(): User
+    {
+        return $this->user;
+    }
+
+    public function setUser(User $user): Player
+    {
+        $this->user = $user;
+
+        return $this;
+    }
+}

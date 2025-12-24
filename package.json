@@ -21,6 +21,7 @@
     },
     "dependencies": {
         "@symfony/stimulus-bridge": "^4.0.1",
-        "@symfony/ux-vue": "^2.31.0"
+        "@symfony/ux-vue": "^2.31.0",
+        "webpack-dev-server": "^5.2"
     }
 }

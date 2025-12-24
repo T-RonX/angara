@@ -10,9 +10,9 @@ Encore
     // directory where compiled assets will be stored
     .setOutputPath('public/build/')
     // public path used by the web server to access the output path
-    .setPublicPath('/build')
+    .setPublicPath(Encore.isDevServer() ? 'http://localhost:4101/build' : '/build')
     // only needed for CDN's or subdirectory deploy
-    //.setManifestKeyPrefix('build/')
+    .setManifestKeyPrefix('build/')
 
     /*
      * ENTRY CONFIG
@@ -76,6 +76,19 @@ Encore
 
     // uncomment if you're having problems with a jQuery plugin
     //.autoProvidejQuery()
-;
+
+    .configureDevServerOptions(options => {
+        options.host = '0.0.0.0';
+        options.port = 4101;
+        options.allowedHosts = 'all';
+
+        options.client = {
+            webSocketURL: {
+                hostname: 'localhost',
+                port: 4101,
+                protocol: 'ws',
+            },
+        };
+    });
 
 module.exports = Encore.getWebpackConfig();
