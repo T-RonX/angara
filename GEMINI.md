@@ -18,7 +18,7 @@
 
 ### Principes
 
-- The project is supposed to become a single-page application (SPA).
+- The project is supposed to become a single-page application (SPA), but served from the Symfony backend.
 - Doctrine migrations are not yet used. Changes can be made directly, just use `doctrine:schema:update --force`.
 - There are currently no tests of any kind, and that stay that way for now.
 
@@ -32,14 +32,14 @@ This is just your typical Symfony project.
 `config/`: Contains the typical YAML config for a Symfony project.  
 `docker/`: All the Docker containers the project uses (`app` (PHP), `db` (MySQL) and `web` (nginx)).  
 `public/`: Entry point for the application.  
-`rust/`: Ignore, never use it.
 `src/`: Contains the usual source code for a typical Symfony structure.  
 `templates/`: Contains the usual Twig templates for a typical Symfony structure.  
 
 ### Frontend:
-`html/src/Rendeder`: Contains a custom render engine based on Canvas 2D. It must remain game agnostic.
-`html/src/Game`: Contains the main game code where not directly part of Vue.
-`html/src/components/Rendering/RenderViewport.vue`: Is the entry point of the application where the Game class is initialized along with some crucial parameters.
+`assets/`: Root directory for the frontend project.
+`assets/src/Rendeder`: Contains a custom render engine based on Canvas 2D. It must remain game agnostic.
+`assets/src/Game`: Contains the main game code where not directly part of Vue.
+`assets/src/components/Rendering/RenderViewport.vue`: Is the entry point of the application where the Game class is initialized along with some crucial parameters.
 
 ---
 
