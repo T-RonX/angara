@@ -1,5 +1,4 @@
 <script setup>
-console.log('ddddddddddddddd');
 import LayoutHeader from '@/components/Layout/LayoutHeader.vue'
 
 </script>
