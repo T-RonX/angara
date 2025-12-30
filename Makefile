@@ -1,6 +1,9 @@
 bash:
 	docker exec -it angara-app bash
 
+dev:
+	docker exec -it angara-app npm run dev-server
+
 rebuild: rebuild-app rebuild-db rebuild-web up vendors database
 
 rebuild-app:

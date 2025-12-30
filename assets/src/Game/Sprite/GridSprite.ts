@@ -122,22 +122,22 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
 
                 const border = store.map.getBorders().get(y)?.get(x)
 
-                if (border)
-                {
-                    const borderBlock: Rectangle = this.getFactory().createRectangle(
-                        new Vector(
-                            cell.getPosition().getX() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2)),
-                            cell.getPosition().getY() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2))
-                        ),
-                        (this.scale / 2) * border,
-                        (this.scale / 2) * border,
-                        '#fff',
-                        (this.scale / 2) * border * .5
-                        //this.scale * .2,
-                    )
-                    this.grid.push(borderBlock)
-
-                }
+                // if (border)
+                // {
+                //     const borderBlock: Rectangle = this.getFactory().createRectangle(
+                //         new Vector(
+                //             cell.getPosition().getX() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2)),
+                //             cell.getPosition().getY() * this.scale + ((this.scale / 2 - (this.scale / 2) * border / 2))
+                //         ),
+                //         (this.scale / 2) * border,
+                //         (this.scale / 2) * border,
+                //         '#fff',
+                //         (this.scale / 2) * border * .5
+                //         //this.scale * .2,
+                //     )
+                //     this.grid.push(borderBlock)
+                //
+                // }
             }
         }
         //

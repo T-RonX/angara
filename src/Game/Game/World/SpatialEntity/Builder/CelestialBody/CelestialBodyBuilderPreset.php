@@ -69,7 +69,7 @@ class CelestialBodyBuilderPreset
             ->setBiomeGrid(.9)
             ->createBorderGrid(0.02);
 
-        $this->builders['style_6'] = $this->spacialEntityBuilder->buildCelestialBody(150, null)
+        $this->builders['style_6'] = $this->spacialEntityBuilder->buildCelestialBody(22, null)
             ->setLocation(1, 1)
             ->addBiome(0.1, 'water', '104b06')
             ->addBiome(0.2, 'land', '524702')
@@ -83,7 +83,7 @@ class CelestialBodyBuilderPreset
             ->setBiomeGrid(.8)
             ->createBorderGrid(0.02);
 
-        $this->builders['style_7'] = $this->spacialEntityBuilder->buildCelestialBody(150, null)
+        $this->builders['style_7'] = $this->spacialEntityBuilder->buildCelestialBody(10, null)
             ->setLocation(1, 1)
             ->addBiome(0.5, 'water', '454545')
             ->addBiome(null, 'land', '1c1c1c')
