@@ -283,7 +283,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
                 new Vector(x[i], 0),
                 new Vector(x[i], this.map.getHeight()),
                 1,
-                'rgba(67,67,67,0.15)',
+                'rgba(67,67,67,0.05)',
             ))
         }
 
@@ -296,7 +296,7 @@ export class GridSprite extends AbstractAssetGenerator implements SpriteGenerato
                 new Vector(0, yStarts[i]),
                 new Vector(this.map.getWidth(), yStarts[i]),
                 1,
-                'rgba(67,67,67,0.15)',
+                'rgba(67,67,67,0.05)',
             ))
         }
     }

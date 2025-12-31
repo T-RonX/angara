@@ -20,23 +20,23 @@ doctrine:
         naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
 #        auto_mapping: true
         mappings:
-            App:
-                type: attribute
-#                is_bundle: false
-                dir: '%kernel.project_dir%/src/System/Security/Entity'
-                prefix: 'App\System\Security\Entity'
-#                alias: 'App\Security\Entity'
-            Player:
-                type: attribute
-#                is_bundle: false
-                dir: '%kernel.project_dir%/src/Game/Game/Player/Entity'
-                prefix: 'App\System\Game\Player\Entity'
-#                alias: 'App\Game\Player\Entity'
-            User:
-                type: attribute
-#                is_bundle: false
-                dir: '%kernel.project_dir%/src/System/User/Entity'
-                prefix: 'App\System\User\Entity'
+#            App:
+#                type: attribute
+##                is_bundle: false
+#                dir: '%kernel.project_dir%/src/System/Security/Entity'
+#                prefix: 'App\System\Security\Entity'
+##                alias: 'App\Security\Entity'
+#            Player:
+#                type: attribute
+##                is_bundle: false
+#                dir: '%kernel.project_dir%/src/Game/Game/Player/Entity'
+#                prefix: 'App\System\Game\Player\Entity'
+##                alias: 'App\Game\Player\Entity'
+#            User:
+#                type: attribute
+##                is_bundle: false
+#                dir: '%kernel.project_dir%/src/System/User/Entity'
+#                prefix: 'App\System\User\Entity'
 #                alias: 'App\User\Entity'
 #        controller_resolver:
 #            auto_mapping: true

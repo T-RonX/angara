@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
     Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
     Symfony\Bundle\SecurityBundle\SecurityBundle::class => ['all' => true],
@@ -8,6 +10,8 @@ return [
     Doctrine\Bundle\FixturesBundle\DoctrineFixturesBundle::class => ['dev' => true, 'test' => true],
     Nelmio\CorsBundle\NelmioCorsBundle::class => ['all' => true],
     Symfony\WebpackEncoreBundle\WebpackEncoreBundle::class => ['all' => true],
-//    Symfony\UX\Vue\VueBundle::class => ['all' => true],
     Symfony\Bundle\TwigBundle\TwigBundle::class => ['all' => true],
+    App\SystemBundle\AppSystemBundle::class => ['all' => true],
+    App\GameCoreBundle\AppGameCoreBundle::class => ['all' => true],
+    App\GameLogicBundle\AppGameLogicBundle::class => ['all' => true],
 ];
