@@ -1,9 +1,13 @@
 import { AbstractSpriteGenerator } from '@/Renderer/Sprite/AbstractSpriteGenerator';
 export class FpsSprite extends AbstractSpriteGenerator {
-    monitor;
     constructor(monitor, spriteType) {
         super(spriteType);
-        this.monitor = monitor;
+        Object.defineProperty(this, "monitor", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: monitor
+        });
     }
     getSprites(renderContext) {
         return [
@@ -16,3 +20,4 @@ export class FpsSprite extends AbstractSpriteGenerator {
         ];
     }
 }
+//# sourceMappingURL=FpsSprite.js.map

@@ -8,7 +8,7 @@ interface EntityUuidInterface
 {
     public function getUuid(): string;
 
-    public function setUuid(string $uuid): self;
+    public function setUuid(string $uuid): static;
 
     public function hasUuid(): bool;
 }

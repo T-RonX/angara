@@ -9,7 +9,6 @@ use App\SystemBundle\Doctrine\Uuid\Entity\EntityUuidInterface;
 use App\SystemBundle\Doctrine\Uuid\Entity\EntityUuidTrait;
 use App\SystemBundle\User\Repository\UserRepository;
 use App\UserPreference\Entity\UserPreference;
-use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
@@ -37,15 +36,15 @@ class User implements EntityUuidInterface, UserInterface, PasswordAuthenticatedU
     /**
      * @var Collection<int, Player>
      */
-    #[ORM\OneToMany(targetEntity: Player::class, mappedBy: 'user')]
-    private Collection $player;
+//    #[ORM\OneToMany(targetEntity: Player::class, mappedBy: 'user')]
+//    private Collection $player;
 
-    public function __construct()
-    {
-        $this->player = new ArrayCollection();
-    }
+//    public function __construct()
+//    {
+//        $this->player = new ArrayCollection();
+//    }
 
-    public function setId(?int $id): self
+    public function setId(?int $id): static
     {
         $this->id = $id;
 
@@ -57,7 +56,7 @@ class User implements EntityUuidInterface, UserInterface, PasswordAuthenticatedU
         return $this->id;
     }
 
-    public function setUsername(string $username): self
+    public function setUsername(string $username): static
     {
         $this->username = $username;
 
@@ -74,7 +73,7 @@ class User implements EntityUuidInterface, UserInterface, PasswordAuthenticatedU
         return $this->username;
     }
 
-    public function setPassword(string $password): self
+    public function setPassword(string $password): static
     {
         $this->password = $password;
 

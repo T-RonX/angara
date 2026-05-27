@@ -1,7 +1,6 @@
 import { RenderStack } from '@/Renderer/RenderStack/RenderStack';
 import { DefaultFpsMonitor } from '@/Renderer/Monitor/Fps/DefaultFpsMonitor';
 import { FpsSprite } from '@/Renderer/Monitor/Fps/FpsSprite';
-import { SpriteFactory } from '@/Renderer/Sprite/SpriteFactory';
 import { SpatialPartitioning } from '@/Renderer/OcclusionCulling/SpatialPartitioning';
 import { Quadrant } from '@/Renderer/OcclusionCulling/Quadrant';
 import { SpriteType } from '@/Renderer/Sprite/SpriteType';
@@ -9,27 +8,108 @@ import { MathX } from '@/Math/MathX';
 import { Vector } from '@/Renderer/Positioning/Vector';
 import { Stopwatch } from '@/Renderer/Monitor/Timing/Stopwatch';
 export class CanvasRenderer {
-    showFps;
-    context;
-    spriteFactory;
-    spaceWidth;
-    spaceHeight;
-    fpsMonitor = new DefaultFpsMonitor();
-    ctx;
-    renderStack = new RenderStack();
-    spacialPartitioningOcclusion = new SpatialPartitioning();
-    doRender = true;
-    occlusionTree = new Quadrant(new Vector(0, 0), new Vector(0, 0));
-    activeSprites = [];
-    activeIds = new Set();
-    stopwatch = new Stopwatch();
-    requestAnimationFrameId = null;
     constructor(showFps, context, spriteFactory, spaceWidth, spaceHeight) {
-        this.showFps = showFps;
-        this.context = context;
-        this.spriteFactory = spriteFactory;
-        this.spaceWidth = spaceWidth;
-        this.spaceHeight = spaceHeight;
+        Object.defineProperty(this, "showFps", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: showFps
+        });
+        Object.defineProperty(this, "context", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: context
+        });
+        Object.defineProperty(this, "spriteFactory", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: spriteFactory
+        });
+        Object.defineProperty(this, "spaceWidth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: spaceWidth
+        });
+        Object.defineProperty(this, "spaceHeight", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: spaceHeight
+        });
+        Object.defineProperty(this, "fpsMonitor", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new DefaultFpsMonitor()
+        });
+        Object.defineProperty(this, "ctx", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "renderStack", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new RenderStack()
+        });
+        Object.defineProperty(this, "spacialPartitioningOcclusion", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new SpatialPartitioning()
+        });
+        Object.defineProperty(this, "doRender", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: true
+        });
+        Object.defineProperty(this, "occlusionTree", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new Quadrant(new Vector(0, 0), new Vector(0, 0))
+        });
+        Object.defineProperty(this, "activeSprites", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: []
+        });
+        Object.defineProperty(this, "activeIds", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new Set()
+        });
+        Object.defineProperty(this, "stopwatch", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new Stopwatch()
+        });
+        Object.defineProperty(this, "requestAnimationFrameId", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: null
+        });
+        Object.defineProperty(this, "renderLoop", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: () => {
+                if (!this.doRender) {
+                    return;
+                }
+                this.renderFrame();
+            }
+        });
         this.ctx = this.getCanvasContext();
         // this.ctx.translate(0.5, 0.5)
         // this.sharpenCanvas()
@@ -76,12 +156,6 @@ export class CanvasRenderer {
         }
         this.renderLoop();
     }
-    renderLoop = () => {
-        if (!this.doRender) {
-            return;
-        }
-        this.renderFrame();
-    };
     renderFrame() {
         this.resetActiveSprites();
         const count = this.activeSprites.length;
@@ -180,3 +254,4 @@ export class CanvasRenderer {
         }
     }
 }
+//# sourceMappingURL=CanvasRenderer.js.map

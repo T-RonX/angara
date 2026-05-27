@@ -1,9 +1,14 @@
 export class Terrain {
-    level;
     constructor(level) {
-        this.level = level;
+        Object.defineProperty(this, "level", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: level
+        });
     }
     getLevel() {
         return this.level;
     }
 }
+//# sourceMappingURL=Terrain.js.map

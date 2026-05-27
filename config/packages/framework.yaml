@@ -13,3 +13,5 @@ when@test:
         test: true
         session:
             storage_factory_id: session.storage.factory.mock_file
+    controller_resolver:
+        auto_mapping: true

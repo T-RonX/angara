@@ -7,14 +7,11 @@ import { RenderContext } from '@/Renderer/Context/RenderContext';
 import { CanvasRenderer } from '@/Renderer/CanvasRenderer';
 import { ClearCanvasSprite } from '@/Renderer/Sprite/Generator/Default/ClearCanvasSprite';
 import { GridSprite } from '@/Game/Sprite/GridSprite';
-import { BlockSprite } from '@/Game/Sprite/BlockSprite';
 import { Viewport } from '@/Renderer/Viewport/Viewport';
 import { Camera } from '@/Game/Camera/Camera';
-import { OcclusionTreeSprite } from '@/Game/Sprite/OcclusionTreeSprite';
 import { SpriteType } from '@/Renderer/Sprite/SpriteType';
 import { StaticTextRenderer } from '@/Renderer/Sprite/Type/Text/StaticTextRenderer';
 import { StaticImageRenderer } from '@/Renderer/Sprite/Type/Image/StaticImageRenderer';
-import { CenterImageSprite } from '@/Game/Sprite/CenterImageSprite';
 import { Input } from '@/Game/Input/Input';
 import { CameraMouseEvents } from '@/Game/Camera/CameraMouseEvents';
 import { MapCellClick } from '@/Game/Events/MapCellClick';
@@ -25,22 +22,67 @@ import { AssetStore } from '@/Game/Assets/AssetStore';
 import { State } from '@/Game/State/State';
 import { CenterArrow } from '@/Game/Sprite/CenterArrow';
 export class Game {
-    canvas;
-    mapWidth;
-    mapHeight;
-    mapScale;
-    showFps;
-    renderer;
-    renderContext;
-    camera;
-    input;
-    gameState;
     constructor(canvas, mapWidth, mapHeight, mapScale, showFps) {
-        this.canvas = canvas;
-        this.mapWidth = mapWidth;
-        this.mapHeight = mapHeight;
-        this.mapScale = mapScale;
-        this.showFps = showFps;
+        Object.defineProperty(this, "canvas", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: canvas
+        });
+        Object.defineProperty(this, "mapWidth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: mapWidth
+        });
+        Object.defineProperty(this, "mapHeight", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: mapHeight
+        });
+        Object.defineProperty(this, "mapScale", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: mapScale
+        });
+        Object.defineProperty(this, "showFps", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: showFps
+        });
+        Object.defineProperty(this, "renderer", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "renderContext", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "camera", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "input", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "gameState", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         this.init();
     }
     getRenderer() {
@@ -156,3 +198,4 @@ export class Game {
         return Math.trunc(this.getRenderer().getFpsMonitor().getFps());
     }
 }
+//# sourceMappingURL=Game.js.map

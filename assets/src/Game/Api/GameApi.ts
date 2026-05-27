@@ -3,6 +3,6 @@ import type { InitData } from '@/Game/Api/Data/InitData'
 
 export class GameApi extends AbstractGameApi {
   public async getInitData(): Promise<InitData> {
-    return this.doGet('/test')
+    return this.doGet('/get-user-attributes')
   }
 }

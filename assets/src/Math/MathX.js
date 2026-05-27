@@ -1,4 +1,3 @@
-import { BoundingBox } from '@/Renderer/Positioning/BoundingBox';
 export class MathX {
     static clamp(value, min, max) {
         return value < min ? min : (value > max ? max : value);
@@ -29,3 +28,4 @@ export class MathX {
         return rect !== null && (rect.topLeftX <= x && x <= rect.lowerRightX) && (rect.topLeftY <= y && y <= rect.lowerRightY);
     }
 }
+//# sourceMappingURL=MathX.js.map

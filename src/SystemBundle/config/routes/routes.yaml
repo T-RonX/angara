@@ -1,0 +1,2 @@
+api.authentication.authenticate:
+    path: '/access/authenticate'
