@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\GameCoreBundle\World\SpatialEntity;
 
 use App\GameCoreBundle\World\SpatialEntity\Builder\CelestialBody\CelestialBodyBuilder;
-use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\CelestialBody;
 use Symfony\Component\DependencyInjection\Attribute\AutowireLocator;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 

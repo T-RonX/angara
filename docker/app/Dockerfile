@@ -1,4 +1,4 @@
-FROM php:8.4.16-fpm
+FROM php:8.5.6-fpm
 
 # System packages
 RUN apt-get update
@@ -14,7 +14,7 @@ RUN echo "alias php-debug='php -dxdebug.mode=debug -dxdebug.start_with_request=1
 RUN echo "export PHP_IDE_CONFIG=\"serverName=angara.dev\"" >> ~/.bashrc
 
 # Composer
-COPY --from=composer:2.9.2 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.9.8 /usr/bin/composer /usr/bin/composer
 
 # Symfony command
 COPY --link \
@@ -27,9 +27,6 @@ RUN sed -i 's/short_open_tag = On/short_open_tag = Off/g' /usr/local/etc/php/php
 
 # ext-pdo_mysql
 RUN docker-php-ext-install pdo_mysql
-
-# ext-opcache
-RUN docker-php-ext-enable opcache
 
 # ext-zip
 RUN apt-get install -y \

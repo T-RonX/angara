@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\GameCoreBundle\World\SpatialEntity\Builder\CelestialBody;
 
 use App\GameCoreBundle\World\Noise\NoiseGrid;
+use App\GameCoreBundle\World\SpatialEntity\CelestialBody;
 use App\GameCoreBundle\World\SpatialEntity\Coordinate;
-use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\CelestialBody;
 use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\TerrainMap\Biome;
 use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\TerrainMap\BiomeGrid;
 use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\TerrainMap\BorderGrid;

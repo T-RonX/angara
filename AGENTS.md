@@ -50,3 +50,12 @@ This is just your typical Symfony project.
 - For PHP always use Allman style (opening braces on new line)
 - For Typescript always use typical K&R style.
 - Do not run style checks or build for TypeScript after code changes.
+
+## Code style:
+
+#### Anonymous functions
+- Always use arrow functions, when possible and readable
+- Always add a return type
+- Always use `static` when the function can be
+- Always add a space between `fn` and `(`
+- The format should be `static fn (): ReturnType => ...`

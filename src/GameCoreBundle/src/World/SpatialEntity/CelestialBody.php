@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody;
+namespace App\GameCoreBundle\World\SpatialEntity;
 
-use App\GameCoreBundle\World\SpatialEntity\Coordinate;
 use App\GameCoreBundle\World\SpatialEntity\Entity\CelestialBody\TerrainMap\TerrainMap;
-use App\GameCoreBundle\World\SpatialEntity\SpatialEntity;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
 #[Exclude]
