@@ -35,6 +35,13 @@ This is just your typical Symfony project.
 `src/`: Contains the usual source code for a typical Symfony structure.  
 `templates/`: Contains the usual Twig templates for a typical Symfony structure.  
 
+## Architecture
+- Always use transactions for database operations at the highest level like controllers or commands or facades.
+- Use fixtures for seeding the database. New seeds should be added as new fixtures.
+
+## Fixtures and migrations
+- Always make sure the foreign keys are the first columns after the primary key or logical order. 
+
 ### Frontend:
 `assets/`: Root directory for the frontend project.
 `assets/src/Rendeder`: Contains a custom render engine based on Canvas 2D. It must remain game agnostic.
@@ -53,9 +60,22 @@ This is just your typical Symfony project.
 
 ## Code style:
 
+#### Classes
+- Avoid getters when possible and use the public private(set) or equivalent.
+
 #### Anonymous functions
 - Always use arrow functions, when possible and readable
 - Always add a return type
 - Always use `static` when the function can be
 - Always add a space between `fn` and `(`
-- The format should be `static fn (): ReturnType => ...`
+- The format should be `static fn (): ReturnType => ...`.
+
+#### Comments
+- Method names should not be commented, it should be self-explanatory.
+
+#### Blocks
+- Block statements must have a newline above and below (if not the first or last line in another block).
+
+#### Trailing comma
+- Always use trailing commas in multi-line arrays or method arguments when each element is on a separate line.
+
