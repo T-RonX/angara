@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\GameCoreBundle\Player\Entity;
 
 use App\GameCoreBundle\Player\Repository\PlayerRepository;
+use App\GameCoreBundle\World\Entity\CelestialBody;
 use App\SystemBundle\Doctrine\Uuid\Entity\EntityUuidInterface;
 use App\SystemBundle\Doctrine\Uuid\Entity\EntityUuidTrait;
 use App\SystemBundle\User\Entity\User;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
@@ -26,9 +29,18 @@ class Player implements EntityUuidInterface
     #[ORM\Column(length: 200)]
     private string $name;
 
-    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'user')]
+    #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
     private User $user;
+
+    /** @var Collection<int, CelestialBody> */
+    #[ORM\OneToMany(targetEntity: CelestialBody::class, mappedBy: 'owner')]
+    private Collection $celestialBodies;
+
+    public function __construct()
+    {
+        $this->celestialBodies = new ArrayCollection();
+    }
 
     public function getId(): ?int
     {
@@ -62,6 +74,35 @@ class Player implements EntityUuidInterface
     public function setUser(User $user): Player
     {
         $this->user = $user;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, CelestialBody>
+     */
+    public function getCelestialBodies(): Collection
+    {
+        return $this->celestialBodies;
+    }
+
+    public function addCelestialBody(CelestialBody $celestialBody): static
+    {
+        if (!$this->celestialBodies->contains($celestialBody))
+        {
+            $this->celestialBodies->add($celestialBody);
+            $celestialBody->setOwner($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCelestialBody(CelestialBody $celestialBody): static
+    {
+        if ($this->celestialBodies->removeElement($celestialBody) && $celestialBody->getOwner() === $this)
+        {
+            $celestialBody->setOwner(null);
+        }
 
         return $this;
     }

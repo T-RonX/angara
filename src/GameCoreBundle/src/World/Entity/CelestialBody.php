@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\GameCoreBundle\World\Entity;
 
+use App\GameCoreBundle\Player\Entity\Player;
 use App\GameCoreBundle\World\Repository\CelestialBodyRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -36,6 +37,11 @@ class CelestialBody
     #[ORM\ManyToOne(targetEntity: System::class, inversedBy: 'celestialBodies')]
     #[ORM\JoinColumn(name: 'system_id', referencedColumnName: 'id', nullable: false)]
     private System $system;
+
+    /** The player who owns this body, if any. A body is unowned until claimed. */
+    #[ORM\ManyToOne(targetEntity: Player::class, inversedBy: 'celestialBodies')]
+    #[ORM\JoinColumn(name: 'player_id', referencedColumnName: 'id', nullable: true)]
+    private ?Player $owner = null;
 
     #[ORM\Column]
     private int $x = 0;
@@ -79,6 +85,18 @@ class CelestialBody
     public function setSystem(System $system): static
     {
         $this->system = $system;
+
+        return $this;
+    }
+
+    public function getOwner(): ?Player
+    {
+        return $this->owner;
+    }
+
+    public function setOwner(?Player $owner): static
+    {
+        $this->owner = $owner;
 
         return $this;
     }

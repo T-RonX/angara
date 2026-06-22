@@ -6,33 +6,38 @@ namespace App\GameCoreBundle\Economy\Tick;
 
 use App\GameCoreBundle\Economy\Calculation\ComponentCostCalculator;
 use App\GameCoreBundle\Economy\Calculation\DistributionCalculator;
-use App\GameCoreBundle\Economy\Calculation\PhysicalLayerCalculator;
 use App\GameCoreBundle\Economy\Calculation\PressureCalculator;
-use App\GameCoreBundle\Economy\Calculation\ProductionLayerCalculator;
 use App\GameCoreBundle\Economy\Calculation\SystemSummaryCalculator;
-use App\GameCoreBundle\Economy\Contract\ResourceInterface;
 use App\GameCoreBundle\Economy\Material\Materials;
 use App\GameCoreBundle\Economy\Material\PricedMaterialInterface;
-use App\GameCoreBundle\Economy\Material\Type\RawMaterialType;
+use App\GameCoreBundle\Economy\Tick\Aggregation\MaterialPressure;
+use App\GameCoreBundle\Economy\Tick\Computation\ResourceTickComputer;
+use App\GameCoreBundle\Economy\Tick\Input\ResourceTickRow;
 use App\GameCoreBundle\Economy\Tick\Report\BodyResourceState;
 use App\GameCoreBundle\Economy\Tick\Report\FlowScope;
 use App\GameCoreBundle\Economy\Tick\Report\GlobalResourcePressure;
 use App\GameCoreBundle\Economy\Tick\Report\ResourceFlow;
 use App\GameCoreBundle\Economy\Tick\Report\SystemResourceSummary;
 use App\GameCoreBundle\Economy\Tick\Report\TickReport;
-use App\GameCoreBundle\World\Entity\World;
 
 /**
- * Runs the full GameFlow calculation over a world snapshot and produces a
- * {@see TickReport}. It performs no mutations: feeding a freshly seeded world to
- * this calculator reproduces the spreadsheet's numbers exactly.
+ * Runs the full GameFlow calculation as a single streaming fold over a
+ * system-ordered row stream, producing only the small, bounded aggregates
+ * (system summaries, global pressures, component costs, per-material pressure
+ * distribution) into the {@see TickReport}.
+ *
+ * The two large, per-resource outputs are pushed to caller-supplied sinks instead
+ * of being retained: each body state is emitted as it is computed, and each
+ * system's inter-object flows are emitted the moment that system's rows end. As a
+ * result the calculation's peak memory is O(systems x materials), independent of
+ * the number of celestial bodies. It performs no mutations: feeding a freshly
+ * seeded world to this aggregator reproduces the spreadsheet's numbers exactly.
  */
 final class TickCalculator
 {
     public function __construct(
+        private readonly ResourceTickComputer $computer,
         private readonly Materials $materials,
-        private readonly PhysicalLayerCalculator $physical,
-        private readonly ProductionLayerCalculator $production,
         private readonly SystemSummaryCalculator $systemSummary,
         private readonly DistributionCalculator $distribution,
         private readonly PressureCalculator $pressure,
@@ -40,87 +45,85 @@ final class TickCalculator
     ) {
     }
 
-    public function calculate(World $world, int $tick): TickReport
+    /**
+     * @param iterable<ResourceTickRow> $rows rows ordered by system, then body, then resource
+     * @param callable(BodyResourceState): void $bodyStateSink
+     * @param callable(ResourceFlow): void $flowSink
+     */
+    public function aggregate(TickReport $report, iterable $rows, callable $bodyStateSink, callable $flowSink): void
     {
-        $report = new TickReport($tick, $world->getIdentifier());
+        $supplyBySystem = [];
+        $demandBySystem = [];
+        $systemOrder = [];
+        $totalFreeByMaterial = [];
+        $totalStockByMaterial = [];
 
-        $this->calculatePhysicalAndProduction($world, $report);
-        $this->calculateSystemSummaries($world, $report);
-        $this->calculateComponentCosts($world, $report);
-        $this->calculateInterObjectFlows($world, $report);
-        $this->calculateInterSystemFlows($report);
-        $this->calculatePressure($report);
+        $currentSystem = null;
+        $imbalanceBuffer = [];
 
-        return $report;
-    }
-
-    private function calculatePhysicalAndProduction(World $world, TickReport $report): void
-    {
-        foreach ($world->getSystems() as $system)
+        foreach ($rows as $row)
         {
-            foreach ($system->getCelestialBodies() as $body)
+            $computed = $this->computer->compute($row);
+
+            if ($currentSystem !== $row->systemIdentifier)
             {
-                foreach ($body->getResources() as $resource)
+                if ($currentSystem !== null)
                 {
-                    $material = $resource->getMaterial();
-                    $rawType = $material instanceof ResourceInterface ? $material->getRawType() : RawMaterialType::Deposit;
-                    $decayRate = $material->getStorageDecayRate();
-
-                    // Layer 0 (physical)
-                    $physicalSupply = $this->physical->supply($resource->getExtractRate(), $resource->getRegenRate(), $resource->getReserves());
-                    $depletionRate = $this->physical->depletionRate($resource->getExtractRate(), $resource->getRegenRate());
-                    $ticksLeft = $this->physical->ticksLeft($rawType, $resource->getReserves(), $resource->getRegenRate(), $depletionRate);
-
-                    // Layer 1 (production)
-                    $decayedStock = $this->production->decayedStock($resource->getStock(), $decayRate);
-                    $supply = $this->production->supply($physicalSupply, $resource->getStorageCapacity(), $decayedStock);
-                    $demand = $resource->getDemand();
-                    $surplus = $this->production->surplus($supply, $demand);
-                    $deficit = $this->production->deficit($supply, $demand);
-                    $imbalance = $this->production->imbalance($supply, $demand);
-                    $ticksToFullOrEmpty = $this->production->ticksToFullOrEmpty($resource->getStorageCapacity(), $decayedStock, $supply, $demand);
-
-                    $report->addBodyState(new BodyResourceState(
-                        $system->getIdentifier(),
-                        $body->getIdentifier(),
-                        $resource->getMaterialIdentifier(),
-                        $physicalSupply,
-                        $depletionRate,
-                        $ticksLeft,
-                        $decayedStock,
-                        $supply,
-                        $demand,
-                        $surplus,
-                        $deficit,
-                        $imbalance,
-                        $ticksToFullOrEmpty,
-                    ));
+                    $this->flushInterObjectFlows($imbalanceBuffer, $flowSink);
+                    $imbalanceBuffer = [];
                 }
+
+                $currentSystem = $row->systemIdentifier;
+                $systemOrder[] = $currentSystem;
             }
+
+            $bodyStateSink(new BodyResourceState(
+                $row->systemIdentifier,
+                $row->bodyIdentifier,
+                $row->materialIdentifier,
+                $computed->physicalSupply,
+                $computed->depletionRate,
+                $computed->ticksLeft,
+                $computed->decayedStock,
+                $computed->supply,
+                $computed->demand,
+                $computed->surplus,
+                $computed->deficit,
+                $computed->imbalance,
+                $computed->ticksToFullOrEmpty,
+            ));
+
+            $material = $row->materialIdentifier;
+            $supplyBySystem[$currentSystem][$material] = ($supplyBySystem[$currentSystem][$material] ?? 0.0) + $computed->supply;
+            $demandBySystem[$currentSystem][$material] = ($demandBySystem[$currentSystem][$material] ?? 0.0) + $computed->demand;
+            $imbalanceBuffer[$material][$row->bodyIdentifier] = $computed->imbalance;
+            $totalFreeByMaterial[$material] = ($totalFreeByMaterial[$material] ?? 0.0) + $computed->free;
+            $totalStockByMaterial[$material] = ($totalStockByMaterial[$material] ?? 0.0) + $computed->baseStock;
         }
+
+        if ($currentSystem !== null)
+        {
+            $this->flushInterObjectFlows($imbalanceBuffer, $flowSink);
+        }
+
+        $this->buildSystemSummaries($systemOrder, $supplyBySystem, $demandBySystem, $report);
+        $this->buildComponentCosts($systemOrder, $report);
+        $this->buildInterSystemFlows($report, $flowSink);
+        $this->buildPressure($report, $totalFreeByMaterial, $totalStockByMaterial);
     }
 
-    private function calculateSystemSummaries(World $world, TickReport $report): void
+    /**
+     * @param string[] $systemOrder
+     * @param array<string, array<string, float>> $supplyBySystem
+     * @param array<string, array<string, float>> $demandBySystem
+     */
+    private function buildSystemSummaries(array $systemOrder, array $supplyBySystem, array $demandBySystem, TickReport $report): void
     {
-        foreach ($world->getSystems() as $system)
+        foreach ($systemOrder as $systemIdentifier)
         {
-            $supplyByMaterial = [];
-            $demandByMaterial = [];
-
-            foreach ($report->bodyStates as $state)
+            foreach ($supplyBySystem[$systemIdentifier] ?? [] as $materialIdentifier => $supply)
             {
-                if ($state->systemIdentifier !== $system->getIdentifier())
-                {
-                    continue;
-                }
-
-                $supplyByMaterial[$state->materialIdentifier] = ($supplyByMaterial[$state->materialIdentifier] ?? 0.0) + $state->supply;
-                $demandByMaterial[$state->materialIdentifier] = ($demandByMaterial[$state->materialIdentifier] ?? 0.0) + $state->demand;
-            }
-
-            foreach ($supplyByMaterial as $materialIdentifier => $supply)
-            {
-                $demand = $demandByMaterial[$materialIdentifier];
+                $demand = $demandBySystem[$systemIdentifier][$materialIdentifier];
                 $imbalance = $supply - $demand;
                 $material = $this->materials->get($materialIdentifier);
                 $basePrice = $material instanceof PricedMaterialInterface ? $material->getBasePrice() : 1.0;
@@ -134,7 +137,7 @@ final class TickCalculator
                 );
 
                 $report->addSystemSummary(new SystemResourceSummary(
-                    $system->getIdentifier(),
+                    $systemIdentifier,
                     $materialIdentifier,
                     $supply,
                     $demand,
@@ -146,22 +149,27 @@ final class TickCalculator
         }
     }
 
-    private function calculateComponentCosts(World $world, TickReport $report): void
+    /**
+     * @param string[] $systemOrder
+     */
+    private function buildComponentCosts(array $systemOrder, TickReport $report): void
     {
-        foreach ($world->getSystems() as $system)
+        // Single pass: index every system's local prices by material.
+        $localPricesBySystem = [];
+
+        foreach ($report->systemSummaries as $summary)
         {
-            $localPrices = [];
-            foreach ($report->systemSummaries as $summary)
-            {
-                if ($summary->systemIdentifier === $system->getIdentifier())
-                {
-                    $localPrices[$summary->materialIdentifier] = $summary->localPrice;
-                }
-            }
+            $localPricesBySystem[$summary->systemIdentifier][$summary->materialIdentifier] = $summary->localPrice;
+        }
+
+        foreach ($systemOrder as $systemIdentifier)
+        {
+            $localPrices = $localPricesBySystem[$systemIdentifier] ?? [];
 
             foreach ($this->materials->all as $material)
             {
                 $processes = $this->materials->processesByOutput[$material->getIdentifier()] ?? [];
+
                 if ($processes === [])
                 {
                     continue;
@@ -170,38 +178,15 @@ final class TickCalculator
                 // A material may be produced by more than one process; the first
                 // recipe is used as its representative production cost.
                 $cost = $this->componentCost->cost($processes[0], $localPrices);
-                $report->addComponentCost($system->getIdentifier(), $material->getIdentifier(), $cost);
+                $report->addComponentCost($systemIdentifier, $material->getIdentifier(), $cost);
             }
         }
     }
 
-    private function calculateInterObjectFlows(World $world, TickReport $report): void
-    {
-        foreach ($world->getSystems() as $system)
-        {
-            $imbalancesByMaterial = [];
-
-            foreach ($report->bodyStates as $state)
-            {
-                if ($state->systemIdentifier !== $system->getIdentifier())
-                {
-                    continue;
-                }
-
-                $imbalancesByMaterial[$state->materialIdentifier][$state->bodyIdentifier] = $state->imbalance;
-            }
-
-            foreach ($imbalancesByMaterial as $materialIdentifier => $imbalances)
-            {
-                foreach ($this->matchFlows($imbalances) as [$from, $to, $amount])
-                {
-                    $report->addFlow(new ResourceFlow(FlowScope::InterObject, $materialIdentifier, $from, $to, $amount));
-                }
-            }
-        }
-    }
-
-    private function calculateInterSystemFlows(TickReport $report): void
+    /**
+     * @param callable(ResourceFlow): void $flowSink
+     */
+    private function buildInterSystemFlows(TickReport $report, callable $flowSink): void
     {
         $imbalancesByMaterial = [];
 
@@ -214,12 +199,16 @@ final class TickCalculator
         {
             foreach ($this->matchFlows($imbalances) as [$from, $to, $amount])
             {
-                $report->addFlow(new ResourceFlow(FlowScope::InterSystem, $materialIdentifier, $from, $to, $amount));
+                $flowSink(new ResourceFlow(FlowScope::InterSystem, $materialIdentifier, $from, $to, $amount));
             }
         }
     }
 
-    private function calculatePressure(TickReport $report): void
+    /**
+     * @param array<string, float> $totalFreeByMaterial
+     * @param array<string, float> $totalStockByMaterial
+     */
+    private function buildPressure(TickReport $report, array $totalFreeByMaterial, array $totalStockByMaterial): void
     {
         $supplyByMaterial = [];
         $demandByMaterial = [];
@@ -238,8 +227,10 @@ final class TickCalculator
             $desiredScarcityIndex = $material instanceof PricedMaterialInterface ? $material->getDesiredScarcityIndex() : 0.0;
 
             $scarcityIndex = $this->pressure->scarcityIndex($totalImbalance, $totalDemand);
-            $pressure = $this->pressure->pressure($scarcityIndex, $desiredScarcityIndex);
-            $nudge = $this->pressure->nudge($pressure, $totalDemand);
+            $pressureValue = $this->pressure->pressure($scarcityIndex, $desiredScarcityIndex);
+            $nudge = $this->pressure->nudge($pressureValue, $totalDemand);
+            $introduce = $this->pressure->introduce($nudge);
+            $expire = $this->pressure->expire($nudge);
 
             $report->addPressure(new GlobalResourcePressure(
                 $materialIdentifier,
@@ -248,11 +239,33 @@ final class TickCalculator
                 $totalImbalance,
                 $scarcityIndex,
                 $desiredScarcityIndex,
-                $pressure,
+                $pressureValue,
                 $nudge,
-                $this->pressure->introduce($nudge),
-                $this->pressure->expire($nudge),
+                $introduce,
+                $expire,
             ));
+
+            $report->addPressureDistribution($materialIdentifier, new MaterialPressure(
+                $introduce,
+                $expire,
+                $totalFreeByMaterial[$materialIdentifier] ?? 0.0,
+                $totalStockByMaterial[$materialIdentifier] ?? 0.0,
+            ));
+        }
+    }
+
+    /**
+     * @param array<string, array<string, float>> $imbalanceBuffer material => (body => imbalance)
+     * @param callable(ResourceFlow): void $flowSink
+     */
+    private function flushInterObjectFlows(array $imbalanceBuffer, callable $flowSink): void
+    {
+        foreach ($imbalanceBuffer as $materialIdentifier => $imbalances)
+        {
+            foreach ($this->matchFlows($imbalances) as [$from, $to, $amount])
+            {
+                $flowSink(new ResourceFlow(FlowScope::InterObject, $materialIdentifier, $from, $to, $amount));
+            }
         }
     }
 
@@ -290,6 +303,7 @@ final class TickCalculator
                 }
 
                 $amount = $this->distribution->flow($available, -$needed);
+
                 if ($amount <= 0.0)
                 {
                     continue;
@@ -304,4 +318,3 @@ final class TickCalculator
         return $flows;
     }
 }
-

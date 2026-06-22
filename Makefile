@@ -39,3 +39,10 @@ database: ## Drop, recreate and initialise the database
 
 fixtures: ## Load Doctrine fixtures
 	 docker exec -t angara-app php /var/www/html/bin/console doctrine:fixtures:load --no-interaction
+
+test: ## Reset the dedicated test database schema and run the PHPUnit test suite
+	docker exec -t angara-app php /var/www/html/bin/console --env=test doctrine:database:create --if-not-exists --no-interaction
+	docker exec -t angara-app php /var/www/html/bin/console --env=test doctrine:schema:drop --force --full-database --no-interaction
+	docker exec -t angara-app php /var/www/html/bin/console --env=test doctrine:schema:create --no-interaction
+	docker exec -t angara-app php /var/www/html/vendor/bin/phpunit
+

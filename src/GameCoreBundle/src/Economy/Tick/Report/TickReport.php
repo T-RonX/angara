@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\GameCoreBundle\Economy\Tick\Report;
 
+use App\GameCoreBundle\Economy\Tick\Aggregation\MaterialPressure;
+
 /**
- * The full result of a single economy tick: every quantity the GameFlow model
- * produces, layer by layer. Intended for inspection / rendering, it carries no
- * behaviour of its own.
+ * The result of a single economy tick. The small, bounded aggregates (system
+ * summaries, global pressures, component costs and the per-material pressure
+ * distribution) are always populated and drive both the read-model write and the
+ * persistent evolution. The large per-body detail (body states, flows) is only
+ * collected when explicitly requested for rendering, so a production tick never
+ * holds an O(resources) graph in memory.
  */
 final class TickReport
 {
@@ -25,6 +30,9 @@ final class TickReport
 
     /** @var array<string, float> componentIdentifier => cost, indexed per system */
     public private(set) array $componentCosts = [];
+
+    /** @var array<string, MaterialPressure> materialIdentifier => pressure distribution */
+    public private(set) array $pressureDistribution = [];
 
     public function __construct(
         readonly public int $tick,
@@ -55,6 +63,11 @@ final class TickReport
     public function addComponentCost(string $systemIdentifier, string $componentIdentifier, float $cost): void
     {
         $this->componentCosts["$systemIdentifier:$componentIdentifier"] = $cost;
+    }
+
+    public function addPressureDistribution(string $materialIdentifier, MaterialPressure $pressure): void
+    {
+        $this->pressureDistribution[$materialIdentifier] = $pressure;
     }
 }
 

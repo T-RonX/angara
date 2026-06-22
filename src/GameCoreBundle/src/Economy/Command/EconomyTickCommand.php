@@ -33,7 +33,8 @@ final class EconomyTickCommand extends Command
     protected function configure(): void
     {
         $this->addArgument('world', InputArgument::OPTIONAL, 'World identifier to tick.', self::DEFAULT_WORLD_IDENTIFIER)
-            ->addOption('ticks', 't', InputOption::VALUE_REQUIRED, 'Number of ticks to run.', 1);
+            ->addOption('ticks', 't', InputOption::VALUE_REQUIRED, 'Number of ticks to run.', 1)
+            ->addOption('no-report', 'R', InputOption::VALUE_NONE, 'Skip rendering the per-tick report tables (recommended for large worlds / scheduled ticking).');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -41,13 +42,18 @@ final class EconomyTickCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $worldIdentifier = (string) $input->getArgument('world');
         $ticks = max(1, (int) $input->getOption('ticks'));
+        $renderReport = !$input->getOption('no-report');
 
         try
         {
             for ($i = 0; $i < $ticks; $i++)
             {
-                $report = $this->economyTicker->tick($worldIdentifier);
-                $this->reportRenderer->render($io, $report);
+                $report = $this->economyTicker->tick($worldIdentifier, $renderReport);
+
+                if ($renderReport)
+                {
+                    $this->reportRenderer->render($io, $report);
+                }
             }
         }
         catch (WorldNotFoundException $exception)

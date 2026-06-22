@@ -20,7 +20,13 @@
 
 - The project is supposed to become a single-page application (SPA), but served from the Symfony backend.
 - Doctrine migrations are not yet used. Changes can be made directly, just use `doctrine:schema:update --force`.
-- There are currently no tests of any kind, and that stay that way for now.
+- Tests are not pervasive. There is a functional test suite for the economy tick (see **Testing** below); keep it green and extend it when touching that area. Do not add tests elsewhere unless explicitly asked.
+
+---
+
+## Keeping this file updated
+
+- **Always update this AGENTS.md when you learn something relevant**: a new workflow, an environment gotcha, an architectural decision, a convention, or a command worth remembering. Treat it as the living source of truth for working in this repo so future sessions don't rediscover the same things.
 
 ---
 
@@ -57,6 +63,36 @@ This is just your typical Symfony project.
 - For PHP always use Allman style (opening braces on new line)
 - For Typescript always use typical K&R style.
 - Do not run style checks or build for TypeScript after code changes.
+
+---
+
+## Development workflow & environment
+
+- **Run everything through the app container**: `docker exec angara-app php /var/www/html/bin/console <cmd>`. The app root inside the container is `/var/www/html`. Omit `-t` when calling from automated/non-interactive contexts (schema warnings print to stderr and look red in PowerShell, but the commands still succeed).
+- **File sync gotcha (important):** the repo is bind-mounted (`.:/var/www/html`), but host↔container syncing is only reliable for **edits to existing files** and for files under subdirectories like `src/` and `config/`. **Newly created files at the repository root do NOT reliably sync host→container** (e.g. a freshly created `phpunit.dist.xml`). When a new root-level file must exist in the container, push it explicitly with `docker cp <hostfile> angara-app:/var/www/html/<file>`. Deletions of entity files also may not propagate — if a removed entity still shows up in `schema:update`, delete it in the container too.
+- **No migrations** (project rule): apply schema with `doctrine:schema:update --force`. For a clean rebuild of a database use `doctrine:schema:drop --force --full-database` then `doctrine:schema:create`.
+- **PowerShell SQL quoting:** prefer single-quoted SQL passed to `dbal:run-sql`, doubling inner single quotes for string literals, e.g. `dbal:run-sql 'SELECT ... WHERE m.identifier=''iron'''`. The MySQL reserved word table `system` must be backtick-quoted (`` `system` ``).
+- Seed/reset the dev database with `make fixtures` (or `make database` for a full reset). The world id changes on every fixtures reload, so re-query `SELECT id FROM world WHERE identifier='angara'` rather than hard-coding it.
+
+## Testing
+
+- Tooling: **PHPUnit** (root `phpunit.dist.xml`, bootstrap `tests/bootstrap.php`). Tests run in the `test` environment against a **dedicated `<dbname>_test` database** (configured via `dbname_suffix` in `config/packages/doctrine.yaml` under `when@test`), so they never touch dev data.
+- **Run the suite with `make test`.** It (re)creates the test DB schema from the current entity metadata (no migrations) and runs PHPUnit. Because the schema is rebuilt from metadata each run, entity changes are picked up automatically.
+- Tests live **per bundle** under `src/<Bundle>/tests/`, namespace `App\<Bundle>\Tests\` (registered in the root `composer.json` `autoload-dev`). The economy coverage is `src/GameCoreBundle/tests/Functional/Economy/EconomyTickTest.php`, with test-only fixtures under `src/GameCoreBundle/tests/Fixtures/`.
+- Functional tests boot the kernel (`KernelTestCase`) and load fixtures programmatically via Doctrine's `ORMExecutor`/`ORMPurger`. A test may build a large dataset cheaply with bulk DBAL inserts in a dedicated fixture (see `ScaleEconomyWorldFixture`) instead of hydrating thousands of entities.
+- When adding a test that needs a specific dataset, add a **dedicated fixture for that test** rather than reusing/altering the demo seed.
+- There is a `create-unit-test` skill under `.agents/skills/` for *unit* tests; follow it when asked for unit tests (it does not apply to functional tests).
+
+## Economy tick architecture (scalability)
+
+The economy advances in ticks (`app:economy:tick`, orchestrated by `EconomyTicker`). It is built to scale to hundreds of systems × hundreds of bodies, so keep these invariants when working on it:
+
+- **ORM-free and set-based.** The tick never hydrates the world graph. Input is read via `WorldEconomyReader.streamResourceRows()`, which streams **one system at a time** (each system is a small buffered query, freed before the next) to keep memory flat while preserving system-contiguous order.
+- **Streaming two-pass, no O(N) in memory.** Pass 1 (`TickCalculator.aggregate`) folds the row stream into small bounded aggregates and pushes per-body states/flows to writer sinks; pass 2 (`StateEvolver.streamChanges`) re-streams and writes back next-tick reserves/stock. The `TickReport` only retains the bounded aggregates; per-body detail is collected **only** when `EconomyTicker::tick($world, collectDetail: true)` (used for rendering small worlds, never at scale).
+- **Bounded current-state read model.** Per-tick results are written to `current_*` tables (one row per body/system/material, overwritten each tick) via bulk DBAL inside a single `connection->transactional()`. No append-only history.
+- Bodies can be owned by a player: `CelestialBody.owner` (`player_id`, nullable) ↔ `Player.celestialBodies`.
+
+---
 
 ## Code style:
 
