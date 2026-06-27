@@ -103,8 +103,8 @@
         // ----------------------------------------------------------------------
         const CONFIG = {
             planetRadius:   500,    // radius of the body
-            lonCells:       24 * 5,    // grid divisions around the equator (longitude)
-            latCells:       12 * 5,    // grid divisions from pole to pole (latitude)
+            lonCells:       24 * 6,    // grid divisions around the equator (longitude)
+            latCells:       12 * 6,    // grid divisions from pole to pole (latitude)
             maxDepth:        3,    // number of crust layers (max depth = 3)
             layerThickness:  5,    // thickness of each depth layer
             // Inner sphere (the "core") is shown beneath the deepest crust
@@ -245,15 +245,34 @@
             // Overall opacity multiplier applied on top of the scattering
             // result (1 = physical, lower = subtler).
             atmosphereOpacity:     1.0,
-            // Base tint for the atmosphere. Multiplies the scattered colour
-            // *after* integration, so you can hue-shift the whole shell
-            // (e.g. greenish exotic world, amber Mars-like) without having
-            // to re-tune the Rayleigh coefficients. [1,1,1] = neutral.
-            atmosphereBaseColor:   [1.0, 1.0, 1.0],
-            // Rayleigh scattering coefficients (per scene unit, per channel).
-            // The default ratio R:G:B ≈ 1 : 2.27 : 5.6 reproduces Earth's
-            // blue sky; bias toward red for thin/dusty atmospheres.
-            atmosphereRayleighCoeff: [0.075, 0.170, 0.420],
+            // Base colour of the atmosphere. This is the primary colour
+            // knob and it participates in the *physics*: it multiplies the
+            // Rayleigh scattering coefficient inside the shader, so it
+            // affects both how light is scattered TOWARD the camera and
+            // how it is attenuated along long sight-paths.
+            //
+            // The consequence is that you get the right "two-colour" look
+            // for free: a blue base colour means blue scatters most, which
+            // produces a blue day-side sky AND warm red/orange light at
+            // the terminator (because blue is preferentially scattered out
+            // of the grazing sight-paths near sunrise/sunset, leaving red
+            // to reach the eye). A red base colour reverses it — reddish
+            // sky with bluish twilight, à la Mars. A neutral [1,1,1] base
+            // colour produces a literally colourless grey atmosphere with
+            // no terminator reddening at all (no spectral physics left to
+            // produce it). The default below is Earth's R:G:B ≈ 1 : 2.27
+            // : 5.6 scattering ratio, normalised around its mean so the
+            // overall optical depth stays sensible.
+            atmosphereBaseColor:   [0.34, 0.77, 1.89],
+            // Rayleigh scattering coefficient magnitude (per scene unit).
+            // This is the overall *density* of the atmosphere — kept
+            // spectrally neutral here because the colour comes from
+            // `atmosphereBaseColor` (the shader uses `coeff * baseColor`
+            // for both scattering and attenuation, so the wavelength
+            // physics is still correct). Crank all three up for a denser
+            // / hazier atmosphere, drop them for a thinner one. The
+            // ~0.22 default matches Earth's overall optical depth.
+            atmosphereRayleighCoeff: [0.222, 0.222, 0.222],
             // Rayleigh / Mie scale heights — expressed as a FRACTION of the
             // atmosphere thickness so they stay sensible when `thickness`
             // changes. Earth Rayleigh ≈ 8/100 = 0.08; Mie ≈ 1.2/100 = 0.012.
@@ -1546,6 +1565,17 @@
                     // tests are centred at the origin.
                     r0 = r0 - uPlanetCenter;
 
+                    // The base colour multiplies the *physical* Rayleigh
+                    // coefficient — it isn't just a final tint. That keeps
+                    // the wavelength-dependent attenuation intact, which is
+                    // what produces the warm red/orange limb at the
+                    // terminator (long sight-paths scatter blue out, leaving
+                    // red to reach the eye — Earth's sunsets). A neutral
+                    // [1,1,1] base colour therefore produces a literally
+                    // colourless atmosphere with no terminator reddening,
+                    // exactly as expected for a grey scattering medium.
+                    vec3 rayleighEff = uRayleighCoeff * uBaseColor;
+
                     vec2 p = raySphere(r0, r, uAtmosRadius);
                     if (p.x > p.y) return vec3(0.0);
 
@@ -1599,24 +1629,27 @@
                         }
 
                         vec3 attn = exp(-(uMieCoeff * (iOdMie + jOdMie)
-                                       + uRayleighCoeff * (iOdRlh + jOdRlh)));
+                                       + rayleighEff * (iOdRlh + jOdRlh)));
 
                         totalRlh += odStepRlh * attn;
                         totalMie += odStepMie * attn;
                         iTime    += iStepSize;
                     }
 
-                    return uSunIntensity * (pRlh * uRayleighCoeff * totalRlh
-                                          + pMie * uMieCoeff      * totalMie);
+                    return uSunIntensity * (pRlh * rayleighEff * totalRlh
+                                          + pMie * uMieCoeff   * totalMie);
                 }
 
                 void main() {
                     vec3 viewDir = normalize(vWorldPos - cameraPosition);
                     vec3 col = atmosphere(viewDir, cameraPosition, normalize(uSunDir));
 
-                    // Tint with the configurable base colour before
-                    // tonemapping so the hue shift applies in linear space.
-                    col *= uBaseColor;
+                    // (The base-colour tint is already baked into the
+                    // scattering coefficients inside the atmosphere()
+                    // integration above, so it correctly affects both the
+                    // in-scattering AND the wavelength-dependent attenuation
+                    // that produces the red/orange terminator. No extra
+                    // post-tint here.)
 
                     // Soft tonemap so very bright fragments near the sun
                     // don't blow out to pure white.
