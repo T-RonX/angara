@@ -157,7 +157,10 @@
             // sun through screen centre. Disable for a clean shot.
             showLensFlare:    true,
             lensFlareOpacity: 0.25,    // global multiplier on the flare elements
-            ambientIntensity: 0.55,
+            // Hemispheric fill on the unlit side. Kept low so the night side
+            // reads as genuinely shadowed but stays just visible enough to
+            // make out the silhouette and surface grid.
+            ambientIntensity: 0.12,
             rimIntensity:  0.4,
             // Distance of the "sky" — sun visual + stars are anchored to the
             // camera at this radius so they appear to be at infinity (no
@@ -242,6 +245,11 @@
             // Overall opacity multiplier applied on top of the scattering
             // result (1 = physical, lower = subtler).
             atmosphereOpacity:     1.0,
+            // Base tint for the atmosphere. Multiplies the scattered colour
+            // *after* integration, so you can hue-shift the whole shell
+            // (e.g. greenish exotic world, amber Mars-like) without having
+            // to re-tune the Rayleigh coefficients. [1,1,1] = neutral.
+            atmosphereBaseColor:   [1.0, 1.0, 1.0],
             // Rayleigh scattering coefficients (per scene unit, per channel).
             // The default ratio R:G:B ≈ 1 : 2.27 : 5.6 reproduces Earth's
             // blue sky; bias toward red for thin/dusty atmospheres.
@@ -800,6 +808,11 @@
         // Current sun direction (cached; updated by `updateSun()`).
         const sunDir = new THREE.Vector3();
 
+        // Forward-declared so `updateSun()` (called during init, before the
+        // atmosphere block runs) can safely poke at it. The real object is
+        // assigned further down where the shader is built.
+        let atmosphereUniforms = null;
+
         function updateSun() {
             sunDir.copy(sunDirection(CONFIG.sunAzimuth, CONFIG.sunElevation));
 
@@ -808,6 +821,25 @@
             // skyDistance so dev tooling shows it at a sensible location.
             sun.position.copy(sunDir).multiplyScalar(CONFIG.skyDistance);
             sun.intensity = CONFIG.sunIntensity;
+
+            // Tie the rest of the lighting model to the sun's intensity so
+            // the slider behaves like an actual "how bright is this star"
+            // dial instead of only dimming the direct light:
+            //
+            //  * The atmosphere shader receives `atmosphereSunIntensity *
+            //    sunIntensity`, so the rim glow / sky brightness fades with
+            //    the star — otherwise the limb stays just as bright when the
+            //    surface goes dark, which reads as broken.
+            //  * Ambient + rim fill scale with sunIntensity too. They model
+            //    light that ultimately *comes from the sun* (planet shine,
+            //    bounce, sky fill). With a constant ambient, dimming the sun
+            //    makes the night side look relatively brighter than the
+            //    day side, which is the opposite of what should happen.
+            if (atmosphereUniforms)
+            {
+                atmosphereUniforms.uSunIntensity.value =
+                    CONFIG.atmosphereSunIntensity * CONFIG.sunIntensity;
+            }
 
             // Sun visuals live under `skyAnchor`. Their LOCAL position is the
             // direction × skyDistance — and because `skyAnchor.position` is
@@ -833,7 +865,8 @@
             chromaRing.material.opacity = CONFIG.chromaRingOpacity;
             sunStar.material.opacity    = CONFIG.sunStarOpacity;
 
-            ambient.intensity = CONFIG.ambientIntensity;
+            ambient.intensity = CONFIG.ambientIntensity * CONFIG.sunIntensity;
+            rim.intensity     = CONFIG.rimIntensity     * CONFIG.sunIntensity;
         }
         updateSun();
 
@@ -1435,12 +1468,13 @@
         const atmosphereRadius = CONFIG.planetRadius * (1 + CONFIG.atmosphereThickness);
         const atmosphereShellH = atmosphereRadius - CONFIG.planetRadius;
 
-        const atmosphereUniforms = {
+        atmosphereUniforms = {
             uPlanetRadius:   { value: CONFIG.planetRadius },
             uAtmosRadius:    { value: atmosphereRadius },
             uSunDir:         { value: new THREE.Vector3(1, 0, 0) },
             uSunIntensity:   { value: CONFIG.atmosphereSunIntensity },
             uOpacity:        { value: CONFIG.atmosphereOpacity },
+            uBaseColor:      { value: new THREE.Vector3(...CONFIG.atmosphereBaseColor) },
             uRayleighCoeff:  { value: new THREE.Vector3(...CONFIG.atmosphereRayleighCoeff) },
             // Scale heights are fractions of the shell thickness so the
             // density profile is sensible regardless of `atmosphereThickness`.
@@ -1454,9 +1488,13 @@
         const atmosphereMaterial = new THREE.ShaderMaterial({
             uniforms: atmosphereUniforms,
             transparent: true,
-            side: THREE.BackSide,
+            side: THREE.FrontSide,
             // Additive blending so the rim glow accumulates onto the sky /
-            // planet behind it rather than overwriting them.
+            // planet behind it rather than overwriting them. Front-side
+            // rendering means the shell also draws *over* the planet's disc
+            // (the shader stops the ray-march at the planet surface), so
+            // the atmospheric haze continuously stretches from the limb all
+            // the way down to the ground on the day side.
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             depthTest: true,
@@ -1483,6 +1521,7 @@
                 uniform vec3  uSunDir;
                 uniform float uSunIntensity;
                 uniform float uOpacity;
+                uniform vec3  uBaseColor;
                 uniform vec3  uRayleighCoeff;
                 uniform float uRayleighScale;
                 uniform float uMieCoeff;
@@ -1575,6 +1614,10 @@
                     vec3 viewDir = normalize(vWorldPos - cameraPosition);
                     vec3 col = atmosphere(viewDir, cameraPosition, normalize(uSunDir));
 
+                    // Tint with the configurable base colour before
+                    // tonemapping so the hue shift applies in linear space.
+                    col *= uBaseColor;
+
                     // Soft tonemap so very bright fragments near the sun
                     // don't blow out to pure white.
                     col = 1.0 - exp(-col);
@@ -1596,6 +1639,11 @@
         // Render after the planet so depth-test against the body works.
         atmosphereMesh.renderOrder = 1;
         bodyGroup.add(atmosphereMesh);
+
+        // Now that the atmosphere uniforms exist, refresh the sun bindings
+        // so `uSunIntensity` picks up the correct initial value (the first
+        // `updateSun()` call during init ran before this block existed).
+        updateSun();
 
         // ------------------------------------------------------------------
         // Body construction — ONE merged BufferGeometry per depth layer.
