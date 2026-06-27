@@ -44,6 +44,13 @@ This is just your typical Symfony project.
 ## Architecture
 - Always use transactions for database operations at the highest level like controllers or commands or facades.
 - Use fixtures for seeding the database. New seeds should be added as new fixtures.
+- In the inline Three.js body explorer (`templates/index/index.html.twig`), resource-mode focus longitude tracks cell centres, but the actual clip plane is intentionally shifted by half a longitude cell so slicing aligns to cell boundaries.
+- In that same inline Three.js renderer, hover/selection highlight materials should keep `depthTest: true` (with polygon offset) to avoid transparent triangle artifacts and missing overlay patches near clipped seams.
+- Resource-mode traversal orientation is configurable via `CONFIG.resourceTraverseAxis` (`'longitude' | 'latitude'` in `templates/index/index.html.twig`); drag/arrow mappings, camera alignment, and slice-plane updates all follow that axis.
+- Resource camera should look along the active traversal direction (not the clip-plane normal); in longitude traversal mode, use projected world-north as `camera.up` so poles appear vertically (above/below) instead of left/right.
+- Longitude slice orientation can be phase-shifted with `CONFIG.resourceSliceLonOffsetDeg` in `templates/index/index.html.twig` (e.g. `90` rotates the meridian cut by a quarter turn).
+- `CONFIG.resourceSliceLonOffsetDeg` rotates the longitude cut plane only; traversal direction and drag/arrow movement still follow `CONFIG.resourceTraverseAxis`.
+- In longitude traversal, camera anchoring should use the same phase-shifted longitude as the cut plane so slice motion stays aligned with movement.
 
 ## Fixtures and migrations
 - Always make sure the foreign keys are the first columns after the primary key or logical order. 
@@ -53,6 +60,8 @@ This is just your typical Symfony project.
 `assets/src/Rendeder`: Contains a custom render engine based on Canvas 2D. It must remain game agnostic.
 `assets/src/Game`: Contains the main game code where not directly part of Vue.
 `assets/src/components/Rendering/RenderViewport.vue`: Is the entry point of the application where the Game class is initialized along with some crucial parameters.
+`templates/index/index.html.twig`: Current runtime page for `/` (rendered by `IndexController`) with the inline Three.js planet/resource renderer.
+`templates/Game/game.html.twig`: Present but currently a stub; not used by the active game route.
 
 ---
 
@@ -78,6 +87,7 @@ This is just your typical Symfony project.
 
 - Tooling: **PHPUnit** (root `phpunit.dist.xml`, bootstrap `tests/bootstrap.php`). Tests run in the `test` environment against a **dedicated `<dbname>_test` database** (configured via `dbname_suffix` in `config/packages/doctrine.yaml` under `when@test`), so they never touch dev data.
 - **Run the suite with `make test`.** It (re)creates the test DB schema from the current entity metadata (no migrations) and runs PHPUnit. Because the schema is rebuilt from metadata each run, entity changes are picked up automatically.
+- On Windows PowerShell hosts where `make` is not installed, run PHPUnit directly in the app container: `docker exec angara-app php /var/www/html/bin/phpunit -c /var/www/html/phpunit.dist.xml`.
 - Tests live **per bundle** under `src/<Bundle>/tests/`, namespace `App\<Bundle>\Tests\` (registered in the root `composer.json` `autoload-dev`). The economy coverage is `src/GameCoreBundle/tests/Functional/Economy/EconomyTickTest.php`, with test-only fixtures under `src/GameCoreBundle/tests/Fixtures/`.
 - Functional tests boot the kernel (`KernelTestCase`) and load fixtures programmatically via Doctrine's `ORMExecutor`/`ORMPurger`. A test may build a large dataset cheaply with bulk DBAL inserts in a dedicated fixture (see `ScaleEconomyWorldFixture`) instead of hydrating thousands of entities.
 - When adding a test that needs a specific dataset, add a **dedicated fixture for that test** rather than reusing/altering the demo seed.

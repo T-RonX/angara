@@ -30,6 +30,7 @@
             <div class="hint">
                 <strong>Drag ↔</strong> moves N/S along the cliff<br>
                 <strong>Drag ↕</strong> spins the meridian (changes longitude)<br>
+                <strong>Drag ↕</strong> spins the meridian (changes longitude)<br>
                 <strong>Click</strong> a cell to glide to it &nbsp;·&nbsp; <strong>Wheel</strong> zooms
             </div>
         </div>
@@ -2318,11 +2319,24 @@
             for (const m of depthMaterials) { m.clippingPlanes = planes; m.needsUpdate = true; }
             core.material.clippingPlanes = planes; core.material.needsUpdate = true;
 
-            // In view mode the surface mesh (depth 0) hides the deeper layers,
-            // so skip submitting them to the GPU entirely. They come back when
-            // the clipping plane carves the body open in resource mode.
+            // Sub-surface depth layers stay HIDDEN in both modes:
+            //
+            //   - view mode: occluded by the surface layer, as always.
+            //   - resource mode: the cap-mesh cross-section at the clip plane
+            //     plus the surface (depth 0) layer together cover every
+            //     fragment a player can actually see, so the deeper shells
+            //     are never visible. If we left them enabled, Three.js's
+            //     shader-side clipping (`discard` in the fragment shader)
+            //     disables early-Z on every clipped material, forcing
+            //     ~1.3M sub-surface triangles to run their full Lambert
+            //     fragment shader before the depth test rejects them. That
+            //     hidden overdraw was the source of the latitude-dependent
+            //     frame-rate gradient (cell side-wall normals dot with the
+            //     world Y axis asymmetrically against the camera Y position,
+            //     so different numbers of back-faces survive culling and
+            //     reach the fragment + depth test pipeline at each pole).
             for (let d = 1; d < depthMeshes.length; d++) {
-                depthMeshes[d].visible = enabled;
+                depthMeshes[d].visible = false;
             }
         }
 
