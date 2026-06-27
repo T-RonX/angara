@@ -1,6 +1,1714 @@
 {% extends 'base.html.twig' %}
 
+{% block title %}Angara — Body Explorer{% endblock %}
+
+{# Skip the Vue SPA entirely: this view is a self-contained Three.js scene. #}
+{% block stylesheets %}{% endblock %}
+{% block javascripts %}{% endblock %}
+
 {% block body %}
-    <div id="app"></div>
+    <div id="scene-root"></div>
+
+    <div id="hud">
+        <h1>Body Explorer</h1>
+        <div class="row"><button id="modeBtn" disabled>Enter resource mode</button></div>
+        <div class="row" id="resourceControls" hidden>
+            <div class="hint">Drag up / down : move the longitudinal slice<br>Drag left / right : pan across latitude<br>Wheel : zoom</div>
+        </div>
+        <hr>
+        <div class="readout">
+            <div><span class="k">Mode</span><span class="v" id="rMode">view</span></div>
+            <div><span class="k">Selected</span><span class="v" id="rSelected">— pick a surface cell</span></div>
+            <div><span class="k">Hover lon</span><span class="v" id="rLon">—</span></div>
+            <div><span class="k">Hover lat</span><span class="v" id="rLat">—</span></div>
+            <div><span class="k">Hover depth</span><span class="v" id="rDepth">—</span></div>
+            <hr>
+            <div><span class="k">Focus</span><span class="v" id="rSlice">—</span></div>
+        </div>
+        <hr>
+        <div class="readout">
+            <div><span class="k">FPS</span><span class="v" id="rFps">—</span></div>
+            <div><span class="k">Frame</span><span class="v" id="rFrameMs">—</span></div>
+        </div>
+        <hr>
+        <div class="sliders">
+            <label>Sun azimuth <span class="v" id="rSunAz">—</span>
+                <input type="range" id="sunAz" min="0" max="360" step="1">
+            </label>
+            <label>Sun elevation <span class="v" id="rSunEl">—</span>
+                <input type="range" id="sunEl" min="-90" max="90" step="1">
+            </label>
+            <label>Sun intensity <span class="v" id="rSunInt">—</span>
+                <input type="range" id="sunInt" min="0" max="3" step="0.05">
+            </label>
+        </div>
+        <div class="hint">View mode: click + drag to orbit, scroll to zoom. Click a surface cell to select it, then enter resource mode.</div>
+    </div>
+
+    <style>
+        html, body { height: 100%; margin: 0; background: #05070d; overflow: hidden; }
+        #scene-root { position: fixed; inset: 0; }
+        #scene-root canvas { display: block; }
+
+        #hud {
+            position: fixed; top: 16px; left: 16px; z-index: 10;
+            width: 240px; padding: 14px 16px;
+            background: rgba(10, 16, 28, 0.82);
+            border: 1px solid rgba(120, 180, 255, 0.25);
+            border-radius: 10px;
+            color: #cfe3ff;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-size: 13px;
+            backdrop-filter: blur(6px);
+            user-select: none;
+        }
+        #hud h1 { font-size: 15px; margin: 0 0 10px; color: #9fc6ff; letter-spacing: .5px; }
+        #hud hr { border: none; border-top: 1px solid rgba(120,180,255,.18); margin: 10px 0; }
+        #hud .row { margin-bottom: 8px; }
+        #hud button {
+            width: 100%; padding: 8px 10px; cursor: pointer;
+            background: #1b2c4a; color: #dcebff;
+            border: 1px solid rgba(120,180,255,.35); border-radius: 6px;
+            font-size: 13px;
+        }
+        #hud button:hover { background: #244067; }
+        #hud button:disabled { opacity: .4; cursor: not-allowed; }
+        #hud .hint { color: #7f97bb; font-size: 11px; line-height: 1.5; margin-top: 6px; }
+        #hud .readout div { display: flex; justify-content: space-between; padding: 2px 0; }
+        #hud .readout .k { color: #7f97bb; }
+        #hud .readout .v { color: #eaf3ff; font-variant-numeric: tabular-nums; }
+        #hud .sliders label {
+            display: flex; flex-direction: column; gap: 4px;
+            margin-bottom: 8px; color: #7f97bb; font-size: 11px;
+        }
+        #hud .sliders label .v { color: #eaf3ff; float: right; }
+        #hud .sliders input[type=range] { width: 100%; accent-color: #4f8bff; }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ----------------------------------------------------------------------
+        // CONFIG — tweak these to change the appearance of the body & its grid.
+        // ----------------------------------------------------------------------
+        const CONFIG = {
+            planetRadius:   500,    // radius of the body
+            lonCells:       24 * 5,    // grid divisions around the equator (longitude)
+            latCells:       12 * 5,    // grid divisions from pole to pole (latitude)
+            maxDepth:        3,    // number of crust layers (max depth = 3)
+            layerThickness:  5,    // thickness of each depth layer
+            // Inner sphere (the "core") is shown beneath the deepest crust
+            // layer in resource mode. Pick a colour that clearly contrasts the
+            // crust layers so the core reads as a distinct object.
+            coreColor:    0xc9743a,
+            // one color per depth layer (index 0 = surface ... deeper). The
+            // deepest layer intentionally matches the *old* dark crust tone so
+            // it blends into the crust strata rather than into the core.
+            depthColors: [0x6f8b57, 0x8a6d3b, 0x2a2f3a],
+            // Sun / lighting (interactive; the HUD sliders write to these).
+            sunAzimuth:    35,         // degrees around Y (0 = +X, 90 = +Z)
+            sunElevation:  35,         // degrees above the equator (-90..90)
+            sunIntensity:  1.1,
+            sunColor:      0xffffff,
+            sunDistance:   8000,       // distance of the visible sun disc
+            sunSize:       500,        // radius of the visible sun disc
+            // Soft additive corona around the sun core; expressed as a multiple
+            // of `sunSize`. Lower = subtler bloom.
+            sunHaloScale:  3.0,
+            sunHaloOpacity: 0.55,
+            // Anamorphic horizontal streak through the sun (lens-flare style).
+            sunStreakScale:   2,      // multiplier on sunSize for streak width
+            sunStreakHeight:  0.6,    // streak height as a fraction of width
+            sunStreakOpacity: 0.25,
+            // Tints used when generating the procedural sun + flare textures.
+            // Stylised warm-white core fading through amber to a deep red rim.
+            sunCoreColor:  '255, 248, 220',     // r,g,b 0-255
+            sunWarmColor:  '255, 180,  90',
+            sunRimColor:   '255,  90,  35',
+            showSun:       true,
+            // Lens flare — a chain of subtle additive elements running from the
+            // sun through screen centre. Disable for a clean shot.
+            showLensFlare:    true,
+            lensFlareOpacity: 0.5,    // global multiplier on the flare elements
+            ambientIntensity: 0.55,
+            rimIntensity:  0.4,
+            // Distance of the "sky" — sun visual + stars are anchored to the
+            // camera at this radius so they appear to be at infinity (no
+            // parallax between them or against the body).
+            skyDistance:   80000,
+            // Star field
+            showStars:     true,
+            starCount:     2500,
+            // Stars draw at a per-star size in screen pixels. Most stars are
+            // small; a few "bright" ones are larger. The actual size is sampled
+            // with a power-law bias toward starSizeMin.
+            starSizeMin:   0.6,
+            starSizeMax:   3.5,
+            starSizeBias:  4,          // exponent; higher = more tiny stars
+            // Per-star colour is sampled from a Planckian (blackbody) curve in
+            // this temperature range (Kelvin). 3000K = warm orange/red,
+            // 6000K ≈ sun, 10000K+ = blue-white.
+            starTempMin:   3000,
+            starTempMax:   12000,
+            starTempBias:  2,          // exponent; higher = more cooler/redder stars
+            starBrightnessMin: 0.45,
+            starBrightnessMax: 1.0,
+            gridColor:    0x0a0e16,
+            background:   0x05070d,
+            cellGap:      0.0,     // gap between cells (fraction); 0 = touching
+            // Resource-mode camera framing. `crustTilt` is the angle (radians)
+            // above the meridian plane — higher values look down at the surface
+            // more, revealing terrain above the cut. `crustHeightBias` lifts the
+            // look-at target along the surface normal (as a fraction of the
+            // crust thickness) so the cliff sits lower on screen.
+            crustTilt:        0.40,
+            crustHeightBias:  0.2,
+            // Default resource-mode zoom as a multiple of the crust thickness
+            // (planetRadius - coreRadius). Clamped between crustZoomMin/Max.
+            crustZoom:        2.6,
+            crustZoomMin:     1.2,
+            crustZoomMax:     7.0,
+            // Drag-to-stroll sensitivity in resource mode.
+            //   1   = cursor 1:1 with the surface (one screen pixel of drag
+            //         moves the focus point one screen pixel).
+            //   0.5 = half speed, 2 = double speed, etc.
+            dragSensitivity:  1,
+            // Cells closer to a pole than this latitude (degrees) collapse into
+            // a single round "cap" cell per pole, per depth. Set to 90 to
+            // disable. Snapped to the nearest row of the latCells grid.
+            polarCapLat:      80,
+            // Fan resolution for the polar cap geometry. Defaults to lonCells
+            // so the boundary lines up with the surrounding cell columns.
+            polarCapFan:      null,
+        };
+
+        const coreRadius = CONFIG.planetRadius - CONFIG.maxDepth * CONFIG.layerThickness;
+
+        // --- Polar caps -------------------------------------------------------
+        // Cells very close to a pole degenerate into slivers as cos(lat) → 0.
+        // We replace the top/bottom `capRows` rows of the lat grid with one
+        // round cap cell per pole per depth, keeping the rest of the grid
+        // uniform.
+        const rowDegLat = 180 / CONFIG.latCells;
+        const capRows = CONFIG.polarCapLat >= 90
+            ? 0
+            : Math.min(
+                Math.floor(CONFIG.latCells / 2),
+                Math.ceil((90 - CONFIG.polarCapLat) / rowDegLat),
+            );
+        const capBoundaryLatN =  90 - capRows * rowDegLat;
+        const capBoundaryLatS = -90 + capRows * rowDegLat;
+        const capFan = CONFIG.polarCapFan ?? CONFIG.lonCells;
+
+        // ----------------------------------------------------------------------
+        // Scene / renderer / camera
+        // ----------------------------------------------------------------------
+        const root = document.getElementById('scene-root');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(CONFIG.background);
+
+        // Far plane is generous: needs to cover the camera + skyDistance with
+        // headroom so distant stars don't clip.
+        const camera = new THREE.PerspectiveCamera(50, 1, 1, 200000);
+        camera.position.set(0, CONFIG.planetRadius * 1.4, CONFIG.planetRadius * 2.6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.localClippingEnabled = true; // needed for resource-mode slicing
+        root.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = false; // always orbit around the body center
+        // Zoom clamps so the user can't dolly inside the body or out past the
+        // star sphere.
+        controls.minDistance = CONFIG.planetRadius * 1.15;
+        controls.maxDistance = CONFIG.planetRadius * 20;
+
+        // Hoisted here because sun/star init below already needs it. The rest
+        // of the geometry helpers are defined later but use the same alias.
+        const deg2rad = THREE.MathUtils.degToRad;
+
+        const ambient = new THREE.AmbientLight(0xffffff, CONFIG.ambientIntensity);
+        scene.add(ambient);
+        const sun = new THREE.DirectionalLight(CONFIG.sunColor, CONFIG.sunIntensity);
+        scene.add(sun);
+        const rim = new THREE.DirectionalLight(0x88aaff, CONFIG.rimIntensity);
+        rim.position.set(-1, -0.5, -1);
+        scene.add(rim);
+
+        // ----------------------------------------------------------------------
+        // Sun core, corona & lens flare
+        //
+        // Built from procedural canvas radial gradients with additive blending
+        // — cheap, no external textures, and the tints are driven from CONFIG.
+        // ----------------------------------------------------------------------
+        function radialGradientTexture(stops, size = 256) {
+            const c = document.createElement('canvas');
+            c.width = c.height = size;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+            for (const [pos, color] of stops) g.addColorStop(pos, color);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, size, size);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function additiveSprite(texture, opacity, depthTest) {
+            const mat = new THREE.SpriteMaterial({
+                map: texture,
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                depthTest,
+                depthWrite: false,
+                opacity,
+            });
+            return new THREE.Sprite(mat);
+        }
+
+        // ----------------------------------------------------------------------
+        // Sky anchor — a group that tracks the camera's position every frame
+        // so that anything parented to it (sun visual, stars) effectively sits
+        // at infinity. This prevents parallax between the sun, stars and the
+        // body as the camera orbits. The DirectionalLight stays in world
+        // space (its direction is what matters, not its position).
+        // ----------------------------------------------------------------------
+        const skyAnchor = new THREE.Group();
+        scene.add(skyAnchor);
+
+        // Sun core: hot white-yellow at centre fading to a warm rim. depthTest
+        // is on so the planet can eclipse the sun properly.
+        const sunCoreTex = radialGradientTexture([
+            [0.00, `rgba(${CONFIG.sunCoreColor}, 1.0)`],
+            [0.40, `rgba(${CONFIG.sunCoreColor}, 1.0)`],
+            [0.55, `rgba(${CONFIG.sunWarmColor}, 0.85)`],
+            [0.80, `rgba(${CONFIG.sunRimColor}, 0.18)`],
+            [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
+        ]);
+
+        // Outer corona: large, soft, mostly transparent. Tuned to be subtle —
+        // a gentle bloom, not a fireball.
+        const sunHaloTex = radialGradientTexture([
+            [0.00, `rgba(${CONFIG.sunCoreColor}, 0.40)`],
+            [0.15, `rgba(${CONFIG.sunWarmColor}, 0.18)`],
+            [0.40, `rgba(${CONFIG.sunRimColor}, 0.05)`],
+            [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
+        ]);
+
+        // Anamorphic horizontal streak through the sun — that signature lens
+        // smear you get from a bright point source through a wide lens.
+        function horizontalStreakTexture(stops, width = 1024, height = 128) {
+            const c = document.createElement('canvas');
+            c.width = width; c.height = height;
+            const ctx = c.getContext('2d');
+            // Horizontal gradient.
+            const lg = ctx.createLinearGradient(0, 0, width, 0);
+            for (const [pos, color] of stops) lg.addColorStop(pos, color);
+            ctx.fillStyle = lg;
+            ctx.fillRect(0, 0, width, height);
+            // Vertical falloff so it tapers to a thin line top/bottom.
+            ctx.globalCompositeOperation = 'destination-in';
+            const vg = ctx.createLinearGradient(0, 0, 0, height);
+            vg.addColorStop(0.00, 'rgba(0,0,0,0)');
+            vg.addColorStop(0.50, 'rgba(0,0,0,1)');
+            vg.addColorStop(1.00, 'rgba(0,0,0,0)');
+            ctx.fillStyle = vg;
+            ctx.fillRect(0, 0, width, height);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+        }
+
+        const sunStreakTex = horizontalStreakTexture([
+            [0.00, `rgba(${CONFIG.sunCoreColor}, 0.0)`],
+            [0.35, `rgba(${CONFIG.sunWarmColor}, 0.4)`],
+            [0.50, `rgba(${CONFIG.sunCoreColor}, 0.95)`],
+            [0.65, `rgba(${CONFIG.sunWarmColor}, 0.4)`],
+            [1.00, `rgba(${CONFIG.sunCoreColor}, 0.0)`],
+        ]);
+
+        const sunStreak = additiveSprite(sunStreakTex, CONFIG.sunStreakOpacity, true);
+        const sunCore = additiveSprite(sunCoreTex, 1.0, true);
+        const sunHalo = additiveSprite(sunHaloTex, CONFIG.sunHaloOpacity, true);
+
+        // Draw order: streak < halo < core, so the bright core sits on top.
+        sunStreak.renderOrder = -1;
+        sunHalo.renderOrder   = 0;
+        sunCore.renderOrder   = 1;
+        skyAnchor.add(sunStreak);
+        skyAnchor.add(sunHalo);
+        skyAnchor.add(sunCore);
+
+        // --- Lens flare chain --------------------------------------------------
+        // Each element is an additive sprite with its own gradient + size +
+        // alpha + offset along the sun→screen-centre line (in NDC). Placement
+        // is updated per frame from `updateLensFlare()` below.
+        //
+        // The colour palette mixes the sun's warm tints (ghosts near the sun)
+        // with cooler blue/cyan glints in the middle of the chain — that
+        // contrast is what gives a lens-flare its photographic feel.
+        const flareSpecs = [
+            // Soft warm ghost just off the sun.
+            { offset: 0.30, size: 0.22, alpha: 0.35, tex: radialGradientTexture([
+                [0.00, `rgba(${CONFIG.sunCoreColor}, 0.7)`],
+                [0.30, `rgba(${CONFIG.sunWarmColor}, 0.28)`],
+                [0.70, `rgba(${CONFIG.sunRimColor}, 0.05)`],
+                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
+            ]) },
+            // Bright amber pip.
+            { offset: 0.55, size: 0.055, alpha: 0.55, tex: radialGradientTexture([
+                [0.00, `rgba(${CONFIG.sunCoreColor}, 1.0)`],
+                [0.40, `rgba(${CONFIG.sunWarmColor}, 0.55)`],
+                [0.80, `rgba(${CONFIG.sunRimColor}, 0.1)`],
+                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
+            ]) },
+            // Medium teal ring (the cool counterpoint).
+            { offset: 0.80, size: 0.13, alpha: 0.35, tex: radialGradientTexture([
+                [0.00, 'rgba(180, 220, 255, 0.55)'],
+                [0.45, 'rgba(110, 170, 230, 0.20)'],
+                [0.85, 'rgba( 50,  90, 180, 0.04)'],
+                [1.00, 'rgba( 30,  60, 160, 0.0)'],
+            ]) },
+            // Cool blue ghost on the centre line.
+            { offset: 1.00, size: 0.20, alpha: 0.28, tex: radialGradientTexture([
+                [0.00, 'rgba(160, 200, 255, 0.6)'],
+                [0.50, 'rgba( 80, 140, 220, 0.15)'],
+                [1.00, 'rgba( 30,  60, 160, 0.0)'],
+            ]) },
+            // Tiny cyan glint just past centre.
+            { offset: 1.20, size: 0.045, alpha: 0.55, tex: radialGradientTexture([
+                [0.00, 'rgba(220, 245, 255, 1.0)'],
+                [0.50, 'rgba(140, 210, 255, 0.25)'],
+                [1.00, 'rgba( 60, 130, 200, 0.0)'],
+            ]) },
+            // Faint warm ghost far past centre.
+            { offset: 1.55, size: 0.16, alpha: 0.18, tex: radialGradientTexture([
+                [0.00, `rgba(${CONFIG.sunWarmColor}, 0.55)`],
+                [0.50, `rgba(${CONFIG.sunRimColor}, 0.12)`],
+                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
+            ]) },
+        ];
+
+        const flareElements = flareSpecs.map((spec) => {
+            const sprite = additiveSprite(spec.tex, spec.alpha, /* depthTest */ false);
+            sprite.renderOrder = 999;          // draw over everything
+            sprite.frustumCulled = false;      // we manage visibility ourselves
+            sprite.visible = false;
+            scene.add(sprite);
+
+            return { ...spec, sprite };
+        });
+
+        // Helper: convert azimuth/elevation (degrees) into a unit direction
+        // vector pointing FROM the planet TO the light source.
+        function sunDirection(azDeg, elDeg) {
+            const az = deg2rad(azDeg), el = deg2rad(elDeg);
+            const ce = Math.cos(el);
+            return new THREE.Vector3(ce * Math.cos(az), Math.sin(el), ce * Math.sin(az));
+        }
+
+        // Current sun direction (cached; updated by `updateSun()`).
+        const sunDir = new THREE.Vector3();
+
+        function updateSun() {
+            sunDir.copy(sunDirection(CONFIG.sunAzimuth, CONFIG.sunElevation));
+
+            // DirectionalLight: position relative to target (origin) defines
+            // the light direction. Magnitude doesn't matter — but we still use
+            // skyDistance so dev tooling shows it at a sensible location.
+            sun.position.copy(sunDir).multiplyScalar(CONFIG.skyDistance);
+            sun.intensity = CONFIG.sunIntensity;
+
+            // Sun visuals live under `skyAnchor`. Their LOCAL position is the
+            // direction × skyDistance — and because `skyAnchor.position` is
+            // synced to the camera every frame, that places them at infinity
+            // (no parallax against the body or against the stars).
+            const skyPos = sunDir.clone().multiplyScalar(CONFIG.skyDistance);
+            sunCore.position.copy(skyPos);
+            sunHalo.position.copy(skyPos);
+            sunStreak.position.copy(skyPos);
+
+            const coreScale  = CONFIG.sunSize * 2;
+            const streakW    = coreScale * CONFIG.sunStreakScale;
+            const streakH    = streakW * CONFIG.sunStreakHeight;
+            sunCore.scale.setScalar(coreScale);
+            sunHalo.scale.setScalar(coreScale * CONFIG.sunHaloScale);
+            sunStreak.scale.set(streakW, streakH, 1);
+
+            sunCore.visible   = CONFIG.showSun;
+            sunHalo.visible   = CONFIG.showSun;
+            sunStreak.visible = CONFIG.showSun;
+            sunHalo.material.opacity   = CONFIG.sunHaloOpacity;
+            sunStreak.material.opacity = CONFIG.sunStreakOpacity;
+
+            ambient.intensity = CONFIG.ambientIntensity;
+        }
+        updateSun();
+
+        // --- Per-frame flare placement / occlusion ----------------------------
+        // Place each flare element at NDC = sunNDC * (1 - offset) so they
+        // chain through screen centre, then unproject to a constant-depth
+        // world point in front of the camera. Hidden when the sun is behind
+        // the camera, off-screen, or occluded by the body.
+        const flareSunNdc      = new THREE.Vector3();
+        const flareTmpPos      = new THREE.Vector3();
+        const flareRaycaster   = new THREE.Raycaster();
+        const flareDirToSun    = new THREE.Vector3();
+        const flareSunCamSpace = new THREE.Vector3();
+
+        function updateLensFlare() {
+            if (!CONFIG.showLensFlare || !CONFIG.showSun) {
+                for (const f of flareElements) f.sprite.visible = false;
+                return;
+            }
+
+            // Make sure camera matrices reflect any movement from this frame
+            // (OrbitControls only sets the camera's local transform; matrixWorld
+            // is normally updated lazily by the renderer).
+            camera.updateMatrixWorld();
+
+            // The visible sun is anchored under `skyAnchor` (which tracks the
+            // camera), so compute its world position directly from the cached
+            // sun direction and the current camera position.
+            const sunWorldPos = flareTmpPos.copy(sunDir)
+                .multiplyScalar(CONFIG.skyDistance)
+                .add(camera.position);
+
+            // Is the sun in front of the camera?
+            flareSunCamSpace.copy(sunWorldPos).applyMatrix4(camera.matrixWorldInverse);
+            const inFront = flareSunCamSpace.z < 0;
+
+            // Project sun to NDC.
+            flareSunNdc.copy(sunWorldPos).project(camera);
+            const onScreen = inFront
+                && Math.abs(flareSunNdc.x) <= 1.2
+                && Math.abs(flareSunNdc.y) <= 1.2;
+
+            // Occlusion: is the body between the camera and the sun? Ray-cast
+            // along the apparent sun direction.
+            let occluded = false;
+
+            if (inFront) {
+                flareDirToSun.subVectors(sunWorldPos, camera.position).normalize();
+                flareRaycaster.set(camera.position, flareDirToSun);
+                const hit = flareRaycaster.intersectObjects(depthMeshes, false)[0];
+                // Anything we hit on the body is closer than the (effectively
+                // infinite) sun, so a hit means the sun is occluded.
+                if (hit) occluded = true;
+            }
+
+            if (!inFront || occluded) {
+                for (const f of flareElements) f.sprite.visible = false;
+                return;
+            }
+
+            // Fade as the sun approaches the edge of the viewport.
+            const edgeDist = Math.max(Math.abs(flareSunNdc.x), Math.abs(flareSunNdc.y));
+            const edgeFade = THREE.MathUtils.clamp(1 - (edgeDist - 0.7) / 0.5, 0, 1);
+            const globalAlpha = CONFIG.lensFlareOpacity * edgeFade;
+
+            // Viewport height in world units at the "overlay" depth — used to
+            // scale each flare so its `size` is a fraction of screen height.
+            const overlayDepthNdc = 0.92; // close to near plane, drawn first
+            flareTmpPos.set(0, 0, overlayDepthNdc).unproject(camera);
+            const overlayDist = camera.position.distanceTo(flareTmpPos);
+            const screenWorldHeight = 2 * overlayDist * Math.tan(deg2rad(camera.fov) / 2);
+
+            for (const f of flareElements) {
+                const ndcX = flareSunNdc.x * (1 - f.offset);
+                const ndcY = flareSunNdc.y * (1 - f.offset);
+                flareTmpPos.set(ndcX, ndcY, overlayDepthNdc).unproject(camera);
+                f.sprite.position.copy(flareTmpPos);
+                f.sprite.scale.setScalar(f.size * screenWorldHeight);
+                f.sprite.material.opacity = f.alpha * globalAlpha;
+                f.sprite.visible = onScreen && globalAlpha > 0.01;
+            }
+        }
+
+        // Star field — a single Points object on a far sphere, rendered with a
+        // tiny custom shader so each star can carry its own size and colour.
+        //   * Colour is sampled from a Planckian (blackbody) curve to mimic
+        //     the real stellar colour distribution: most stars look white /
+        //     blue-white with a sprinkling of yellow, orange and red.
+        //   * Size is power-law distributed: lots of small dots and a handful
+        //     of bright giants.
+        //   * Each star also has a brightness multiplier so they don't all
+        //     pop at the same intensity.
+        //
+        // Tanner Helland's approximation gives a usable RGB for a colour
+        // temperature in K. Good enough for a backdrop.
+        function blackbodyRgb(kelvin) {
+            const t = kelvin / 100;
+            let r, g, b;
+
+            if (t <= 66) {
+                r = 255;
+                g = 99.4708025861 * Math.log(t) - 161.1195681661;
+            } else {
+                r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
+                g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+            }
+
+            if (t >= 66) {
+                b = 255;
+            } else if (t <= 19) {
+                b = 0;
+            } else {
+                b = 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+            }
+
+            const clamp01 = (v) => Math.max(0, Math.min(255, v)) / 255;
+
+            return [clamp01(r), clamp01(g), clamp01(b)];
+        }
+
+        function buildStars() {
+            const n = CONFIG.starCount;
+            const positions = new Float32Array(n * 3);
+            const colors    = new Float32Array(n * 3);
+            const sizes     = new Float32Array(n);
+
+            const tempRange = CONFIG.starTempMax - CONFIG.starTempMin;
+            const sizeRange = CONFIG.starSizeMax - CONFIG.starSizeMin;
+            const brightRange = CONFIG.starBrightnessMax - CONFIG.starBrightnessMin;
+            const dpr = window.devicePixelRatio || 1;
+
+            for (let i = 0; i < n; i++) {
+                // Uniform direction on a sphere (z/φ method).
+                const u = Math.random() * 2 - 1;
+                const phi = Math.random() * Math.PI * 2;
+                const s = Math.sqrt(1 - u * u);
+                positions[i * 3]     = CONFIG.skyDistance * s * Math.cos(phi);
+                positions[i * 3 + 1] = CONFIG.skyDistance * u;
+                positions[i * 3 + 2] = CONFIG.skyDistance * s * Math.sin(phi);
+
+                // Temperature with a bias toward the cool end of the range —
+                // matches real spectral type distributions where M/K dwarfs
+                // dominate. Inverted power so 0 → cool, 1 → hot.
+                const tBias = 1 - Math.pow(Math.random(), 1 / CONFIG.starTempBias);
+                const kelvin = CONFIG.starTempMin + tempRange * tBias;
+                const [r, g, b] = blackbodyRgb(kelvin);
+
+                // Brightness multiplier (uniform within the configured range).
+                const brightness = CONFIG.starBrightnessMin + Math.random() * brightRange;
+                colors[i * 3]     = r * brightness;
+                colors[i * 3 + 1] = g * brightness;
+                colors[i * 3 + 2] = b * brightness;
+
+                // Size: heavy bias toward starSizeMin via a power-law roll, so
+                // a small number of stars are notably bigger than the rest.
+                // Multiply by DPR so the visual size is consistent on high-DPI
+                // displays (gl_PointSize is in framebuffer pixels).
+                const sizeRoll = Math.pow(Math.random(), CONFIG.starSizeBias);
+                sizes[i] = (CONFIG.starSizeMin + sizeRange * sizeRoll) * dpr;
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geo.setAttribute('aColor',   new THREE.BufferAttribute(colors, 3));
+            geo.setAttribute('aSize',    new THREE.BufferAttribute(sizes, 1));
+
+            const mat = new THREE.ShaderMaterial({
+                transparent: true,
+                depthWrite: false,
+                vertexShader: `
+                    attribute vec3 aColor;
+                    attribute float aSize;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = aColor;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = aSize;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        // Soft circular sprite — bright core, feathered edge.
+                        vec2 c = gl_PointCoord - 0.5;
+                        float d = length(c) * 2.0;
+                        if (d > 1.0) discard;
+                        float a = smoothstep(1.0, 0.15, d);
+                        gl_FragColor = vec4(vColor, a);
+                    }
+                `,
+            });
+
+            return new THREE.Points(geo, mat);
+        }
+        const stars = buildStars();
+        stars.visible = CONFIG.showStars;
+        skyAnchor.add(stars);
+
+        // ----------------------------------------------------------------------
+        // Geometry helpers
+        // ----------------------------------------------------------------------
+        // `deg2rad` is hoisted above the lights block (it's needed by updateSun).
+
+        function sphere(lonDeg, latDeg, r) {
+            const lon = deg2rad(lonDeg);
+            const lat = deg2rad(latDeg);
+            const cl = Math.cos(lat);
+            return new THREE.Vector3(
+                r * cl * Math.cos(lon),
+                r * Math.sin(lat),
+                r * cl * Math.sin(lon),
+            );
+        }
+
+        // Triangulation of the 6 faces of a quad (hexahedron) cell, indexed
+        // into the 8 corners [A,B,C,D outer, E,F,G,H inner]. Wound so normals
+        // face OUTWARD (FrontSide culling keeps the visible faces).
+        const FACE_TRIS = [
+            [0, 2, 1, 0, 3, 2], // 0: outer
+            [4, 5, 6, 4, 6, 7], // 1: inner
+            [0, 5, 4, 0, 1, 5], // 2: lat0 side
+            [1, 6, 5, 1, 2, 6], // 3: lon1 side
+            [2, 7, 6, 2, 3, 7], // 4: lat1 side
+            [3, 4, 7, 3, 0, 4], // 5: lon0 side
+        ];
+
+        // the 12 edges of a quad cell hexahedron (corner index pairs)
+        const CELL_EDGES = [
+            [0, 1], [1, 2], [2, 3], [3, 0], // outer ring
+            [4, 5], [5, 6], [6, 7], [7, 4], // inner ring
+            [0, 4], [1, 5], [2, 6], [3, 7], // verticals
+        ];
+
+        // -------------------------------------------------------------------
+        // Per-cell geometry generation.
+        //
+        // Each generator pushes raw vertex/normal/index data into the supplied
+        // arrays so the same code can build either a standalone single-cell
+        // geometry (for the hover overlay) or contribute to a merged
+        // depth-layer mesh. Vertices are duplicated per face so each face
+        // can carry its own normals — radial for outer/inner faces (gives
+        // smooth shading across cell boundaries), flat for side faces.
+        // -------------------------------------------------------------------
+        function appendQuadCell(cell, positions, normals, indices) {
+            const corners = cell.corners;
+            const vertBase = positions.length / 3;
+
+            for (let f = 0; f < 6; f++) {
+                const tris = FACE_TRIS[f];
+
+                // Flat face normal for side/inner faces.
+                const a = corners[tris[0]], b = corners[tris[1]], c = corners[tris[2]];
+                const e1x = b.x - a.x, e1y = b.y - a.y, e1z = b.z - a.z;
+                const e2x = c.x - a.x, e2y = c.y - a.y, e2z = c.z - a.z;
+                let nx = e1y * e2z - e1z * e2y;
+                let ny = e1z * e2x - e1x * e2z;
+                let nz = e1x * e2y - e1y * e2x;
+                const nl = Math.hypot(nx, ny, nz) || 1;
+                nx /= nl; ny /= nl; nz /= nl;
+
+                for (let t = 0; t < 6; t++) {
+                    const p = corners[tris[t]];
+                    positions.push(p.x, p.y, p.z);
+
+                    if (f === 0) {
+                        // Outer face: radial outward — shared across neighbours.
+                        const len = Math.hypot(p.x, p.y, p.z) || 1;
+                        normals.push(p.x / len, p.y / len, p.z / len);
+                    } else if (f === 1) {
+                        // Inner face: radial inward.
+                        const len = Math.hypot(p.x, p.y, p.z) || 1;
+                        normals.push(-p.x / len, -p.y / len, -p.z / len);
+                    } else {
+                        normals.push(nx, ny, nz);
+                    }
+
+                    indices.push(vertBase + f * 6 + t);
+                }
+            }
+        }
+
+        function appendCapCell(cell, positions, normals, indices) {
+            const { boundaryLat, rOuter, rInner, sign, fan } = cell;
+            // Pre-sample the boundary rings at both radii.
+            const ringOuter = new Array(fan);
+            const ringInner = new Array(fan);
+
+            for (let k = 0; k < fan; k++) {
+                const lon = (k / fan) * 360;
+                ringOuter[k] = sphere(lon, boundaryLat, rOuter);
+                ringInner[k] = sphere(lon, boundaryLat, rInner);
+            }
+
+            const pole = new THREE.Vector3(0, sign * rOuter, 0);
+            const poleInner = new THREE.Vector3(0, sign * rInner, 0);
+
+            // Outer fan: pole → ring. Winding so the outward face is the lit one.
+            for (let k = 0; k < fan; k++) {
+                const k2 = (k + 1) % fan;
+                const a = pole;
+                const b = sign > 0 ? ringOuter[k2] : ringOuter[k];
+                const c = sign > 0 ? ringOuter[k]  : ringOuter[k2];
+                const base = positions.length / 3;
+                // Radial outward normals (dir = +1). The pole's outward radial
+                // is just position/|position|, which already equals (0, sign, 0)
+                // — passing `sign` instead of `+1` was the south-pole bug.
+                pushRadial(positions, normals, a, 1);
+                pushRadial(positions, normals, b, 1);
+                pushRadial(positions, normals, c, 1);
+                indices.push(base, base + 1, base + 2);
+            }
+
+            // Inner fan: same but inward normals (dir = -1), reversed winding.
+            for (let k = 0; k < fan; k++) {
+                const k2 = (k + 1) % fan;
+                const a = poleInner;
+                const b = sign > 0 ? ringInner[k]  : ringInner[k2];
+                const c = sign > 0 ? ringInner[k2] : ringInner[k];
+                const base = positions.length / 3;
+                pushRadial(positions, normals, a, -1);
+                pushRadial(positions, normals, b, -1);
+                pushRadial(positions, normals, c, -1);
+                indices.push(base, base + 1, base + 2);
+            }
+
+            // Boundary cone wall: quad strip between outer and inner rings, flat
+            // outward normals per segment.
+            for (let k = 0; k < fan; k++) {
+                const k2 = (k + 1) % fan;
+                const a = ringOuter[k];
+                const b = ringOuter[k2];
+                const c = ringInner[k2];
+                const d = ringInner[k];
+
+                // Outward direction at the segment midpoint (away from the
+                // rotation axis).
+                const mx = (a.x + b.x + c.x + d.x) / 4;
+                const mz = (a.z + b.z + c.z + d.z) / 4;
+                const ml = Math.hypot(mx, mz) || 1;
+                const outX = mx / ml, outZ = mz / ml;
+
+                // Compute the face normal from a candidate winding and flip if
+                // it points the wrong way.
+                let e1x = b.x - a.x, e1y = b.y - a.y, e1z = b.z - a.z;
+                let e2x = d.x - a.x, e2y = d.y - a.y, e2z = d.z - a.z;
+                let nx = e1y * e2z - e1z * e2y;
+                let ny = e1z * e2x - e1x * e2z;
+                let nz = e1x * e2y - e1y * e2x;
+                const nl = Math.hypot(nx, ny, nz) || 1;
+                nx /= nl; ny /= nl; nz /= nl;
+                const flip = (nx * outX + nz * outZ) < 0;
+
+                if (flip) { nx = -nx; ny = -ny; nz = -nz; }
+
+                const winding = flip ? [a, c, b, a, d, c] : [a, b, c, a, c, d];
+                const base = positions.length / 3;
+
+                for (const p of winding) {
+                    positions.push(p.x, p.y, p.z);
+                    normals.push(nx, ny, nz);
+                }
+
+                indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
+            }
+        }
+
+        // Push a vertex with a radial normal scaled by `dir` (+1 outward, -1 inward).
+        function pushRadial(positions, normals, p, dir) {
+            positions.push(p.x, p.y, p.z);
+            const len = Math.hypot(p.x, p.y, p.z) || 1;
+            normals.push(dir * p.x / len, dir * p.y / len, dir * p.z / len);
+        }
+
+        function appendCellToBuffers(cell, positions, normals, indices) {
+            const triStart = indices.length / 3;
+
+            if (cell.kind === 'cap') {
+                appendCapCell(cell, positions, normals, indices);
+            } else {
+                appendQuadCell(cell, positions, normals, indices);
+            }
+
+            cell.triCount = indices.length / 3 - triStart;
+        }
+
+        // Build a standalone BufferGeometry for ONE cell (used by the hover/
+        // selection overlay). Not used for the main rendered body.
+        function buildSingleCellGeometry(cell) {
+            const positions = [], normals = [], indices = [];
+            appendCellToBuffers(cell, positions, normals, indices);
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geo.setIndex(indices);
+            geo.computeBoundingSphere();
+            return geo;
+        }
+
+        // ----------------------------------------------------------------------
+        // Clipping plane (used only in resource mode)
+        // ----------------------------------------------------------------------
+        const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+
+        // ----------------------------------------------------------------------
+        // Build the body
+        // ----------------------------------------------------------------------
+        const bodyGroup = new THREE.Group();
+        scene.add(bodyGroup);
+
+        // shared materials (one per depth) -> cheap clipping toggle
+        const depthMaterials = CONFIG.depthColors.map((c, d) => new THREE.MeshStandardMaterial({
+            color: c,
+            roughness: 0.95,
+            metalness: 0.0,
+            // single-sided: coincident walls of touching cells have opposite
+            // normals, so back-face culling leaves only one -> no z-fighting.
+            side: THREE.FrontSide,
+            // deeper layers are slightly emissive so the cross-section reads well
+            emissive: new THREE.Color(c).multiplyScalar(0.06 * d),
+        }));
+
+        // core — sized a touch larger than the deepest cell's inner radius so its
+        // surface OCCLUDES those inner faces instead of sitting exactly on them
+        // (a coincident shell there causes z-fighting that culling can't resolve).
+        const core = new THREE.Mesh(
+            new THREE.SphereGeometry(coreRadius + CONFIG.planetRadius * 0.01, 48, 32),
+            new THREE.MeshStandardMaterial({ color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide }),
+        );
+        bodyGroup.add(core);
+
+        // ------------------------------------------------------------------
+        // Body construction — ONE merged BufferGeometry per depth layer.
+        //
+        // Cells can have variable triangle counts (quad cells = 12 tris, polar
+        // cap cells depend on `capFan`), so each merged mesh carries a
+        // `faceToCell` lookup table to map a raycast `faceIndex` back to its
+        // owning cell.
+        // ------------------------------------------------------------------
+        const cells = [];                              // flat metadata, all cells
+        const cellsByDepth = [];                       // cellsByDepth[d] = array of cells in that depth
+        const depthMeshes = [];                        // one merged Mesh per depth
+
+        for (let d = 0; d < CONFIG.maxDepth; d++) {
+            cellsByDepth[d] = [];
+
+            const positions = [];
+            const normals = [];
+            const indices = [];
+            const faceToCell = [];
+
+            const rOuter = CONFIG.planetRadius - d * CONFIG.layerThickness;
+            const rInner = CONFIG.planetRadius - (d + 1) * CONFIG.layerThickness;
+
+            // --- Quad cells (the non-cap latitude band) -------------------
+            for (let j = capRows; j < CONFIG.latCells - capRows; j++) {
+                const lat0 = -90 + j * rowDegLat;
+                const lat1 = -90 + (j + 1) * rowDegLat;
+
+                for (let i = 0; i < CONFIG.lonCells; i++) {
+                    const lon0 = (i / CONFIG.lonCells) * 360;
+                    const lon1 = ((i + 1) / CONFIG.lonCells) * 360;
+
+                    const corners = [
+                        sphere(lon0, lat0, rOuter), sphere(lon1, lat0, rOuter),
+                        sphere(lon1, lat1, rOuter), sphere(lon0, lat1, rOuter),
+                        sphere(lon0, lat0, rInner), sphere(lon1, lat0, rInner),
+                        sphere(lon1, lat1, rInner), sphere(lon0, lat1, rInner),
+                    ];
+
+                    const cell = {
+                        kind: 'quad',
+                        lon: (lon0 + lon1) / 2,
+                        lat: (lat0 + lat1) / 2,
+                        depth: d,
+                        lonIdx: i,
+                        latIdx: j,
+                        corners,
+                        geom: null,
+                        edges: null,
+                    };
+
+                    addCellToDepth(cell);
+                }
+            }
+
+            // --- Polar cap cells (one per pole, when enabled) -------------
+            if (capRows > 0) {
+                for (const sign of [+1, -1]) {
+                    const boundaryLat = sign > 0 ? capBoundaryLatN : capBoundaryLatS;
+                    const cell = {
+                        kind: 'cap',
+                        sign,
+                        boundaryLat,
+                        rOuter,
+                        rInner,
+                        fan: capFan,
+                        // Used by the readout / camera anchoring.
+                        lon: 0,
+                        lat: sign * (90 - capRows * rowDegLat / 2),
+                        depth: d,
+                        geom: null,
+                        edges: null,
+                    };
+
+                    addCellToDepth(cell);
+                }
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geo.setIndex(indices);
+            geo.computeBoundingSphere();
+
+            const mesh = new THREE.Mesh(geo, depthMaterials[d]);
+            mesh.userData.depth = d;
+            mesh.userData.faceToCell = faceToCell;
+            // Sub-surface cells are fully occluded by the surface in view mode.
+            if (d > 0) mesh.visible = false;
+            bodyGroup.add(mesh);
+            depthMeshes.push(mesh);
+
+            function addCellToDepth(cell) {
+                cells.push(cell);
+                cellsByDepth[d].push(cell);
+
+                const triStart = indices.length / 3;
+                appendCellToBuffers(cell, positions, normals, indices);
+
+                for (let t = triStart; t < indices.length / 3; t++) {
+                    faceToCell.push(cell);
+                }
+            }
+        }
+
+        // Recover the cell record from a raycast hit on a merged body mesh.
+        function cellFromBodyHit(hit) {
+            return hit.object.userData.faceToCell[hit.faceIndex];
+        }
+
+        // Lazy per-cell geometry for the hover/selection overlay.
+        function getCellGeom(cell) {
+            if (!cell.geom) cell.geom = buildSingleCellGeometry(cell);
+            return cell.geom;
+        }
+
+        function getCellEdges(cell) {
+            if (!cell.edges) {
+                // Cap cells fan out into many small tris that share smooth
+                // radial normals; a low EdgesGeometry threshold would draw
+                // every fan crease. Use a higher threshold so only the cap
+                // boundary ring shows up as an outline.
+                const thresh = cell.kind === 'cap' ? 30 : 1;
+                cell.edges = new THREE.EdgesGeometry(getCellGeom(cell), thresh);
+            }
+            return cell.edges;
+        }
+
+        // ----------------------------------------------------------------------
+        // Grid lines (lon/lat) drawn on the surface
+        // ----------------------------------------------------------------------
+        function buildGrid() {
+            const pts = [];
+            const STEP = 4; // sampling density of each line
+            const rr = CONFIG.planetRadius + 0.05;
+
+            // Lat range covered by the quad grid (everything outside is a cap).
+            const latMin = -90 + capRows * rowDegLat;
+            const latMax =  90 - capRows * rowDegLat;
+
+            // longitude lines (stop at the cap boundary instead of running into
+            // the pole, where they'd all converge into a useless tangle).
+            for (let i = 0; i < CONFIG.lonCells; i++) {
+                const lon = (i / CONFIG.lonCells) * 360;
+                for (let lat = latMin; lat < latMax; lat += STEP) {
+                    const lat2 = Math.min(lat + STEP, latMax);
+                    pts.push(sphere(lon, lat, rr), sphere(lon, lat2, rr));
+                }
+            }
+            // latitude lines (rings) — only those within the non-cap band,
+            // including the cap boundary rings themselves.
+            for (let j = capRows; j <= CONFIG.latCells - capRows; j++) {
+                const lat = -90 + j * rowDegLat;
+                for (let lon = 0; lon < 360; lon += STEP) {
+                    pts.push(sphere(lon, lat, rr), sphere(lon + STEP, lat, rr));
+                }
+            }
+
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            const mat = new THREE.LineBasicMaterial({ color: CONFIG.gridColor, transparent: true, opacity: 0.55 });
+            return new THREE.LineSegments(geo, mat);
+        }
+        // Surface-only target for view-mode picking: just the depth-0 merged mesh.
+        const surfaceMeshes = [depthMeshes[0]];
+
+        const grid = buildGrid();
+        bodyGroup.add(grid);
+
+        // ----------------------------------------------------------------------
+        // Hover highlight (re-uses the hovered cell's geometry)
+        // ----------------------------------------------------------------------
+        const highlight = new THREE.Mesh(
+            new THREE.BufferGeometry(),
+            new THREE.MeshBasicMaterial({
+                color: 0xfff2a0, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+                depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+            }),
+        );
+        highlight.visible = false;
+        scene.add(highlight);
+
+        const highlightEdges = new THREE.LineSegments(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0xffe66b }),
+        );
+        highlightEdges.visible = false;
+        scene.add(highlightEdges);
+
+        // ----------------------------------------------------------------------
+        // Slice plane visual (shows where the body is cut in resource mode)
+        // ----------------------------------------------------------------------
+        const sliceVisual = new THREE.Mesh(
+            new THREE.PlaneGeometry(CONFIG.planetRadius * 2.6, CONFIG.planetRadius * 2.6),
+            new THREE.MeshBasicMaterial({
+                color: 0x4f8bff, transparent: true, opacity: 0.12,
+                side: THREE.DoubleSide, depthWrite: false,
+            }),
+        );
+        sliceVisual.visible = false;
+        scene.add(sliceVisual);
+
+        // ----------------------------------------------------------------------
+        // Cut caps — flat polygons that close each sliced cell at the plane, so
+        // the cut looks solid and stays LEVEL with the slice plane (the cells are
+        // really cut by the plane, not hidden). One cap mesh per sliced cell,
+        // carrying the cell's coordinates so the cross-section stays clickable.
+        // ----------------------------------------------------------------------
+        const capMaterials = CONFIG.depthColors.map((c) => new THREE.MeshStandardMaterial({
+            color: new THREE.Color(c).multiplyScalar(0.85),
+            roughness: 1, metalness: 0, side: THREE.DoubleSide,
+        }));
+        const coreCapMaterial = new THREE.MeshStandardMaterial({
+            color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide,
+        });
+        const capsGroup = new THREE.Group();
+        scene.add(capsGroup);
+        const capMeshes = [];
+
+        // ----------------------------------------------------------------------
+        // State
+        // ----------------------------------------------------------------------
+        const state = {
+            mode: 'view',           // 'view' | 'resource'
+            selected: null,         // selected SURFACE cell userData (gates resource mode)
+            focus: { lon: 0, lat: 0 }, // surface point the crust view is centred on
+            cutLon: null,           // longitude the cells are currently cut at
+            camDist: (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoom, // crust-view zoom
+            viewSnapshot: null,     // saved orbit-camera state while in resource mode
+        };
+
+        // persistent highlight for the selected surface cell
+        const selection = new THREE.Mesh(
+            new THREE.BufferGeometry(),
+            new THREE.MeshBasicMaterial({
+                color: 0x49e0ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide,
+                depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+            }),
+        );
+        selection.visible = false;
+        scene.add(selection);
+        const selectionEdges = new THREE.LineSegments(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0x49e0ff }),
+        );
+        selectionEdges.visible = false;
+        scene.add(selectionEdges);
+
+        // ----------------------------------------------------------------------
+        // Resource-mode slicing
+        //
+        // The cells (and core) are cut by a real plane, so the exposed face is
+        // always FLAT and stays level with the slice plane — in latitude mode too,
+        // where the conical lines of constant latitude make cell-aligned reveals
+        // look folded. Plane-clipping alone would let you see into the hollow
+        // cells, so each cut cell is closed with a flat cap polygon at the plane.
+        // ----------------------------------------------------------------------
+        function applyClipping(enabled) {
+            const planes = enabled ? [clipPlane] : [];
+            for (const m of depthMaterials) { m.clippingPlanes = planes; m.needsUpdate = true; }
+            core.material.clippingPlanes = planes; core.material.needsUpdate = true;
+
+            // In view mode the surface mesh (depth 0) hides the deeper layers,
+            // so skip submitting them to the GPU entirely. They come back when
+            // the clipping plane carves the body open in resource mode.
+            for (let d = 1; d < depthMeshes.length; d++) {
+                depthMeshes[d].visible = enabled;
+            }
+        }
+
+        // Intersect a quad cell hexahedron with the clip plane -> ordered polygon points.
+        function quadCellCrossSection(corners) {
+            const n = clipPlane.normal, k = clipPlane.constant;
+            const dist = corners.map((v) => n.dot(v) + k);
+            const pts = [];
+
+            for (const [a, b] of CELL_EDGES) {
+                const da = dist[a], db = dist[b];
+
+                if ((da < 0) !== (db < 0)) {
+                    const t = da / (da - db);
+                    pts.push(corners[a].clone().lerp(corners[b], t));
+                }
+            }
+
+            if (pts.length < 3) {
+                return null;
+            }
+
+            // order the points around their centroid in the plane.
+            const c = new THREE.Vector3();
+            for (const p of pts) c.add(p);
+            c.multiplyScalar(1 / pts.length);
+
+            const u = new THREE.Vector3(1, 0, 0).cross(n);
+
+            if (u.lengthSq() < 1e-6) {
+                u.set(0, 0, 1).cross(n);
+            }
+
+            u.normalize();
+            const v = n.clone().cross(u).normalize();
+            pts.sort((p, q) => {
+                const pa = Math.atan2(v.dot(p.clone().sub(c)), u.dot(p.clone().sub(c)));
+                const qa = Math.atan2(v.dot(q.clone().sub(c)), u.dot(q.clone().sub(c)));
+
+                return pa - qa;
+            });
+
+            return pts;
+        }
+
+        // Cross-section of a polar cap cell with the meridian clip plane.
+        // The plane always contains both poles (it passes through the rotation
+        // axis), so the cut is a hexagonal slab spanning pole→ring at the cut
+        // longitude, across to ring→pole at the antipodal longitude.
+        function capCellCrossSection(cell) {
+            const { sign, boundaryLat, rOuter, rInner } = cell;
+            const lonA = state.focus.lon;
+            const lonB = state.focus.lon + 180;
+
+            return [
+                new THREE.Vector3(0, sign * rOuter, 0),     // pole outer
+                sphere(lonA, boundaryLat, rOuter),          // ring outer @ A
+                sphere(lonA, boundaryLat, rInner),          // ring inner @ A
+                new THREE.Vector3(0, sign * rInner, 0),     // pole inner
+                sphere(lonB, boundaryLat, rInner),          // ring inner @ B
+                sphere(lonB, boundaryLat, rOuter),          // ring outer @ B
+            ];
+        }
+
+        function cellCrossSection(cell) {
+            return cell.kind === 'cap'
+                ? capCellCrossSection(cell)
+                : quadCellCrossSection(cell.corners);
+        }
+
+        function clearCaps() {
+            while (capsGroup.children.length > 0) {
+                const cap = capsGroup.children[capsGroup.children.length - 1];
+                capsGroup.remove(cap);
+                cap.geometry.dispose();
+            }
+
+            capMeshes.length = 0;
+        }
+
+        // Which longitude columns can the meridian plane possibly cut?
+        // A meridian plane through `focus.lon` intersects the body along that
+        // longitude AND its antipode (focus.lon + 180). Any cell whose [lon0,
+        // lon1] range contains either of those is a candidate; everything else
+        // has an empty cross-section. So instead of testing every cell, we
+        // only touch ~2 columns per drag tick.
+        function cutColumns(focusLon) {
+            const w = 360 / CONFIG.lonCells;
+            const cols = new Set();
+            const eps = 1e-6;
+
+            for (const base of [focusLon, focusLon + 180]) {
+                const norm = ((base % 360) + 360) % 360;
+                // Include both sides of an exact boundary, just in case.
+                cols.add(Math.floor((norm - eps + 360) % 360 / w));
+                cols.add(Math.floor((norm + eps) % 360 / w));
+            }
+
+            return cols;
+        }
+
+        function buildCaps() {
+            clearCaps();
+
+            const n = clipPlane.normal;
+            const lift = CONFIG.planetRadius * 0.0015; // nudge caps just off the cut, toward the camera
+
+            // Merged cap buffers, one per depth.
+            const buffers = CONFIG.depthColors.map(() => ({
+                positions: [],
+                normals: [],
+                faceToCell: [], // triangle index → cell record (for raycast picking)
+            }));
+
+            const cols = cutColumns(state.focus.lon);
+
+            for (let d = 0; d < CONFIG.maxDepth; d++) {
+                for (const cell of cellsByDepth[d]) {
+                    // Quad cells only need testing if they're in a column the
+                    // cut could possibly cross. Cap cells are always cut by a
+                    // meridian plane, so they fall through.
+                    if (cell.kind === 'quad' && !cols.has(cell.lonIdx)) {
+                        continue;
+                    }
+
+                    const poly = cellCrossSection(cell);
+
+                    if (poly === null) {
+                        continue;
+                    }
+
+                    const buf = buffers[d];
+
+                    for (let t = 1; t < poly.length - 1; t++) {
+                        for (const p of [poly[0], poly[t], poly[t + 1]]) {
+                            buf.positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
+                            // Flat cap normals all point along -n (toward camera side).
+                            buf.normals.push(-n.x, -n.y, -n.z);
+                        }
+
+                        buf.faceToCell.push(cell);
+                    }
+                }
+            }
+
+            // Emit one merged cap mesh per depth (≤ maxDepth draw calls instead
+            // of one per sliced cell). Each carries a faceIndex → cell map so
+            // raycasting still resolves to the right cell.
+            for (let d = 0; d < CONFIG.maxDepth; d++) {
+                const buf = buffers[d];
+
+                if (buf.positions.length === 0) {
+                    continue;
+                }
+
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(buf.positions, 3));
+                geo.setAttribute('normal', new THREE.Float32BufferAttribute(buf.normals, 3));
+                geo.computeBoundingSphere();
+
+                const cap = new THREE.Mesh(geo, capMaterials[d]);
+                cap.userData.faceToCell = buf.faceToCell;
+                capsGroup.add(cap);
+                capMeshes.push(cap);
+            }
+
+            // flat cap for the smooth core so it stays level with the slice too.
+            const coreR = coreRadius + CONFIG.planetRadius * 0.01;
+            const k = clipPlane.constant;
+
+            if (coreR * coreR > k * k) {
+                const discR = Math.sqrt(coreR * coreR - k * k);
+                const disc = new THREE.Mesh(
+                    new THREE.CircleGeometry(discR, 48),
+                    coreCapMaterial,
+                );
+                // orient the disc to the plane and place it at the plane.
+                disc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+                disc.position.copy(n).multiplyScalar(-k - lift);
+                capsGroup.add(disc);
+                // Note: not added to capMeshes — the core isn't a clickable cell.
+            }
+        }
+
+        function updateCut() {
+            // meridian (constant-longitude) plane through the poles at the focus
+            // longitude — exposes a vertical crust cliff (surface→depth). Rebuilt
+            // only when the longitude changes.
+            const lonR = deg2rad(state.focus.lon);
+            clipPlane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));
+            clipPlane.constant = 0;
+            buildCaps();
+            state.cutLon = state.focus.lon;
+        }
+
+        // Position the camera to look at the crust cliff edge-on at the focus point,
+        // so the surface-to-max-depth layers run top→bottom. Derived from the focus
+        // point on the sphere, so it follows the body's curvature.
+        function positionCrustCamera() {
+            const lonR = deg2rad(state.focus.lon);
+            const latR = deg2rad(state.focus.lat);
+            const midR = (CONFIG.planetRadius + coreRadius) / 2;
+
+            // local radial (surface "up") and the meridian-plane normal (east-west).
+            const radialUp = new THREE.Vector3(
+                Math.cos(latR) * Math.cos(lonR),
+                Math.sin(latR),
+                Math.cos(latR) * Math.sin(lonR),
+            );
+            const m = new THREE.Vector3(-Math.sin(lonR), 0, Math.cos(lonR));
+
+            const crustThickness = CONFIG.planetRadius - coreRadius;
+            const target = radialUp.clone().multiplyScalar(midR + crustThickness * CONFIG.crustHeightBias);
+
+            const tilt = CONFIG.crustTilt; // tilt above the meridian plane (look down at surface)
+            const camPos = target.clone()
+                .add(m.clone().multiplyScalar(state.camDist * Math.cos(tilt)))
+                .add(radialUp.clone().multiplyScalar(state.camDist * Math.sin(tilt)));
+
+            camera.position.copy(camPos);
+            camera.up.copy(radialUp); // keep depth pointing down on screen
+            camera.lookAt(target);
+        }
+
+        function updateFocusReadout() {
+            document.getElementById('rSlice').textContent =
+                `lon ${state.focus.lon.toFixed(0)}° · lat ${state.focus.lat.toFixed(0)}°`;
+        }
+
+        // Called while strolling. Only rebuilds the (expensive) caps when the cut
+        // longitude actually changes; latitude changes just move the camera.
+        function updateResource(lonChanged) {
+            if (lonChanged || state.cutLon === null) {
+                updateCut();
+            }
+
+            positionCrustCamera();
+            updateFocusReadout();
+        }
+
+        // ----------------------------------------------------------------------
+        // Mode switching
+        // ----------------------------------------------------------------------
+        const modeBtn = document.getElementById('modeBtn');
+        const resourceControls = document.getElementById('resourceControls');
+
+        function setMode(mode) {
+            // resource mode requires a selected surface cell to anchor the view.
+            if (mode === 'resource' && state.selected === null) {
+                return;
+            }
+
+            const wasResource = state.mode === 'resource';
+            state.mode = mode;
+            const resource = mode === 'resource';
+
+            applyClipping(resource);
+            sliceVisual.visible = false;
+            grid.visible = !resource;
+            controls.enabled = !resource; // custom drag drives the crust view
+            selection.visible = selectionEdges.visible = !resource && state.selected !== null;
+
+            resourceControls.hidden = !resource;
+            modeBtn.textContent = resource ? 'Exit resource mode' : 'Enter resource mode';
+            document.getElementById('rMode').textContent = mode;
+
+            if (resource) {
+                // Snapshot the orbit-camera state so we can return to it on exit.
+                if (!wasResource) {
+                    state.viewSnapshot = {
+                        position: camera.position.clone(),
+                        up:       camera.up.clone(),
+                        target:   controls.target.clone(),
+                    };
+                }
+
+                state.focus.lon = state.selected.lon;
+                state.focus.lat = state.selected.lat;
+                state.cutLon = null;
+                updateResource(true);
+            } else {
+                clearCaps();
+
+                // Restore the pre-resource view so we don't snap to a default.
+                if (state.viewSnapshot) {
+                    camera.position.copy(state.viewSnapshot.position);
+                    camera.up.copy(state.viewSnapshot.up);
+                    controls.target.copy(state.viewSnapshot.target);
+                } else {
+                    controls.target.set(0, 0, 0);
+                }
+
+                controls.update();
+            }
+        }
+
+        modeBtn.addEventListener('click', () => setMode(state.mode === 'view' ? 'resource' : 'view'));
+
+        function refreshModeButton() {
+            modeBtn.disabled = state.selected === null;
+        }
+
+        // ----------------------------------------------------------------------
+        // Input — drag strolls the crust in resource mode, wheel zooms
+        // ----------------------------------------------------------------------
+        const drag = { active: false, x: 0, y: 0 };
+
+        // How many degrees of lat/lon does ONE screen pixel of drag correspond
+        // to right now? Derived from the perspective camera's FOV and the
+        // current crust-view distance, so the cursor stays glued to the
+        // surface regardless of zoom. `CONFIG.dragSensitivity` scales this
+        // (1 = 1:1 with the cursor).
+        function dragDegPerPixel() {
+            const h = renderer.domElement.clientHeight || 1;
+            const midR = (CONFIG.planetRadius + coreRadius) / 2;
+            // World units per screen pixel at the focus distance.
+            const worldPerPx = (2 * state.camDist * Math.tan(deg2rad(camera.fov) / 2)) / h;
+            // 1° of latitude is `midR * π/180` world units along the meridian.
+            const degLatPerPx = worldPerPx * 180 / Math.PI / midR;
+            // 1° of longitude shrinks with cos(lat); clamp near the poles so
+            // the response doesn't blow up.
+            const cosLat = Math.max(Math.cos(deg2rad(state.focus.lat)), 0.05);
+            const degLonPerPx = degLatPerPx / cosLat;
+
+            return {
+                lat: degLatPerPx * CONFIG.dragSensitivity,
+                lon: degLonPerPx * CONFIG.dragSensitivity,
+            };
+        }
+
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            if (state.mode !== 'resource') return;
+            drag.active = true;
+            drag.x = e.clientX;
+            drag.y = e.clientY;
+        });
+
+        window.addEventListener('pointerup', () => { drag.active = false; });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!drag.active || state.mode !== 'resource') return;
+
+            const dx = e.clientX - drag.x;
+            const dy = e.clientY - drag.y;
+            drag.x = e.clientX;
+            drag.y = e.clientY;
+
+            const dpp = dragDegPerPixel();
+            // forward/back moves the longitudinal slice; left/right pans latitude.
+            const lonChanged = dy !== 0;
+            state.focus.lon = (state.focus.lon + dy * dpp.lon + 360) % 360;
+            state.focus.lat = Math.max(-88, Math.min(88, state.focus.lat + dx * dpp.lat));
+
+            updateResource(lonChanged);
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+            if (state.mode !== 'resource') return; // OrbitControls zooms in view mode
+            e.preventDefault();
+
+            const min = (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoomMin;
+            const max = (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoomMax;
+            state.camDist = Math.max(min, Math.min(max, state.camDist * (e.deltaY > 0 ? 1.1 : 0.9)));
+            positionCrustCamera();
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+
+            if (k === 'r') {
+                setMode(state.mode === 'view' ? 'resource' : 'view');
+                return;
+            }
+
+            if (state.mode !== 'resource') return;
+
+            let lonChanged = false;
+
+            if (e.key === 'ArrowUp')    { state.focus.lon = (state.focus.lon + 2) % 360; lonChanged = true; }
+            if (e.key === 'ArrowDown')  { state.focus.lon = (state.focus.lon - 2 + 360) % 360; lonChanged = true; }
+            if (e.key === 'ArrowLeft')  state.focus.lat = Math.min(88, state.focus.lat + 2);
+            if (e.key === 'ArrowRight') state.focus.lat = Math.max(-88, state.focus.lat - 2);
+
+            updateResource(lonChanged);
+        });
+
+        // ----------------------------------------------------------------------
+        // Raycasting — hover highlight + coordinate readout
+        // ----------------------------------------------------------------------
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        let pointerInside = false;
+
+        renderer.domElement.addEventListener('pointermove', (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            pointerInside = true;
+        });
+        renderer.domElement.addEventListener('pointerleave', () => { pointerInside = false; });
+
+        renderer.domElement.addEventListener('click', () => {
+            // Only surface cells (depth 0), in view mode, can be selected. Selecting
+            // one anchors and unlocks resource mode.
+            if (state.mode !== 'view' || !highlight.visible) return;
+
+            const cell = highlight.userData.cell;
+
+            if (!cell || cell.depth !== 0) return;
+
+            selectSurfaceCell(cell);
+        });
+
+        function selectSurfaceCell(cell) {
+            state.selected = cell;
+            selection.geometry = getCellGeom(cell);
+            selectionEdges.geometry = getCellEdges(cell);
+            selection.visible = selectionEdges.visible = true;
+
+            state.focus.lon = cell.lon;
+            state.focus.lat = cell.lat;
+
+            document.getElementById('rSelected').textContent =
+                `lon ${cell.lon.toFixed(0)}° · lat ${cell.lat.toFixed(0)}°`;
+
+            refreshModeButton();
+        }
+
+        function updateHover() {
+            const elLon = document.getElementById('rLon');
+            const elLat = document.getElementById('rLat');
+            const elDepth = document.getElementById('rDepth');
+
+            if (!pointerInside) {
+                highlight.visible = highlightEdges.visible = false;
+                elLon.textContent = elLat.textContent = elDepth.textContent = '—';
+                return;
+            }
+
+            raycaster.setFromCamera(pointer, camera);
+            // In resource mode hover the flat cut caps (the visible cross-section);
+            // in view mode hover the merged surface mesh.
+            const targets = state.mode === 'resource' ? capMeshes : surfaceMeshes;
+            const hit = raycaster.intersectObjects(targets, false)[0];
+
+            if (!hit) {
+                highlight.visible = highlightEdges.visible = false;
+                elLon.textContent = elLat.textContent = elDepth.textContent = '—';
+                return;
+            }
+
+            // Resolve the hit triangle back to its cell. Body meshes use
+            // contiguous 12-tri-per-cell layout; cap meshes carry an explicit
+            // faceIndex → cell map (cells split into variable-tri polygons).
+            let cell;
+
+            if (state.mode === 'resource') {
+                cell = hit.object.userData.faceToCell[hit.faceIndex];
+            } else {
+                cell = cellFromBodyHit(hit);
+            }
+
+            if (!cell) {
+                highlight.visible = highlightEdges.visible = false;
+                elLon.textContent = elLat.textContent = elDepth.textContent = '—';
+                return;
+            }
+
+            highlight.geometry = getCellGeom(cell);
+            highlightEdges.geometry = getCellEdges(cell);
+            highlight.visible = highlightEdges.visible = true;
+            highlight.userData.cell = cell;
+
+            elLon.textContent = `${cell.lon.toFixed(1)}°`;
+            elLat.textContent = `${cell.lat.toFixed(1)}°`;
+            elDepth.textContent = `${cell.depth + 1} / ${CONFIG.maxDepth}`;
+        }
+
+        // ----------------------------------------------------------------------
+        // Resize + render loop
+        // ----------------------------------------------------------------------
+        function resize() {
+            const w = root.clientWidth, h = root.clientHeight;
+            renderer.setSize(w, h); // updates both drawing buffer and CSS size
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ----------------------------------------------------------------------
+        // Sun-position sliders
+        // ----------------------------------------------------------------------
+        const sunAzInput   = document.getElementById('sunAz');
+        const sunElInput   = document.getElementById('sunEl');
+        const sunIntInput  = document.getElementById('sunInt');
+        const sunAzReadout = document.getElementById('rSunAz');
+        const sunElReadout = document.getElementById('rSunEl');
+        const sunIntReadout = document.getElementById('rSunInt');
+
+        function syncSunReadouts() {
+            sunAzReadout.textContent  = `${Math.round(CONFIG.sunAzimuth)}°`;
+            sunElReadout.textContent  = `${Math.round(CONFIG.sunElevation)}°`;
+            sunIntReadout.textContent = CONFIG.sunIntensity.toFixed(2);
+        }
+
+        sunAzInput.value  = CONFIG.sunAzimuth;
+        sunElInput.value  = CONFIG.sunElevation;
+        sunIntInput.value = CONFIG.sunIntensity;
+        syncSunReadouts();
+
+        sunAzInput.addEventListener('input', () => {
+            CONFIG.sunAzimuth = parseFloat(sunAzInput.value);
+            updateSun(); syncSunReadouts();
+        });
+        sunElInput.addEventListener('input', () => {
+            CONFIG.sunElevation = parseFloat(sunElInput.value);
+            updateSun(); syncSunReadouts();
+        });
+        sunIntInput.addEventListener('input', () => {
+            CONFIG.sunIntensity = parseFloat(sunIntInput.value);
+            updateSun(); syncSunReadouts();
+        });
+
+        // ----------------------------------------------------------------------
+        // FPS / frame-time counter (EMA-smoothed; updated to the HUD ~4×/sec
+        // so the numbers stay readable).
+        // ----------------------------------------------------------------------
+        const fpsEl = document.getElementById('rFps');
+        const frameMsEl = document.getElementById('rFrameMs');
+        const perf = { last: performance.now(), ema: 0, lastHud: 0 };
+
+        function updateFps(now) {
+            const dt = now - perf.last;
+            perf.last = now;
+            // 0.1 = ~10-frame time-constant; resistant to single-frame spikes.
+            perf.ema = perf.ema === 0 ? dt : perf.ema + (dt - perf.ema) * 0.1;
+
+            if (now - perf.lastHud > 250) {
+                fpsEl.textContent = (1000 / perf.ema).toFixed(0);
+                frameMsEl.textContent = `${perf.ema.toFixed(1)} ms`;
+                perf.lastHud = now;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateFps(performance.now());
+            if (state.mode === 'view') controls.update(); // crust view is driven manually
+            // Track the camera so the sky group (sun, halo, streak, stars)
+            // appears fixed at infinity — no parallax.
+            skyAnchor.position.copy(camera.position);
+            updateHover();
+            updateLensFlare();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
 {% endblock %}
 
