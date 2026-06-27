@@ -201,6 +201,17 @@
             // make out the silhouette and surface grid.
             ambientIntensity: 0.12,
             rimIntensity:  0.4,
+            // Hemisphere fill â€” soft sky/ground light that follows surface
+            // normal.y, used to keep the anti-sun hemisphere visible
+            // without flattening the directional sunlight modelling.
+            hemiSkyColor:    0xa8c0e8,
+            hemiGroundColor: 0xa37a52,
+            hemiIntensity:   0.85,
+            // Tiny dedicated below-fill: the hemisphere light only lights
+            // surfaces by normal.y, so the polar cap cone walls (normal.y
+            // ~ 0) get almost nothing from it. A dim directional from -Y
+            // bottoms them up so the south pole reads as lit terrain.
+            bottomFillIntensity: 0.18,
             // Distance of the "sky" — sun visual + stars are anchored to the
             // camera at this radius so they appear to be at infinity (no
             // parallax between them or against the body).
@@ -445,6 +456,27 @@
         const rim = new THREE.DirectionalLight(0x88aaff, CONFIG.rimIntensity);
         rim.position.set(-1, -0.5, -1);
         scene.add(rim);
+        // Hemisphere fill: sky-tone for upward-facing surfaces, warm rocky
+        // tone for downward-facing ones. The directional `sun` alone leaves
+        // the anti-sunward hemisphere of the planet (typically the south
+        // cap when the sun is above the equator) reading as solid black
+        // because the cap's outer normals point ~straight down. A
+        // hemisphere light is a per-vertex y-dot-axis fill — almost
+        // free to compute, no shadow recalc — and makes the south side
+        // legible without flattening the day-side modelling.
+        const hemiFill = new THREE.HemisphereLight(
+            CONFIG.hemiSkyColor,
+            CONFIG.hemiGroundColor,
+            CONFIG.hemiIntensity,
+        );
+        scene.add(hemiFill);
+        // Small directional fill from below to lift the polar cap cone
+        // walls whose near-horizontal normals get almost nothing from
+        // the hemisphere light's y-dot-axis distribution. Tinted very
+        // slightly warm so the south pole reads as lit terrain.
+        const bottomFill = new THREE.DirectionalLight(0xffe0c0, CONFIG.bottomFillIntensity);
+        bottomFill.position.set(0, -1, 0);
+        scene.add(bottomFill);
 
         // ----------------------------------------------------------------------
         // Sun core, corona & lens flare
@@ -2008,53 +2040,60 @@
             const normals = [];
             const indices = [];
 
-            // (a) Cross-section face on the clip plane. Same lift as the cap
-            // mesh uses, plus a small extra so the highlight wins the depth
-            // test against the cap underneath it.
+            // (a) Cross-section face on the clip plane. Lifted slightly off
+            // the cap (same direction as buildCaps' own lift) so the
+            // highlight wins the depth test against the cap underneath.
             const cross = cellCrossSection(cell);
 
-            if (cross !== null && cross.length >= 3)
+            if (cross !== null)
             {
                 const n = clipPlane.normal;
-                const lift = CONFIG.planetRadius * 0.003;
+                const lift = CONFIG.planetRadius * 0.0015;
                 const base = positions.length / 3;
 
-                for (const p of cross)
+                for (const p of cross.positions)
                 {
                     positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
                     normals.push(-n.x, -n.y, -n.z);
                 }
 
-                for (let t = 1; t < cross.length - 1; t++)
+                for (const i of cross.indices)
                 {
-                    indices.push(base, base + t, base + t + 1);
+                    indices.push(base + i);
                 }
             }
 
-            // (b) On the surface layer, also include the outer (sphere) face
-            // so the highlight reads as a corner wrapping over the top edge.
-            // Quad cells: one quad (two tris). Cap cells: skip — the cap's
-            // outer skin is many fan triangles and the cross-section alone
-            // reads clearly enough.
+            // (b) On the surface layer, also include the outer face so the
+            // highlight reads as a corner wrapping over the top edge of the
+            // cliff:
+            //   - quad cells: a single quad (two tris) at the sphere surface.
+            //   - cap cells: the whole pole dome — every fan-strip
+            //     triangle of the cap's outer skin, so the entire polar cap
+            //     lights up.
+            //
+            // No geometric out-multiplier is used; the highlight material's
+            // polygonOffset handles z-fighting against the surface mesh.
+            // (An earlier `out = 1.0008` multiplier lifted the face along
+            // the radial, which read as a perspective-dependent screen
+            // drift when you looked at it from an oblique angle.)
             if (cell.depth === 0 && cell.kind === 'quad')
             {
                 const corners = cell.corners;
-                // FACE_TRIS[0] (outer face) = [0, 2, 1, 0, 3, 2]
-                const tris = FACE_TRIS[0];
+                const tris = FACE_TRIS[0]; // outer face = [0, 2, 1, 0, 3, 2]
                 const base = positions.length / 3;
 
                 for (let t = 0; t < 6; t++)
                 {
                     const p = corners[tris[t]];
                     const len = Math.hypot(p.x, p.y, p.z) || 1;
-                    // Push slightly outward so the highlight sits ABOVE the
-                    // surface mesh (same trick as polygonOffset, but baked
-                    // into geometry for predictable behaviour with the cap).
-                    const out = 1 + 0.0008;
-                    positions.push(p.x * out, p.y * out, p.z * out);
+                    positions.push(p.x, p.y, p.z);
                     normals.push(p.x / len, p.y / len, p.z / len);
                     indices.push(base + t);
                 }
+            }
+            else if (cell.depth === 0 && cell.kind === 'cap')
+            {
+                appendCapOuterSkin(cell, positions, normals, indices);
             }
 
             const geo = new THREE.BufferGeometry();
@@ -2064,6 +2103,81 @@
             geo.computeBoundingSphere();
 
             return geo;
+        }
+
+        // Outer skin of a polar cap cell — same sampling pattern as the
+        // dome section of `appendCapCell`. Used by the surface highlight
+        // so that hovering a polar cap lights up the entire pole, not
+        // just the cross-section sliver.
+        function appendCapOuterSkin(cell, positions, normals, indices) {
+            const { boundaryLat, rOuter, sign, fan } = cell;
+            const rings = Math.max(2, CONFIG.polarCapRings ?? 4);
+            const poleLat = sign * 90;
+            // In resource mode the cap is clipped by the meridian plane; the
+            // visible half-dome is the side on the camera's half-space
+            // (where dot(n, p) <= 0, since clipping rejects the > 0 side).
+            // Filter each fan triangle by its centroid so the highlight
+            // covers the half-circle the user actually sees, not the full
+            // pole. The epsilon keeps triangles whose centroid sits exactly
+            // on the seam on the visible side, so the half-dome edge meets
+            // the cross-section without a one-triangle gap.
+            const n = clipPlane.normal;
+            const planeK = clipPlane.constant;
+            const eps = 1e-3;
+            const outerRings = [];
+            for (let i = 0; i <= rings; i++)
+            {
+                const t = i / rings;
+                const lat = poleLat + (boundaryLat - poleLat) * t;
+                const ring = new Array(fan);
+                for (let j = 0; j < fan; j++)
+                {
+                    ring[j] = sphere((j / fan) * 360, lat, rOuter);
+                }
+                outerRings.push(ring);
+            }
+            for (let i = 0; i < rings; i++)
+            {
+                const r0 = outerRings[i];
+                const r1 = outerRings[i + 1];
+                for (let j = 0; j < fan; j++)
+                {
+                    const j2 = (j + 1) % fan;
+                    const a = r0[j], b = r0[j2], c = r1[j2], d = r1[j];
+                    const verts = sign > 0
+                        ? [a, b, c, a, c, d]
+                        : [a, d, c, a, c, b];
+                    // Two triangles per quad strip cell; filter each by
+                    // centroid against the clip plane.
+                    for (let tri = 0; tri < 2; tri++)
+                    {
+                        const v0 = verts[tri * 3];
+                        const v1 = verts[tri * 3 + 1];
+                        const v2 = verts[tri * 3 + 2];
+                        const cx = (v0.x + v1.x + v2.x) / 3;
+                        const cy = (v0.y + v1.y + v2.y) / 3;
+                        const cz = (v0.z + v1.z + v2.z) / 3;
+                        // Three.js clipping discards fragments where
+                        // dot(n, p) + k < 0, so the visible half-space is
+                        // dot >= 0. Skip triangles on the OTHER side (the
+                        // clipped half), which is what the user sees as
+                        // "the planet"; keep the rest so the highlight
+                        // overlays the visible half-dome on the surface.
+                        if (n.x * cx + n.y * cy + n.z * cz + planeK < -eps)
+                        {
+                            continue; // clipped (hidden) half
+                        }
+                        const base = positions.length / 3;
+                        for (const p of [v0, v1, v2])
+                        {
+                            positions.push(p.x, p.y, p.z);
+                            const len = Math.hypot(p.x, p.y, p.z) || 1;
+                            normals.push(p.x / len, p.y / len, p.z / len);
+                        }
+                        indices.push(base, base + 1, base + 2);
+                    }
+                }
+            }
         }
 
         // ----------------------------------------------------------------------
@@ -2177,7 +2291,7 @@
         const selection = new THREE.Mesh(
             new THREE.BufferGeometry(),
             new THREE.MeshBasicMaterial({
-                color: 0x49e0ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide,
+                color: 0x6fb0ff, transparent: true, opacity: 0.42, side: THREE.DoubleSide,
                 depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
             }),
         );
@@ -2185,7 +2299,7 @@
         scene.add(selection);
         const selectionEdges = new THREE.LineSegments(
             new THREE.BufferGeometry(),
-            new THREE.LineBasicMaterial({ color: 0x49e0ff }),
+            new THREE.LineBasicMaterial({ color: 0x9fd0ff }),
         );
         selectionEdges.visible = false;
         scene.add(selectionEdges);
@@ -2255,28 +2369,95 @@
         }
 
         // Cross-section of a polar cap cell with the meridian clip plane.
-        // The plane always contains both poles (it passes through the rotation
-        // axis), so the cut is a hexagonal slab spanning pole→ring at the cut
-        // longitude, across to ring→pole at the antipodal longitude.
+        //
+        // The cap is rendered with `polarCapRings` concentric subdivisions
+        // between the pole and the boundary, so its outer/inner skin is a
+        // smooth dome. The meridian clip plane intersects that dome along a
+        // CURVED arc — sampling that arc here makes the cap cross-section
+        // match the rendered geometry. (The previous 6-point hex made
+        // deeper layers look polygonal compared to the dome of the surface
+        // layer; with this all depths share the same roundness.)
+        //
+        // Result is a triangulated quad strip between the outer and inner
+        // arcs, returned as {positions, indices} so the caller can emit it
+        // verbatim instead of fan-triangulating a non-convex polygon.
         function capCellCrossSection(cell) {
             const { sign, boundaryLat, rOuter, rInner } = cell;
             const lonA = state.focus.lon;
             const lonB = state.focus.lon + 180;
+            const poleLat = sign * 90;
+            const rings = Math.max(2, CONFIG.polarCapRings ?? 4);
 
-            return [
-                new THREE.Vector3(0, sign * rOuter, 0),     // pole outer
-                sphere(lonA, boundaryLat, rOuter),          // ring outer @ A
-                sphere(lonA, boundaryLat, rInner),          // ring inner @ A
-                new THREE.Vector3(0, sign * rInner, 0),     // pole inner
-                sphere(lonB, boundaryLat, rInner),          // ring inner @ B
-                sphere(lonB, boundaryLat, rOuter),          // ring outer @ B
-            ];
+            const outerArc = [];
+            const innerArc = [];
+
+            // lonA side: boundary lat → pole (rings + 1 samples).
+            for (let i = 0; i <= rings; i++)
+            {
+                const t = i / rings;
+                const lat = boundaryLat + (poleLat - boundaryLat) * t;
+
+                if (i === rings)
+                {
+                    // Exact pole point (avoids cos(±90) jitter).
+                    outerArc.push(new THREE.Vector3(0, sign * rOuter, 0));
+                    innerArc.push(new THREE.Vector3(0, sign * rInner, 0));
+                }
+                else
+                {
+                    outerArc.push(sphere(lonA, lat, rOuter));
+                    innerArc.push(sphere(lonA, lat, rInner));
+                }
+            }
+
+            // lonB side: pole → boundary lat (skip i=0 — the pole was
+            // already pushed above as the apex of the arc).
+            for (let i = 1; i <= rings; i++)
+            {
+                const t = i / rings;
+                const lat = poleLat + (boundaryLat - poleLat) * t;
+                outerArc.push(sphere(lonB, lat, rOuter));
+                innerArc.push(sphere(lonB, lat, rInner));
+            }
+
+            const N = outerArc.length;
+            const positions = outerArc.concat(innerArc);
+            const indices = [];
+
+            // Quad strip between outer arc (0..N-1) and inner arc (N..2N-1).
+            for (let i = 0; i < N - 1; i++)
+            {
+                const o0 = i;
+                const o1 = i + 1;
+                const i0 = N + i;
+                const i1 = N + i + 1;
+                indices.push(o0, o1, i1);
+                indices.push(o0, i1, i0);
+            }
+
+            return { positions, indices };
         }
 
+        // Quad cross-section wrapped in the same {positions, indices} shape
+        // so every caller can treat both cell kinds uniformly.
         function cellCrossSection(cell) {
-            return cell.kind === 'cap'
-                ? capCellCrossSection(cell)
-                : quadCellCrossSection(cell.corners);
+            if (cell.kind === 'cap')
+            {
+                return capCellCrossSection(cell);
+            }
+
+            const pts = quadCellCrossSection(cell.corners);
+
+            if (pts === null) return null;
+
+            const indices = [];
+            // Convex polygon — fan-triangulate from pts[0].
+            for (let t = 1; t < pts.length - 1; t++)
+            {
+                indices.push(0, t, t + 1);
+            }
+
+            return { positions: pts, indices };
         }
 
         function clearCaps() {
@@ -2334,16 +2515,26 @@
                         continue;
                     }
 
-                    const poly = cellCrossSection(cell);
+                    const cross = cellCrossSection(cell);
 
-                    if (poly === null) {
+                    if (cross === null) {
                         continue;
                     }
 
                     const buf = buffers[d];
+                    const pts = cross.positions;
+                    const idx = cross.indices;
 
-                    for (let t = 1; t < poly.length - 1; t++) {
-                        for (const p of [poly[0], poly[t], poly[t + 1]]) {
+                    // Each triangle in the cross-section becomes 3 flat-shaded
+                    // vertices in the merged buffer, with the per-tri index
+                    // recorded against the cell so raycast picking still
+                    // resolves to it.
+                    for (let t = 0; t < idx.length; t += 3) {
+                        const a = pts[idx[t]];
+                        const b = pts[idx[t + 1]];
+                        const c = pts[idx[t + 2]];
+
+                        for (const p of [a, b, c]) {
                             buf.positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
                             // Flat cap normals all point along -n (toward camera side).
                             buf.normals.push(-n.x, -n.y, -n.z);
@@ -2821,7 +3012,11 @@
             {
                 const geom = buildResourceHighlightGeometry(cell);
                 highlight.geometry = geom;
-                highlightEdges.geometry = new THREE.EdgesGeometry(geom, 1);
+                // Cap cells include a faceted dome — use a wider angle
+                // so EdgesGeometry only traces the outline, not every
+                // ring crease (same trick `getCellEdges` uses).
+                const thresh = cell.kind === 'cap' ? 30 : 1;
+                highlightEdges.geometry = new THREE.EdgesGeometry(geom, thresh);
                 highlight.userData.ownsGeom = true;
             }
             else
