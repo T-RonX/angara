@@ -126,10 +126,27 @@
             // of `sunSize`. Lower = subtler bloom.
             sunHaloScale:  3.0,
             sunHaloOpacity: 0.55,
-            // Anamorphic horizontal streak through the sun (lens-flare style).
-            sunStreakScale:   2,      // multiplier on sunSize for streak width
-            sunStreakHeight:  0.6,    // streak height as a fraction of width
-            sunStreakOpacity: 0.25,
+            // Faint chromatic halo ring just outside the sun. The hues cycle
+            // around the ring (chromatic dispersion from the optics), with
+            // a sun-coloured warm bloom at the centre, a primary halo ring,
+            // a thinner phase-shifted secondary diffraction ring, and dust
+            // speckles for natural imperfections. Rotates very slowly so the
+            // speckle pattern reads as detail, not motion.
+            chromaRingScale:   2.10,
+            chromaRingOpacity: 0.42,
+            chromaRingSpeed:   2.5,
+            // Subtle starburst: thin radial rays through the sun, the
+            // signature "lens" look. Counter-rotates slowly against the
+            // chroma ring so the two don't feel locked together.
+            sunStarScale:    3.6,
+            sunStarOpacity:  0.45,
+            sunStarSpeed:   -2,
+            // How smoothly the occlusion fraction (and therefore the
+            // flare's fade in / out) tracks the body covering the sun. The
+            // measurement itself is analytical (closed-form overlap of the
+            // body and sun discs as seen from the camera), so it's free —
+            // this knob only governs the temporal EMA.
+            flareOcclusionEase:    0.18,
             // Tints used when generating the procedural sun + flare textures.
             // Stylised warm-white core fading through amber to a deep red rim.
             sunCoreColor:  '255, 248, 220',     // r,g,b 0-255
@@ -139,7 +156,7 @@
             // Lens flare — a chain of subtle additive elements running from the
             // sun through screen centre. Disable for a clean shot.
             showLensFlare:    true,
-            lensFlareOpacity: 0.5,    // global multiplier on the flare elements
+            lensFlareOpacity: 0.25,    // global multiplier on the flare elements
             ambientIntensity: 0.55,
             rimIntensity:  0.4,
             // Distance of the "sky" — sun visual + stars are anchored to the
@@ -190,6 +207,17 @@
             // Fan resolution for the polar cap geometry. Defaults to lonCells
             // so the boundary lines up with the surrounding cell columns.
             polarCapFan:      null,
+            // How many latitudinal subdivisions to use inside each polar cap.
+            // The cap was previously a single cone (pole → boundary ring) which
+            // looks visibly pointy. Subdividing it into concentric rings that
+            // sit on the actual sphere surface gives a smooth, rounded pole.
+            polarCapRings:    6,
+            // Cell-snapped drag in resource mode: both axes (longitude and
+            // latitude) follow the cursor continuously while dragging, then
+            // ease to the nearest cell on release. `focusSnapEase` is the
+            // per-frame fraction of the remaining distance to the target —
+            // larger = snappier, smaller = more "gliding".
+            focusSnapEase:    0.22,
         };
 
         const coreRadius = CONFIG.planetRadius - CONFIG.maxDepth * CONFIG.layerThickness;
@@ -311,46 +339,377 @@
 
         // Anamorphic horizontal streak through the sun — that signature lens
         // smear you get from a bright point source through a wide lens.
-        function horizontalStreakTexture(stops, width = 1024, height = 128) {
+        // ----------------------------------------------------------------------
+        // Iridescent / rainbow helpers
+        //
+        // Lens-flare ghosts in the real world are tinted by chromatic
+        // dispersion through the optical stack — they aren't grey blobs.
+        // These helpers build the painted-canvas textures we need:
+        //   * `hsvToRgb`            — HSV → linear-ish RGB in 0..1.
+        //   * `rainbowHaloTexture`  — multi-layer chromatic halo (warm
+        //                              core bloom, primary halo ring, thin
+        //                              secondary diffraction ring, dust
+        //                              speckle); drawn AT the sun and
+        //                              depth-tested so the planet hides it.
+        //   * `hexGhostTexture`     — hexagonal iris aperture in a single hue;
+        //                              the bread-and-butter lens-flare ghost.
+        // ----------------------------------------------------------------------
+        function hsvToRgb(h, s, v) {
+            h = ((h % 360) + 360) % 360;
+            const c = v * s;
+            const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+            const m = v - c;
+            let r, g, b;
+
+            if (h < 60)       [r, g, b] = [c, x, 0];
+            else if (h < 120) [r, g, b] = [x, c, 0];
+            else if (h < 180) [r, g, b] = [0, c, x];
+            else if (h < 240) [r, g, b] = [0, x, c];
+            else if (h < 300) [r, g, b] = [x, 0, c];
+            else              [r, g, b] = [c, 0, x];
+
+            return [r + m, g + m, b + m];
+        }
+
+        // Multi-layer chromatic halo around the sun. Built procedurally on a
+        // canvas so we can stack:
+        //   * a sun-coloured central bloom (warm core → warm rim from CONFIG),
+        //   * a primary halo whose colours blend warm sunlight with a
+        //     hue-cycle (the "rainbowish" tint the user asked for),
+        //   * a secondary thin diffraction ring at a phase-shifted hue,
+        //   * scattered "dust" speckles for the imperfections you'd actually
+        //     see through a real optical stack.
+        // The whole thing is depth-tested so the planet correctly hides it.
+        function rainbowHaloTexture(size = 1024) {
             const c = document.createElement('canvas');
-            c.width = width; c.height = height;
+            c.width = c.height = size;
             const ctx = c.getContext('2d');
-            // Horizontal gradient.
-            const lg = ctx.createLinearGradient(0, 0, width, 0);
-            for (const [pos, color] of stops) lg.addColorStop(pos, color);
-            ctx.fillStyle = lg;
-            ctx.fillRect(0, 0, width, height);
-            // Vertical falloff so it tapers to a thin line top/bottom.
-            ctx.globalCompositeOperation = 'destination-in';
-            const vg = ctx.createLinearGradient(0, 0, 0, height);
-            vg.addColorStop(0.00, 'rgba(0,0,0,0)');
-            vg.addColorStop(0.50, 'rgba(0,0,0,1)');
-            vg.addColorStop(1.00, 'rgba(0,0,0,0)');
-            ctx.fillStyle = vg;
-            ctx.fillRect(0, 0, width, height);
+            const half = size / 2;
+            const img = ctx.createImageData(size, size);
+
+            const parseRGB = (s) => s.split(',').map((v) => parseInt(v.trim(), 10));
+            const core = parseRGB(CONFIG.sunCoreColor);
+            const warm = parseRGB(CONFIG.sunWarmColor);
+
+            // Layer radii (in 0..1 normalised image space).
+            const R_BLOOM_OUT  = 0.30;
+            const R_PRIMARY_IN = 0.30;
+            const R_PRIMARY_OUT= 0.46;
+            const R_SECOND_IN  = 0.47;
+            const R_SECOND_OUT = 0.50;
+
+            for (let y = 0; y < size; y++)
+            {
+                for (let x = 0; x < size; x++)
+                {
+                    const dx = (x - half) / half;
+                    const dy = (y - half) / half;
+                    const r = Math.hypot(dx, dy);
+
+                    if (r > R_SECOND_OUT) continue;
+
+                    const theta = Math.atan2(dy, dx);
+                    const i = (y * size + x) * 4;
+                    let R = 0, G = 0, B = 0, A = 0;
+
+                    // --- Inner warm bloom ----------------------------------
+                    if (r < R_BLOOM_OUT)
+                    {
+                        const t = r / R_BLOOM_OUT;
+                        // Lerp core → warm → rim toward outside; gives a warm
+                        // halo that *originates* from the sun's actual colour.
+                        const tw = Math.min(1, t * 1.15);
+                        const cR = core[0] * (1 - tw) + warm[0] * tw;
+                        const cG = core[1] * (1 - tw) + warm[1] * tw;
+                        const cB = core[2] * (1 - tw) + warm[2] * tw;
+                        // Soft falloff with a slight inward dome.
+                        const fall = (1 - t) ** 2;
+                        const bloomA = fall * 0.40;
+                        R = cR * bloomA;
+                        G = cG * bloomA;
+                        B = cB * bloomA;
+                        A = bloomA;
+                    }
+
+                    // --- Primary halo ring ---------------------------------
+                    if (r > R_PRIMARY_IN && r < R_PRIMARY_OUT)
+                    {
+                        const t = (r - R_PRIMARY_IN) / (R_PRIMARY_OUT - R_PRIMARY_IN);
+                        // Soft inner edge, sharper outer (where the diffraction
+                        // sits) — `^1.4` peaks slightly past mid-thickness.
+                        const ringMask = Math.sin(t * Math.PI) ** 1.4;
+                        // Spectral hue around the ring, low saturation so it
+                        // mixes well with the warm sun tint underneath.
+                        const hue = (theta / (2 * Math.PI) + 0.5) * 360;
+                        const [hR, hG, hB] = hsvToRgb(hue, 0.45, 1);
+                        // Per-angle imperfection + faint radial micro-rings,
+                        // simulating dust / coating irregularities.
+                        const azMod  = 0.78 + 0.22 * Math.sin(theta * 7 + 1.3)
+                                            + 0.10 * Math.sin(theta * 23 + 4.7);
+                        const radMod = 0.88 + 0.12 * Math.sin(r * 120);
+                        // Blend the warm sun palette with the hue-shifted ring
+                        // so the colour reads as "tinted sunlight", not pure
+                        // rainbow.
+                        const blend = 0.55;
+                        const rR = ((warm[0] / 255) * (1 - blend) + hR * blend) * 255;
+                        const rG = ((warm[1] / 255) * (1 - blend) + hG * blend) * 255;
+                        const rB = ((warm[2] / 255) * (1 - blend) + hB * blend) * 255;
+                        const ringA = ringMask * 0.55 * azMod * radMod;
+                        R = R + rR * ringA;
+                        G = G + rG * ringA;
+                        B = B + rB * ringA;
+                        A = Math.max(A, ringA);
+                    }
+
+                    // --- Secondary diffraction ring (thin, hue-shifted) ----
+                    if (r > R_SECOND_IN && r < R_SECOND_OUT)
+                    {
+                        const t = (r - R_SECOND_IN) / (R_SECOND_OUT - R_SECOND_IN);
+                        const ringMask = Math.sin(t * Math.PI) ** 2;
+                        // Shift the secondary hue 60° from the primary so the
+                        // two rings read as separate diffraction orders.
+                        const hue = (theta / (2 * Math.PI) + 0.5) * 360 + 60;
+                        const [hR, hG, hB] = hsvToRgb(hue, 0.75, 1);
+                        const azMod = 0.7 + 0.3 * Math.sin(theta * 11 + 0.8);
+                        const ringA = ringMask * 0.35 * azMod;
+                        R = R + hR * 255 * ringA;
+                        G = G + hG * 255 * ringA;
+                        B = B + hB * 255 * ringA;
+                        A = Math.max(A, ringA);
+                    }
+
+                    img.data[i]     = Math.min(255, R);
+                    img.data[i + 1] = Math.min(255, G);
+                    img.data[i + 2] = Math.min(255, B);
+                    img.data[i + 3] = Math.min(255, A * 255);
+                }
+            }
+
+            ctx.putImageData(img, 0, 0);
+
+            // --- Dust speckle / sub-aperture diffraction motes -------------
+            // Tiny additive points scattered across the ring radii. Their
+            // hues are sampled from the same warm/rainbow palette so they
+            // feel of-a-piece with the halo, not glued on. A small fraction
+            // are notably brighter to break up the regularity.
+            ctx.globalCompositeOperation = 'lighter';
+            // Tiny deterministic LCG so the dust pattern is identical run to
+            // run (no risk of the halo flickering between page loads).
+            let s = 1337;
+            const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+
+            for (let k = 0; k < 140; k++)
+            {
+                const a = rand() * Math.PI * 2;
+                // Bias speckles to the bright primary ring band.
+                const rr = (R_PRIMARY_IN + 0.02 + rand() * (R_PRIMARY_OUT - R_PRIMARY_IN - 0.04)) * half;
+                const x = half + Math.cos(a) * rr;
+                const y = half + Math.sin(a) * rr;
+                // Mostly warm-tinted speckles, occasional cool/rainbow flecks.
+                let hue;
+                if (rand() < 0.35) hue = ((a / (Math.PI * 2)) + 0.5) * 360;
+                else               hue = 25 + rand() * 35; // amber-ish
+                const [hR, hG, hB] = hsvToRgb(hue, 0.45, 1);
+                const big = rand() < 0.15;
+                const radius = big ? 2.2 + rand() * 1.5 : 0.8 + rand() * 0.9;
+                const alpha  = big ? 0.55 + rand() * 0.35 : 0.25 + rand() * 0.35;
+                ctx.fillStyle = `rgba(${Math.round(hR*255)}, ${Math.round(hG*255)}, ${Math.round(hB*255)}, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
             const tex = new THREE.CanvasTexture(c);
             tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+
             return tex;
         }
 
-        const sunStreakTex = horizontalStreakTexture([
-            [0.00, `rgba(${CONFIG.sunCoreColor}, 0.0)`],
-            [0.35, `rgba(${CONFIG.sunWarmColor}, 0.4)`],
-            [0.50, `rgba(${CONFIG.sunCoreColor}, 0.95)`],
-            [0.65, `rgba(${CONFIG.sunWarmColor}, 0.4)`],
-            [1.00, `rgba(${CONFIG.sunCoreColor}, 0.0)`],
-        ]);
+        // (iridescentRingTexture removed: the screen-centre rainbow ring was
+        // anchored at the chain's mid-point and therefore landed on top of the
+        // planet whenever the body was near the optical axis. The rainbow now
+        // lives in the depth-tested chromatic halo around the sun instead.)
 
-        const sunStreak = additiveSprite(sunStreakTex, CONFIG.sunStreakOpacity, true);
+        function hexGhostTexture(hue, size = 256, saturation = 0.55) {
+            const c = document.createElement('canvas');
+            c.width = c.height = size;
+            const ctx = c.getContext('2d');
+            const [rC, gC, bC] = hsvToRgb(hue, saturation, 1);
+            const col = `${Math.round(rC * 255)}, ${Math.round(gC * 255)}, ${Math.round(bC * 255)}`;
+            const cx = size / 2, cy = size / 2;
+            const R = size * 0.46;
+
+            ctx.save();
+            ctx.beginPath();
+
+            for (let i = 0; i < 6; i++)
+            {
+                const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+                const px = cx + R * Math.cos(a);
+                const py = cy + R * Math.sin(a);
+
+                if (i === 0) ctx.moveTo(px, py);
+                else         ctx.lineTo(px, py);
+            }
+
+            ctx.closePath();
+            ctx.clip();
+
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+            g.addColorStop(0.00, `rgba(${col}, 0.95)`);
+            g.addColorStop(0.55, `rgba(${col}, 0.38)`);
+            g.addColorStop(1.00, `rgba(${col}, 0.0)`);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, size, size);
+            // Thin bright rim follows the aperture edge — sells the iris read.
+            ctx.strokeStyle = `rgba(${col}, 0.55)`;
+            ctx.lineWidth = Math.max(1, size / 256);
+            ctx.stroke();
+            ctx.restore();
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+
+            return tex;
+        }
+
+        // Soft circular ghost in a single colour (rgb is a "r, g, b" string,
+        // matching the CONFIG colour fields). Used for the majority of the
+        // restrained, off-white lens-flare ghosts. Subtle by design — these
+        // are NOT supposed to read as coloured blobs.
+        function softGhostTexture(rgb, peakAlpha = 0.6, size = 256) {
+            const c = document.createElement('canvas');
+            c.width = c.height = size;
+            const ctx = c.getContext('2d');
+            const cx = size / 2;
+            const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+            g.addColorStop(0.00, `rgba(${rgb}, ${peakAlpha})`);
+            g.addColorStop(0.55, `rgba(${rgb}, ${peakAlpha * 0.22})`);
+            g.addColorStop(1.00, `rgba(${rgb}, 0)`);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, size, size);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+
+            return tex;
+        }
+
+        // Anamorphic starburst with two superimposed ray sets at different
+        // counts/thicknesses ("primary" + "secondary"), micro-rays in between
+        // for the natural-irregularity look, and per-ray subtle hue shifts so
+        // it doesn't read as a sterile monochrome cross. Slowly rotated each
+        // frame in updateLensFlare.
+        function starburstTexture(size = 1024, primaryRays = 6, secondaryRays = 8) {
+            const c = document.createElement('canvas');
+            c.width = c.height = size;
+            const ctx = c.getContext('2d');
+            const cx = size / 2;
+
+            const parseRGB = (s) => s.split(',').map((v) => parseInt(v.trim(), 10));
+            const core = parseRGB(CONFIG.sunCoreColor);
+            const warm = parseRGB(CONFIG.sunWarmColor);
+            const coreStr = `${core[0]}, ${core[1]}, ${core[2]}`;
+            const warmStr = `${warm[0]}, ${warm[1]}, ${warm[2]}`;
+
+            // Faint central diffraction blob so the rays don't shoot out of
+            // nothing.
+            const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, size * 0.34);
+            g.addColorStop(0.00, `rgba(${coreStr}, 0.55)`);
+            g.addColorStop(0.55, `rgba(${warmStr}, 0.10)`);
+            g.addColorStop(1.00, `rgba(${warmStr}, 0.0)`);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+
+            const drawRays = (count, baseAngle, lenScale, widthA, widthB, alphaBase, hueShift) => {
+                for (let i = 0; i < count; i++)
+                {
+                    // Slight per-ray length / strength jitter (deterministic
+                    // per ray index) sells the "real lens" imperfection.
+                    const jitter = Math.sin(i * 12.9898 + baseAngle * 78.233) * 0.5 + 0.5;
+                    const lenJ   = lenScale * (0.78 + 0.22 * jitter);
+                    const alphaJ = alphaBase * (0.65 + 0.55 * jitter);
+                    const a = baseAngle + (i / count) * Math.PI * 2;
+                    const ex = cx + Math.cos(a) * size * lenJ;
+                    const ey = cx + Math.sin(a) * size * lenJ;
+                    // Per-ray hue shift around amber, mostly warm but with
+                    // occasional cool flecks → faint chromatic dispersion
+                    // along the rays.
+                    const hue = (35 + hueShift + jitter * 50) % 360;
+                    const [hR, hG, hB] = hsvToRgb(hue, 0.30 + jitter * 0.15, 1);
+                    const tint = `${Math.round(hR * 255)}, ${Math.round(hG * 255)}, ${Math.round(hB * 255)}`;
+                    const grad = ctx.createLinearGradient(cx, cx, ex, ey);
+                    grad.addColorStop(0.00, `rgba(${coreStr}, ${alphaJ})`);
+                    grad.addColorStop(0.12, `rgba(${tint}, ${alphaJ * 0.7})`);
+                    grad.addColorStop(0.45, `rgba(${tint}, ${alphaJ * 0.20})`);
+                    grad.addColorStop(1.00, `rgba(${tint}, 0)`);
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth = (i % 2 === 0 ? widthA : widthB) * (size / 512);
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cx);
+                    ctx.lineTo(ex, ey);
+                    ctx.stroke();
+                }
+            };
+
+            // Primary set: long, thick, warm — 6 rays in a star.
+            drawRays(primaryRays, 0, 0.48, 2.8, 1.4, 0.55, 0);
+            // Secondary set: rotated, thinner, more rainbow — adds depth.
+            drawRays(secondaryRays, Math.PI / 7, 0.40, 1.4, 0.7, 0.38, 130);
+            // Faint micro-rays: many short rays at random angles for the
+            // "iris coating scattering" texture.
+            ctx.globalAlpha = 0.45;
+
+            for (let i = 0; i < 36; i++)
+            {
+                const a   = (i / 36) * Math.PI * 2 + 0.13;
+                const len = size * (0.10 + 0.10 * Math.sin(i * 3.1));
+                const ex  = cx + Math.cos(a) * len;
+                const ey  = cx + Math.sin(a) * len;
+                const hue = (25 + (i * 13) % 60);
+                const [hR, hG, hB] = hsvToRgb(hue, 0.45, 1);
+                const tint = `${Math.round(hR * 255)}, ${Math.round(hG * 255)}, ${Math.round(hB * 255)}`;
+                ctx.strokeStyle = `rgba(${tint}, 0.45)`;
+                ctx.lineWidth = 0.8 * (size / 512);
+                ctx.beginPath();
+                ctx.moveTo(cx, cx);
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1;
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+
+            return tex;
+        }
+
+        const chromaRingTex = rainbowHaloTexture();
+        const sunStarTex    = starburstTexture();
+
+        const chromaRing = additiveSprite(chromaRingTex, CONFIG.chromaRingOpacity, true);
+        const sunStar    = additiveSprite(sunStarTex,    CONFIG.sunStarOpacity,    true);
         const sunCore = additiveSprite(sunCoreTex, 1.0, true);
         const sunHalo = additiveSprite(sunHaloTex, CONFIG.sunHaloOpacity, true);
 
-        // Draw order: streak < halo < core, so the bright core sits on top.
-        sunStreak.renderOrder = -1;
-        sunHalo.renderOrder   = 0;
-        sunCore.renderOrder   = 1;
-        skyAnchor.add(sunStreak);
+        // Draw order: halo < starburst < chroma ring < core, so the bright
+        // core sits on top and the rays read against the warm halo behind
+        // them. The chroma ring is a delicate tint that mostly disappears
+        // unless you look right at the sun.
+        sunHalo.renderOrder    = 0;
+        sunStar.renderOrder    = 1;
+        chromaRing.renderOrder = 2;
+        sunCore.renderOrder    = 3;
         skyAnchor.add(sunHalo);
+        skyAnchor.add(sunStar);
+        skyAnchor.add(chromaRing);
         skyAnchor.add(sunCore);
 
         // --- Lens flare chain --------------------------------------------------
@@ -358,49 +717,24 @@
         // alpha + offset along the sun→screen-centre line (in NDC). Placement
         // is updated per frame from `updateLensFlare()` below.
         //
-        // The colour palette mixes the sun's warm tints (ghosts near the sun)
-        // with cooler blue/cyan glints in the middle of the chain — that
-        // contrast is what gives a lens-flare its photographic feel.
+        // These ghosts are NOT depth-tested (they're a post-process effect),
+        // so we deliberately keep them small and avoid any element that sits
+        // right at screen centre — otherwise it would always read as a blob
+        // pasted on top of the planet. The actual chromatic halo is anchored
+        // on the sun (depth-tested) and handles the "halo near the sun" job.
         const flareSpecs = [
-            // Soft warm ghost just off the sun.
-            { offset: 0.30, size: 0.22, alpha: 0.35, tex: radialGradientTexture([
-                [0.00, `rgba(${CONFIG.sunCoreColor}, 0.7)`],
-                [0.30, `rgba(${CONFIG.sunWarmColor}, 0.28)`],
-                [0.70, `rgba(${CONFIG.sunRimColor}, 0.05)`],
-                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
-            ]) },
-            // Bright amber pip.
-            { offset: 0.55, size: 0.055, alpha: 0.55, tex: radialGradientTexture([
-                [0.00, `rgba(${CONFIG.sunCoreColor}, 1.0)`],
-                [0.40, `rgba(${CONFIG.sunWarmColor}, 0.55)`],
-                [0.80, `rgba(${CONFIG.sunRimColor}, 0.1)`],
-                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
-            ]) },
-            // Medium teal ring (the cool counterpoint).
-            { offset: 0.80, size: 0.13, alpha: 0.35, tex: radialGradientTexture([
-                [0.00, 'rgba(180, 220, 255, 0.55)'],
-                [0.45, 'rgba(110, 170, 230, 0.20)'],
-                [0.85, 'rgba( 50,  90, 180, 0.04)'],
-                [1.00, 'rgba( 30,  60, 160, 0.0)'],
-            ]) },
-            // Cool blue ghost on the centre line.
-            { offset: 1.00, size: 0.20, alpha: 0.28, tex: radialGradientTexture([
-                [0.00, 'rgba(160, 200, 255, 0.6)'],
-                [0.50, 'rgba( 80, 140, 220, 0.15)'],
-                [1.00, 'rgba( 30,  60, 160, 0.0)'],
-            ]) },
-            // Tiny cyan glint just past centre.
-            { offset: 1.20, size: 0.045, alpha: 0.55, tex: radialGradientTexture([
-                [0.00, 'rgba(220, 245, 255, 1.0)'],
-                [0.50, 'rgba(140, 210, 255, 0.25)'],
-                [1.00, 'rgba( 60, 130, 200, 0.0)'],
-            ]) },
-            // Faint warm ghost far past centre.
-            { offset: 1.55, size: 0.16, alpha: 0.18, tex: radialGradientTexture([
-                [0.00, `rgba(${CONFIG.sunWarmColor}, 0.55)`],
-                [0.50, `rgba(${CONFIG.sunRimColor}, 0.12)`],
-                [1.00, `rgba(${CONFIG.sunRimColor}, 0.0)`],
-            ]) },
+            // Warm cream ghost just off the sun.
+            { offset: 0.22, size: 0.16,  alpha: 0.28, breath: 0.4, tex: softGhostTexture(CONFIG.sunCoreColor, 0.65) },
+            // Small warm-tinted hex iris (very low saturation).
+            { offset: 0.42, size: 0.045, alpha: 0.40, breath: 0.3, tex: hexGhostTexture( 35, 256, 0.22) },
+            // Cool off-white iris a little past it.
+            { offset: 0.62, size: 0.035, alpha: 0.45, breath: 0.3, tex: hexGhostTexture(205, 256, 0.20) },
+            // Faintly cool soft ghost a little past centre.
+            { offset: 1.25, size: 0.09,  alpha: 0.18, breath: 0.5, tex: softGhostTexture('210, 225, 245', 0.5) },
+            // Tiny bright hex iris glint.
+            { offset: 1.42, size: 0.04,  alpha: 0.50, breath: 0.35, tex: hexGhostTexture(180, 256, 0.18) },
+            // Distant warm soft fade.
+            { offset: 1.78, size: 0.18,  alpha: 0.14, breath: 0.5, tex: softGhostTexture(CONFIG.sunWarmColor, 0.4) },
         ];
 
         const flareElements = flareSpecs.map((spec) => {
@@ -440,20 +774,22 @@
             const skyPos = sunDir.clone().multiplyScalar(CONFIG.skyDistance);
             sunCore.position.copy(skyPos);
             sunHalo.position.copy(skyPos);
-            sunStreak.position.copy(skyPos);
+            chromaRing.position.copy(skyPos);
+            sunStar.position.copy(skyPos);
 
             const coreScale  = CONFIG.sunSize * 2;
-            const streakW    = coreScale * CONFIG.sunStreakScale;
-            const streakH    = streakW * CONFIG.sunStreakHeight;
             sunCore.scale.setScalar(coreScale);
             sunHalo.scale.setScalar(coreScale * CONFIG.sunHaloScale);
-            sunStreak.scale.set(streakW, streakH, 1);
+            chromaRing.scale.setScalar(coreScale * CONFIG.chromaRingScale);
+            sunStar.scale.setScalar(coreScale * CONFIG.sunStarScale);
 
             sunCore.visible   = CONFIG.showSun;
             sunHalo.visible   = CONFIG.showSun;
-            sunStreak.visible = CONFIG.showSun;
-            sunHalo.material.opacity   = CONFIG.sunHaloOpacity;
-            sunStreak.material.opacity = CONFIG.sunStreakOpacity;
+            chromaRing.visible = CONFIG.showSun;
+            sunStar.visible    = CONFIG.showSun;
+            sunHalo.material.opacity    = CONFIG.sunHaloOpacity;
+            chromaRing.material.opacity = CONFIG.chromaRingOpacity;
+            sunStar.material.opacity    = CONFIG.sunStarOpacity;
 
             ambient.intensity = CONFIG.ambientIntensity;
         }
@@ -463,16 +799,96 @@
         // Place each flare element at NDC = sunNDC * (1 - offset) so they
         // chain through screen centre, then unproject to a constant-depth
         // world point in front of the camera. Hidden when the sun is behind
-        // the camera, off-screen, or occluded by the body.
+        // the camera or off-screen; smoothly faded when the body covers the
+        // sun (instead of popping on/off).
         const flareSunNdc      = new THREE.Vector3();
         const flareTmpPos      = new THREE.Vector3();
-        const flareRaycaster   = new THREE.Raycaster();
-        const flareDirToSun    = new THREE.Vector3();
         const flareSunCamSpace = new THREE.Vector3();
+        const flareCamToBody   = new THREE.Vector3();
+        const flareCamToSun    = new THREE.Vector3();
 
-        function updateLensFlare() {
-            if (!CONFIG.showLensFlare || !CONFIG.showSun) {
-                for (const f of flareElements) f.sprite.visible = false;
+        // EMA-smoothed visible fraction of the sun disc (0 = fully covered,
+        // 1 = unobstructed). Driven by an analytical body-vs-sun disc
+        // overlap each frame — no raycasts.
+        const flareState = { visibility: 1 };
+
+        // Area of intersection of two circles of radii r1, r2 whose centres
+        // are `d` apart. Standard closed-form.
+        function discOverlapArea(r1, r2, d) {
+            if (d >= r1 + r2)            return 0;
+            if (d <= Math.abs(r1 - r2))  return Math.PI * Math.min(r1, r2) ** 2;
+
+            const r1sq = r1 * r1;
+            const r2sq = r2 * r2;
+            const a1 = r1sq * Math.acos((d * d + r1sq - r2sq) / (2 * d * r1));
+            const a2 = r2sq * Math.acos((d * d + r2sq - r1sq) / (2 * d * r2));
+            const a3 = 0.5 * Math.sqrt(
+                Math.max(0,
+                    (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)
+                ),
+            );
+
+            return a1 + a2 - a3;
+        }
+
+        // Analytical fraction of the sun disc that is NOT occluded by the
+        // body, as seen from the camera right now. Treats the body as a
+        // sphere of radius `planetRadius` centred at the world origin, the
+        // sun as a sphere of radius `sunSize` at `skyDistance` along
+        // `sunDir`. Both project to circles in the camera's angular field
+        // of view; the visible fraction is `1 - overlap / sunArea`.
+        // O(1), no raycasts — the previous sampled raycast loop was the
+        // FPS killer.
+        function measureSunVisibility(sunWorldPos) {
+            flareCamToBody.set(0, 0, 0).sub(camera.position);
+            const dBody = flareCamToBody.length();
+
+            if (dBody <= CONFIG.planetRadius)
+            {
+                // Camera inside the body — pathological, treat as fully covered.
+                return 0;
+            }
+
+            flareCamToSun.copy(sunWorldPos).sub(camera.position);
+            const dSun = flareCamToSun.length();
+
+            // Sun closer than the body to the camera can't be occluded by it.
+            if (dSun <= dBody) return 1;
+
+            const aBody = Math.asin(CONFIG.planetRadius / dBody);
+            const aSun  = Math.asin(Math.min(1, CONFIG.sunSize / dSun));
+
+            // Angular separation between body and sun as seen from camera.
+            const cosSep = THREE.MathUtils.clamp(
+                flareCamToBody.dot(flareCamToSun) / (dBody * dSun),
+                -1, 1,
+            );
+            const sep = Math.acos(cosSep);
+
+            const overlap = discOverlapArea(aBody, aSun, sep);
+            const sunArea = Math.PI * aSun * aSun;
+
+            return Math.max(0, 1 - overlap / sunArea);
+        }
+
+        function updateLensFlare(timeMs = 0) {
+            const t = timeMs * 0.001;
+
+            // The chroma ring and the starburst are always anchored on the
+            // sun, so animate their rotation regardless of the rest of the
+            // chain.
+            chromaRing.material.rotation = t * deg2rad(CONFIG.chromaRingSpeed);
+            sunStar.material.rotation    = t * deg2rad(CONFIG.sunStarSpeed);
+
+            // Default: no flare elements visible until we know the sun is
+            // on-screen and partly unobstructed.
+            for (const f of flareElements) f.sprite.visible = false;
+
+            if (!CONFIG.showSun)
+            {
+                flareState.visibility = 0;
+                applySunDiscVisibility(0);
+
                 return;
             }
 
@@ -498,28 +914,39 @@
                 && Math.abs(flareSunNdc.x) <= 1.2
                 && Math.abs(flareSunNdc.y) <= 1.2;
 
-            // Occlusion: is the body between the camera and the sun? Ray-cast
-            // along the apparent sun direction.
-            let occluded = false;
+            // Analytical visible-disc fraction → EMA-smoothed. Gives a soft
+            // cinematic fade-in when the body uncovers the sun, but hides
+            // fast when the body crosses in front (`* 4` on the way down) so
+            // the halo never lingers across the planet's silhouette.
+            const measured = inFront ? measureSunVisibility(sunWorldPos) : 0;
+            const ease     = measured < flareState.visibility
+                ? Math.min(1, CONFIG.flareOcclusionEase * 4)
+                : CONFIG.flareOcclusionEase;
+            flareState.visibility += (measured - flareState.visibility) * ease;
+            const vis = flareState.visibility;
 
-            if (inFront) {
-                flareDirToSun.subVectors(sunWorldPos, camera.position).normalize();
-                flareRaycaster.set(camera.position, flareDirToSun);
-                const hit = flareRaycaster.intersectObjects(depthMeshes, false)[0];
-                // Anything we hit on the body is closer than the (effectively
-                // infinite) sun, so a hit means the sun is occluded.
-                if (hit) occluded = true;
-            }
+            // Apply the smoothed visibility to the sun-disc elements (halo,
+            // chroma ring, starburst). They keep their full base opacity at
+            // vis=1, fade to nothing as vis → 0, so a body crossing the sun
+            // gently dims the whole glow.
+            applySunDiscVisibility(vis);
 
-            if (!inFront || occluded) {
-                for (const f of flareElements) f.sprite.visible = false;
+            if (!CONFIG.showLensFlare || !onScreen || vis < 0.01)
+            {
                 return;
             }
 
             // Fade as the sun approaches the edge of the viewport.
             const edgeDist = Math.max(Math.abs(flareSunNdc.x), Math.abs(flareSunNdc.y));
             const edgeFade = THREE.MathUtils.clamp(1 - (edgeDist - 0.7) / 0.5, 0, 1);
-            const globalAlpha = CONFIG.lensFlareOpacity * edgeFade;
+            // Subtle "punch up" near screen centre — real lenses flare hardest
+            // when the source is dead-on the optical axis.
+            const centreBoost = THREE.MathUtils.clamp(1 - flareSunNdc.length() * 0.5, 0.5, 1.1);
+            // The chain's visibility curve is steeper than the disc's — a
+            // partly-covered sun should kill the ghost chain quickly, but
+            // let the halo linger.
+            const chainVis    = vis * vis;
+            const globalAlpha = CONFIG.lensFlareOpacity * edgeFade * centreBoost * chainVis;
 
             // Viewport height in world units at the "overlay" depth — used to
             // scale each flare so its `size` is a fraction of screen height.
@@ -528,15 +955,38 @@
             const overlayDist = camera.position.distanceTo(flareTmpPos);
             const screenWorldHeight = 2 * overlayDist * Math.tan(deg2rad(camera.fov) / 2);
 
-            for (const f of flareElements) {
+            for (let i = 0; i < flareElements.length; i++) {
+                const f = flareElements[i];
                 const ndcX = flareSunNdc.x * (1 - f.offset);
                 const ndcY = flareSunNdc.y * (1 - f.offset);
                 flareTmpPos.set(ndcX, ndcY, overlayDepthNdc).unproject(camera);
                 f.sprite.position.copy(flareTmpPos);
-                f.sprite.scale.setScalar(f.size * screenWorldHeight);
-                f.sprite.material.opacity = f.alpha * globalAlpha;
-                f.sprite.visible = onScreen && globalAlpha > 0.01;
+
+                // Subtle scale & alpha pulse — each ghost has its own phase so
+                // they don't all breathe in lock-step.
+                const phase = i * 0.9;
+                const breath = f.breath ?? 0.4;
+                const wobble = Math.sin(t * 0.7 + phase) * 0.5 + 0.5; // 0..1
+                const sizeMul  = 1 + (wobble - 0.5) * 0.12 * breath;
+                const alphaMul = 1 + (wobble - 0.5) * 0.30 * breath;
+
+                f.sprite.scale.setScalar(f.size * screenWorldHeight * sizeMul);
+                f.sprite.material.opacity = f.alpha * globalAlpha * alphaMul;
+                // Very slow counter-rotation on alternating ghosts — sells the
+                // "iris artefact" feel without looking spun.
+                f.sprite.material.rotation = (i % 2 === 0 ? 1 : -1) * t * 0.04 + i * 0.4;
+                f.sprite.visible = globalAlpha > 0.01;
             }
+        }
+
+        // Apply the smoothed sun-visibility fraction to the on-sun elements.
+        // Multiplies each one's *configured* base opacity, so the per-element
+        // tuning in CONFIG remains authoritative.
+        function applySunDiscVisibility(vis) {
+            sunCore.material.opacity    = vis;
+            sunHalo.material.opacity    = CONFIG.sunHaloOpacity    * Math.sqrt(Math.max(0, vis));
+            chromaRing.material.opacity = CONFIG.chromaRingOpacity * vis;
+            sunStar.material.opacity    = CONFIG.sunStarOpacity    * vis;
         }
 
         // Star field — a single Points object on a far sphere, rendered with a
@@ -739,50 +1189,85 @@
 
         function appendCapCell(cell, positions, normals, indices) {
             const { boundaryLat, rOuter, rInner, sign, fan } = cell;
-            // Pre-sample the boundary rings at both radii.
-            const ringOuter = new Array(fan);
-            const ringInner = new Array(fan);
+            const rings = Math.max(2, CONFIG.polarCapRings ?? 4);
+            const poleLat = sign * 90;
 
-            for (let k = 0; k < fan; k++) {
-                const lon = (k / fan) * 360;
-                ringOuter[k] = sphere(lon, boundaryLat, rOuter);
-                ringInner[k] = sphere(lon, boundaryLat, rInner);
+            // Pre-sample concentric rings between the pole (i = 0) and the cap
+            // boundary (i = rings) at both crust radii. Sampling the latitudes
+            // on the real sphere is what rounds the silhouette — a single
+            // pole→ring fan would still draw a cone.
+            const outerRings = [];
+            const innerRings = [];
+
+            for (let i = 0; i <= rings; i++) {
+                const t = i / rings;
+                const lat = poleLat + (boundaryLat - poleLat) * t;
+                const ringO = new Array(fan);
+                const ringI = new Array(fan);
+
+                for (let k = 0; k < fan; k++) {
+                    const lon = (k / fan) * 360;
+                    ringO[k] = sphere(lon, lat, rOuter);
+                    ringI[k] = sphere(lon, lat, rInner);
+                }
+
+                outerRings.push(ringO);
+                innerRings.push(ringI);
             }
 
-            const pole = new THREE.Vector3(0, sign * rOuter, 0);
-            const poleInner = new THREE.Vector3(0, sign * rInner, 0);
+            // Outer skin: quad strip between ring i and ring i+1, radial-outward
+            // normals so shading is continuous across both rings *and* across
+            // the boundary into the surrounding quad cells.
+            for (let i = 0; i < rings; i++)
+            {
+                const r0 = outerRings[i];
+                const r1 = outerRings[i + 1];
 
-            // Outer fan: pole → ring. Winding so the outward face is the lit one.
-            for (let k = 0; k < fan; k++) {
-                const k2 = (k + 1) % fan;
-                const a = pole;
-                const b = sign > 0 ? ringOuter[k2] : ringOuter[k];
-                const c = sign > 0 ? ringOuter[k]  : ringOuter[k2];
-                const base = positions.length / 3;
-                // Radial outward normals (dir = +1). The pole's outward radial
-                // is just position/|position|, which already equals (0, sign, 0)
-                // — passing `sign` instead of `+1` was the south-pole bug.
-                pushRadial(positions, normals, a, 1);
-                pushRadial(positions, normals, b, 1);
-                pushRadial(positions, normals, c, 1);
-                indices.push(base, base + 1, base + 2);
+                for (let k = 0; k < fan; k++)
+                {
+                    const k2 = (k + 1) % fan;
+                    const a = r0[k], b = r0[k2], c = r1[k2], d = r1[k];
+                    // Winding matches the original outer fan (pole, ring[k2], ring[k])
+                    // for sign>0 and the swapped variant for sign<0.
+                    const verts = sign > 0
+                        ? [a, b, c, a, c, d]
+                        : [a, d, c, a, c, b];
+                    const base = positions.length / 3;
+
+                    for (const p of verts) pushRadial(positions, normals, p, 1);
+
+                    indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
+                }
             }
 
-            // Inner fan: same but inward normals (dir = -1), reversed winding.
-            for (let k = 0; k < fan; k++) {
-                const k2 = (k + 1) % fan;
-                const a = poleInner;
-                const b = sign > 0 ? ringInner[k]  : ringInner[k2];
-                const c = sign > 0 ? ringInner[k2] : ringInner[k];
-                const base = positions.length / 3;
-                pushRadial(positions, normals, a, -1);
-                pushRadial(positions, normals, b, -1);
-                pushRadial(positions, normals, c, -1);
-                indices.push(base, base + 1, base + 2);
+            // Inner skin: same strips, inward normals, reversed winding.
+            for (let i = 0; i < rings; i++)
+            {
+                const r0 = innerRings[i];
+                const r1 = innerRings[i + 1];
+
+                for (let k = 0; k < fan; k++)
+                {
+                    const k2 = (k + 1) % fan;
+                    const a = r0[k], b = r0[k2], c = r1[k2], d = r1[k];
+                    const verts = sign > 0
+                        ? [a, d, c, a, c, b]
+                        : [a, b, c, a, c, d];
+                    const base = positions.length / 3;
+
+                    for (const p of verts) pushRadial(positions, normals, p, -1);
+
+                    indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
+                }
             }
 
-            // Boundary cone wall: quad strip between outer and inner rings, flat
-            // outward normals per segment.
+            // Boundary cone wall: quad strip between outer and inner rings at
+            // the cap boundary, flat outward normals per segment. Unchanged
+            // from the original implementation — just sourced from the last
+            // subdivision ring.
+            const ringOuter = outerRings[rings];
+            const ringInner = innerRings[rings];
+
             for (let k = 0; k < fan; k++) {
                 const k2 = (k + 1) % fan;
                 const a = ringOuter[k];
@@ -877,11 +1362,14 @@
             emissive: new THREE.Color(c).multiplyScalar(0.06 * d),
         }));
 
-        // core — sized a touch larger than the deepest cell's inner radius so its
-        // surface OCCLUDES those inner faces instead of sitting exactly on them
-        // (a coincident shell there causes z-fighting that culling can't resolve).
+        // core — sized just inside the deepest cell's inner radius so it
+        // occludes the inner-facing crust walls in resource mode without
+        // bleeding past them and obscuring the deepest layer (which was the
+        // bug behind the missing third stratum). A tiny inset keeps the
+        // core's surface and the cells' coincident inner faces from
+        // z-fighting.
         const core = new THREE.Mesh(
-            new THREE.SphereGeometry(coreRadius + CONFIG.planetRadius * 0.01, 48, 32),
+            new THREE.SphereGeometry(coreRadius - 0.25, 96, 64),
             new THREE.MeshStandardMaterial({ color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide }),
         );
         bodyGroup.add(core);
@@ -1052,6 +1540,11 @@
         const surfaceMeshes = [depthMeshes[0]];
 
         const grid = buildGrid();
+        // The grid mesh is kept around (handy for debugging) but stays hidden
+        // by default — the per-cell hover highlight is what reveals the cell
+        // structure on demand. Without this, every cell boundary draws a faint
+        // dark line that reads as a "seam" between cells.
+        grid.visible = false;
         bodyGroup.add(grid);
 
         // ----------------------------------------------------------------------
@@ -1110,7 +1603,7 @@
         const state = {
             mode: 'view',           // 'view' | 'resource'
             selected: null,         // selected SURFACE cell userData (gates resource mode)
-            focus: { lon: 0, lat: 0 }, // surface point the crust view is centred on
+            focus: { lon: 0, lat: 0, lonTarget: 0, latTarget: 0 }, // surface point the crust view is centred on
             cutLon: null,           // longitude the cells are currently cut at
             camDist: (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoom, // crust-view zoom
             viewSnapshot: null,     // saved orbit-camera state while in resource mode
@@ -1319,7 +1812,7 @@
             }
 
             // flat cap for the smooth core so it stays level with the slice too.
-            const coreR = coreRadius + CONFIG.planetRadius * 0.01;
+            const coreR = coreRadius - 0.25;
             const k = clipPlane.constant;
 
             if (coreR * coreR > k * k) {
@@ -1410,7 +1903,7 @@
 
             applyClipping(resource);
             sliceVisual.visible = false;
-            grid.visible = !resource;
+            // grid stays hidden in both modes — see the buildGrid() call above.
             controls.enabled = !resource; // custom drag drives the crust view
             selection.visible = selectionEdges.visible = !resource && state.selected !== null;
 
@@ -1430,6 +1923,10 @@
 
                 state.focus.lon = state.selected.lon;
                 state.focus.lat = state.selected.lat;
+                state.focus.lonTarget = snapLonToCol(state.selected.lon);
+                state.focus.latTarget = snapLatToRow(state.selected.lat);
+                state.focus.lon = state.focus.lonTarget;
+                state.focus.lat = state.focus.latTarget;
                 state.cutLon = null;
                 updateResource(true);
             } else {
@@ -1458,6 +1955,30 @@
         // Input — drag strolls the crust in resource mode, wheel zooms
         // ----------------------------------------------------------------------
         const drag = { active: false, x: 0, y: 0 };
+
+        // Snap a latitude to the centre of the nearest quad-cell row, clamped
+        // to the non-cap band (polar caps aren't part of the snap grid — the
+        // crust view is anchored on quad cells). Used to settle the
+        // horizontal scroll on a cell after the user releases the mouse.
+        function snapLatToRow(lat) {
+            const minLat = -90 + capRows * rowDegLat + rowDegLat / 2;
+            const maxLat =  90 - capRows * rowDegLat - rowDegLat / 2;
+            const clamped = Math.max(minLat, Math.min(maxLat, lat));
+            const idx = Math.round((clamped - minLat) / rowDegLat);
+
+            return minLat + idx * rowDegLat;
+        }
+
+        // Snap a longitude to the centre of the nearest quad-cell column. The
+        // longitude axis wraps, so we work modulo 360 and let the easing
+        // resolve direction via shortest-path.
+        function snapLonToCol(lon) {
+            const colDeg = 360 / CONFIG.lonCells;
+            const norm = ((lon % 360) + 360) % 360;
+            const idx = Math.round((norm - colDeg / 2) / colDeg);
+
+            return ((idx * colDeg + colDeg / 2) % 360 + 360) % 360;
+        }
 
         // How many degrees of lat/lon does ONE screen pixel of drag correspond
         // to right now? Derived from the perspective camera's FOV and the
@@ -1489,7 +2010,18 @@
             drag.y = e.clientY;
         });
 
-        window.addEventListener('pointerup', () => { drag.active = false; });
+        window.addEventListener('pointerup', () => {
+            if (!drag.active) return;
+            drag.active = false;
+            // Settle on a cell: snap the targets to the nearest column/row
+            // and let `easeFocusToTarget()` glide the remaining distance —
+            // same feel as OrbitControls' damped stop in view mode.
+            if (state.mode === 'resource')
+            {
+                state.focus.lonTarget = snapLonToCol(state.focus.lonTarget);
+                state.focus.latTarget = snapLatToRow(state.focus.latTarget);
+            }
+        });
 
         window.addEventListener('pointermove', (e) => {
             if (!drag.active || state.mode !== 'resource') return;
@@ -1500,12 +2032,15 @@
             drag.y = e.clientY;
 
             const dpp = dragDegPerPixel();
-            // forward/back moves the longitudinal slice; left/right pans latitude.
-            const lonChanged = dy !== 0;
-            state.focus.lon = (state.focus.lon + dy * dpp.lon + 360) % 360;
-            state.focus.lat = Math.max(-88, Math.min(88, state.focus.lat + dx * dpp.lat));
-
-            updateResource(lonChanged);
+            // Move TARGETS continuously — the animation loop is what advances
+            // the actual focus toward them. Snapping happens on pointerup so
+            // the user gets smooth, analog-feeling tracking during the drag
+            // and a clean cell-aligned settle when they let go.
+            const minLat = -90 + capRows * rowDegLat + rowDegLat / 2;
+            const maxLat =  90 - capRows * rowDegLat - rowDegLat / 2;
+            state.focus.lonTarget = (state.focus.lonTarget + dy * dpp.lon + 360) % 360;
+            state.focus.latTarget = Math.max(minLat, Math.min(maxLat,
+                state.focus.latTarget + dx * dpp.lat));
         });
 
         renderer.domElement.addEventListener('wheel', (e) => {
@@ -1528,14 +2063,14 @@
 
             if (state.mode !== 'resource') return;
 
-            let lonChanged = false;
+            const colDeg = 360 / CONFIG.lonCells;
 
-            if (e.key === 'ArrowUp')    { state.focus.lon = (state.focus.lon + 2) % 360; lonChanged = true; }
-            if (e.key === 'ArrowDown')  { state.focus.lon = (state.focus.lon - 2 + 360) % 360; lonChanged = true; }
-            if (e.key === 'ArrowLeft')  state.focus.lat = Math.min(88, state.focus.lat + 2);
-            if (e.key === 'ArrowRight') state.focus.lat = Math.max(-88, state.focus.lat - 2);
-
-            updateResource(lonChanged);
+            // Arrow keys step targets one full cell; easing carries the
+            // visible focus in smoothly.
+            if (e.key === 'ArrowUp')    state.focus.lonTarget = snapLonToCol(state.focus.lonTarget + colDeg);
+            if (e.key === 'ArrowDown')  state.focus.lonTarget = snapLonToCol(state.focus.lonTarget - colDeg);
+            if (e.key === 'ArrowLeft')  state.focus.latTarget = snapLatToRow(state.focus.latTarget + rowDegLat);
+            if (e.key === 'ArrowRight') state.focus.latTarget = snapLatToRow(state.focus.latTarget - rowDegLat);
         });
 
         // ----------------------------------------------------------------------
@@ -1553,10 +2088,32 @@
         });
         renderer.domElement.addEventListener('pointerleave', () => { pointerInside = false; });
 
-        renderer.domElement.addEventListener('click', () => {
+        // Distinguish a real click from the end of an orbit-drag in view mode.
+        // OrbitControls consumes the drag, but the browser still fires `click`
+        // on pointerup if the press and release were on the same element —
+        // which would select a different cell whenever the user finished
+        // panning over the planet. Track the press position and treat any
+        // release that moved more than `CLICK_SLOP_PX` as a drag, not a click.
+        const CLICK_SLOP_PX = 4;
+        const pressOrigin = { x: 0, y: 0, valid: false };
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            pressOrigin.x = e.clientX;
+            pressOrigin.y = e.clientY;
+            pressOrigin.valid = true;
+        });
+
+        renderer.domElement.addEventListener('click', (e) => {
             // Only surface cells (depth 0), in view mode, can be selected. Selecting
             // one anchors and unlocks resource mode.
             if (state.mode !== 'view' || !highlight.visible) return;
+
+            if (pressOrigin.valid)
+            {
+                const moved = Math.hypot(e.clientX - pressOrigin.x, e.clientY - pressOrigin.y);
+                pressOrigin.valid = false;
+
+                if (moved > CLICK_SLOP_PX) return; // it was a pan, not a click
+            }
 
             const cell = highlight.userData.cell;
 
@@ -1699,14 +2256,60 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            updateFps(performance.now());
+            const now = performance.now();
+            updateFps(now);
             if (state.mode === 'view') controls.update(); // crust view is driven manually
-            // Track the camera so the sky group (sun, halo, streak, stars)
+            else easeFocusToTarget();                     // smooth snap in resource mode
+            // Track the camera so the sky group (sun, halo, chroma ring, stars)
             // appears fixed at infinity — no parallax.
             skyAnchor.position.copy(camera.position);
             updateHover();
-            updateLensFlare();
+            updateLensFlare(now);
             renderer.render(scene, camera);
+        }
+
+        // Glide state.focus.{lon,lat} toward their targets every frame. Both
+        // axes use the same exponential ease so a drag-and-release in resource
+        // mode feels just like releasing an OrbitControls orbit in view mode:
+        // analog while you drag, then a short damped settle onto the cell.
+        // Longitude eases along the shortest arc across the 0/360 wrap.
+        function easeFocusToTarget() {
+            const EPS = 1e-3;
+            const ease = CONFIG.focusSnapEase;
+            let lonChanged = false;
+            let moved = false;
+
+            let dLon = state.focus.lonTarget - state.focus.lon;
+            if (dLon > 180)  dLon -= 360;
+            if (dLon < -180) dLon += 360;
+
+            if (Math.abs(dLon) > EPS)
+            {
+                state.focus.lon = (state.focus.lon + dLon * ease + 360) % 360;
+                lonChanged = true;
+                moved = true;
+            }
+            else if (state.focus.lon !== state.focus.lonTarget)
+            {
+                state.focus.lon = state.focus.lonTarget;
+                lonChanged = true;
+                moved = true;
+            }
+
+            const dLat = state.focus.latTarget - state.focus.lat;
+
+            if (Math.abs(dLat) > EPS)
+            {
+                state.focus.lat += dLat * ease;
+                moved = true;
+            }
+            else if (state.focus.lat !== state.focus.latTarget)
+            {
+                state.focus.lat = state.focus.latTarget;
+                moved = true;
+            }
+
+            if (moved) updateResource(lonChanged);
         }
         animate();
     </script>
