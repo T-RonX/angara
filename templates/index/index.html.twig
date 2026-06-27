@@ -103,10 +103,10 @@
         // ----------------------------------------------------------------------
         const CONFIG = {
             planetRadius:   500,    // radius of the body
-            lonCells:       24 * 3,    // grid divisions around the equator (longitude)
-            latCells:       12 * 3,    // grid divisions from pole to pole (latitude)
+            lonCells:       24 * 10,    // grid divisions around the equator (longitude)
+            latCells:       12 * 10,    // grid divisions from pole to pole (latitude)
             maxDepth:        3,    // number of crust layers (max depth = 3)
-            layerThickness:  5,    // thickness of each depth layer
+            layerThickness:  10,    // thickness of each depth layer
             // Inner sphere (the "core") is shown beneath the deepest crust
             // layer in resource mode. Pick a colour that clearly contrasts the
             // crust layers so the core reads as a distinct object.
@@ -1788,6 +1788,82 @@
             return hit.object.userData.faceToCell[hit.faceIndex];
         }
 
+        // ------------------------------------------------------------------
+        // Analytical surface picking (view mode).
+        //
+        // The depth-0 merged mesh has ~lonCells*latCells*12 triangles
+        // (~125k at default settings). Three.js' raycaster has no BVH and
+        // tests every triangle linearly whenever the ray hits the planet's
+        // bounding sphere — that's the FPS sink while the cursor is over
+        // the body. Same idea as `measureSunVisibility` above: replace the
+        // per-frame raycast loop with a closed-form ray-vs-sphere
+        // intersection, then index straight into the cell grid.
+        //
+        // Surface cells live at radius `planetRadius`, the body is centred
+        // at the world origin, so this is O(1) regardless of grid density.
+        // Resource mode keeps the raycast path because the cap caps carry
+        // arbitrary cut geometry that isn't a sphere.
+        // ------------------------------------------------------------------
+        const surfaceQuadLookup = new Array(CONFIG.latCells * CONFIG.lonCells).fill(null);
+        let surfaceCapNorth = null;
+        let surfaceCapSouth = null;
+
+        for (const cell of cellsByDepth[0])
+        {
+            if (cell.kind === 'quad')
+            {
+                surfaceQuadLookup[cell.latIdx * CONFIG.lonCells + cell.lonIdx] = cell;
+            }
+            else if (cell.sign > 0)
+            {
+                surfaceCapNorth = cell;
+            }
+            else
+            {
+                surfaceCapSouth = cell;
+            }
+        }
+
+        const _pickHit = new THREE.Vector3();
+        const rad2deg = 180 / Math.PI;
+
+        function pickSurfaceCellAnalytical() {
+            // raycaster.ray.{origin,direction} are already set by the caller.
+            const o = raycaster.ray.origin;
+            const d = raycaster.ray.direction;
+            const R = CONFIG.planetRadius;
+
+            // Solve |o + t*d|^2 = R^2  =>  t^2 + 2(o.d)t + (o.o - R^2) = 0
+            // (d is unit-length, so the leading coefficient is 1.)
+            const b = o.dot(d);
+            const c = o.dot(o) - R * R;
+            const disc = b * b - c;
+
+            if (disc < 0) return null;
+
+            const sq = Math.sqrt(disc);
+            let t = -b - sq;
+            if (t < 0) t = -b + sq;
+            if (t < 0) return null;
+
+            _pickHit.copy(d).multiplyScalar(t).add(o);
+
+            const latDeg = Math.asin(THREE.MathUtils.clamp(_pickHit.y / R, -1, 1)) * rad2deg;
+            let lonDeg = Math.atan2(_pickHit.z, _pickHit.x) * rad2deg;
+            if (lonDeg < 0) lonDeg += 360;
+
+            const j = Math.floor((latDeg + 90) / rowDegLat);
+
+            if (j < capRows)                      return surfaceCapSouth;
+            if (j >= CONFIG.latCells - capRows)   return surfaceCapNorth;
+
+            let i = Math.floor(lonDeg / 360 * CONFIG.lonCells);
+            if (i < 0)                  i = 0;
+            if (i >= CONFIG.lonCells)   i = CONFIG.lonCells - 1;
+
+            return surfaceQuadLookup[j * CONFIG.lonCells + i];
+        }
+
         // Lazy per-cell geometry for the hover/selection overlay.
         function getCellGeom(cell) {
             if (!cell.geom) cell.geom = buildSingleCellGeometry(cell);
@@ -2383,6 +2459,17 @@
         const raycaster = new THREE.Raycaster();
         const pointer = new THREE.Vector2();
         let pointerInside = false;
+        // Cache so updateHover() can skip its work entirely on frames where
+        // neither the cursor nor the camera moved (very common: animate()
+        // runs every frame, but mouse + camera are static most of the time).
+        const hoverCache = {
+            pointerX: NaN,
+            pointerY: NaN,
+            camX: NaN, camY: NaN, camZ: NaN,
+            camQx: NaN, camQy: NaN, camQz: NaN, camQw: NaN,
+            inside: false,
+            mode: null,
+        };
 
         renderer.domElement.addEventListener('pointermove', (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
@@ -2442,6 +2529,33 @@
         }
 
         function updateHover() {
+            // Cheap short-circuit: if nothing that could affect the pick has
+            // changed since the last frame, the previous result is still
+            // valid and we can skip both the raycast and the DOM writes.
+            const camPos = camera.position;
+            const camQ = camera.quaternion;
+
+            if (
+                hoverCache.inside === pointerInside &&
+                hoverCache.mode === state.mode &&
+                hoverCache.pointerX === pointer.x &&
+                hoverCache.pointerY === pointer.y &&
+                hoverCache.camX === camPos.x && hoverCache.camY === camPos.y && hoverCache.camZ === camPos.z &&
+                hoverCache.camQx === camQ.x && hoverCache.camQy === camQ.y &&
+                hoverCache.camQz === camQ.z && hoverCache.camQw === camQ.w
+            )
+            {
+                return;
+            }
+
+            hoverCache.inside = pointerInside;
+            hoverCache.mode = state.mode;
+            hoverCache.pointerX = pointer.x;
+            hoverCache.pointerY = pointer.y;
+            hoverCache.camX = camPos.x; hoverCache.camY = camPos.y; hoverCache.camZ = camPos.z;
+            hoverCache.camQx = camQ.x; hoverCache.camQy = camQ.y;
+            hoverCache.camQz = camQ.z; hoverCache.camQw = camQ.w;
+
             const elLon = document.getElementById('rLon');
             const elLat = document.getElementById('rLat');
             const elDepth = document.getElementById('rDepth');
@@ -2453,26 +2567,21 @@
             }
 
             raycaster.setFromCamera(pointer, camera);
-            // In resource mode hover the flat cut caps (the visible cross-section);
-            // in view mode hover the merged surface mesh.
-            const targets = state.mode === 'resource' ? capMeshes : surfaceMeshes;
-            const hit = raycaster.intersectObjects(targets, false)[0];
 
-            if (!hit) {
-                highlight.visible = highlightEdges.visible = false;
-                elLon.textContent = elLat.textContent = elDepth.textContent = '—';
-                return;
+            let cell = null;
+
+            if (state.mode === 'resource')
+            {
+                // Cap caps carry arbitrary cut geometry, so keep the
+                // raycaster here — there's no closed-form shortcut.
+                const hit = raycaster.intersectObjects(capMeshes, false)[0];
+                if (hit) cell = hit.object.userData.faceToCell[hit.faceIndex];
             }
-
-            // Resolve the hit triangle back to its cell. Body meshes use
-            // contiguous 12-tri-per-cell layout; cap meshes carry an explicit
-            // faceIndex → cell map (cells split into variable-tri polygons).
-            let cell;
-
-            if (state.mode === 'resource') {
-                cell = hit.object.userData.faceToCell[hit.faceIndex];
-            } else {
-                cell = cellFromBodyHit(hit);
+            else
+            {
+                // View mode: depth-0 mesh is a sphere of `planetRadius`,
+                // pick analytically instead of brute-forcing 125k tris.
+                cell = pickSurfaceCellAnalytical();
             }
 
             if (!cell) {
