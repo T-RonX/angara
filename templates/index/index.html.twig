@@ -13,7 +13,25 @@
         <h1>Body Explorer</h1>
         <div class="row"><button id="modeBtn" disabled>Enter resource mode</button></div>
         <div class="row" id="resourceControls" hidden>
-            <div class="hint">Drag up / down : move the longitudinal slice<br>Drag left / right : pan across latitude<br>Wheel : zoom</div>
+            <div id="compassWrap" aria-hidden="true">
+                <svg id="compass" viewBox="-50 -50 100 100">
+                    <circle cx="0" cy="0" r="44" fill="rgba(0,0,0,0.35)" stroke="rgba(120,180,255,0.5)" stroke-width="1"></circle>
+                    <g id="compassRose">
+                        <polygon points="0,-40 6,0 0,-8 -6,0" fill="#ff6b6b"></polygon>
+                        <polygon points="0,40 6,0 0,8 -6,0" fill="#dcebff" opacity="0.6"></polygon>
+                        <line x1="-40" y1="0" x2="40" y2="0" stroke="rgba(120,180,255,0.35)" stroke-width="1"></line>
+                        <text x="0" y="-30" text-anchor="middle" fill="#ff9090" font-size="12" font-weight="700">N</text>
+                        <text x="30" y="4" text-anchor="middle" fill="#cfe3ff" font-size="10">E</text>
+                        <text x="0" y="36" text-anchor="middle" fill="#cfe3ff" font-size="10">S</text>
+                        <text x="-30" y="4" text-anchor="middle" fill="#cfe3ff" font-size="10">W</text>
+                    </g>
+                </svg>
+            </div>
+            <div class="hint">
+                <strong>Drag ↔</strong> moves N/S along the cliff<br>
+                <strong>Drag ↕</strong> spins the meridian (changes longitude)<br>
+                <strong>Click</strong> a cell to glide to it &nbsp;·&nbsp; <strong>Wheel</strong> zooms
+            </div>
         </div>
         <hr>
         <div class="readout">
@@ -83,6 +101,19 @@
         }
         #hud .sliders label .v { color: #eaf3ff; float: right; }
         #hud .sliders input[type=range] { width: 100%; accent-color: #4f8bff; }
+
+        #compassWrap {
+            display: flex; justify-content: center; margin: 4px 0 8px;
+        }
+        #compass {
+            width: 88px; height: 88px;
+            filter: drop-shadow(0 1px 4px rgba(0,0,0,0.5));
+        }
+        /* The rose rotates so its N marker aligns with true north on screen. */
+        #compassRose {
+            transform-origin: 0 0;
+            transition: none; /* updated every frame from JS */
+        }
     </style>
 
     <script type="importmap">
@@ -105,8 +136,16 @@
             planetRadius:   500,    // radius of the body
             lonCells:       24 * 10,    // grid divisions around the equator (longitude)
             latCells:       12 * 10,    // grid divisions from pole to pole (latitude)
-            maxDepth:        3,    // number of crust layers (max depth = 3)
-            layerThickness:  10,    // thickness of each depth layer
+            maxDepth:        5,    // number of crust layers (any reasonable number)
+            // Per-layer thickness (length must be >= maxDepth; entries past
+            // maxDepth are ignored). Set to null to auto-generate a sensible
+            // monotonically-thickening default — deeper layers get a touch
+            // taller, which reads well at game scale.
+            layerThicknesses: null,
+            // Auto-thickness knobs (only used when `layerThicknesses === null`).
+            //   thickness(d) = layerThicknessBase + d * layerThicknessGrowth
+            layerThicknessBase:   10,
+            layerThicknessGrowth: 2,
             // Inner sphere (the "core") is shown beneath the deepest crust
             // layer in resource mode. Pick a colour that clearly contrasts the
             // crust layers so the core reads as a distinct object.
@@ -289,7 +328,69 @@
             atmosphereLightSteps:  6,
         };
 
-        const coreRadius = CONFIG.planetRadius - CONFIG.maxDepth * CONFIG.layerThickness;
+        // ----------------------------------------------------------------------
+        // Derived layer geometry — per-layer thickness + cumulative radii.
+        //
+        // `layerThicknesses[d]` is the thickness of layer d; `layerRadii[d]` is
+        // the OUTER radius of layer d (so layerRadii[d+1] is its inner radius,
+        // and layerRadii[maxDepth] is the core radius). Computed once so the
+        // rest of the code can index layers without re-deriving radii.
+        //
+        // `depthColors` is padded to `maxDepth` entries by interpolating the
+        // last user-supplied colour toward `coreColor` — that way any number
+        // of layers gets a sensible "fading into the core" gradient without
+        // the user having to enumerate them all.
+        // ----------------------------------------------------------------------
+        const maxDepth = CONFIG.maxDepth;
+
+        const layerThicknesses = (() => {
+            const explicit = CONFIG.layerThicknesses;
+
+            if (Array.isArray(explicit) && explicit.length >= maxDepth)
+            {
+                return explicit.slice(0, maxDepth);
+            }
+
+            const out = new Array(maxDepth);
+            for (let d = 0; d < maxDepth; d++)
+            {
+                out[d] = CONFIG.layerThicknessBase + d * CONFIG.layerThicknessGrowth;
+            }
+
+            return out;
+        })();
+
+        const layerRadii = (() => {
+            const out = new Array(maxDepth + 1);
+            out[0] = CONFIG.planetRadius;
+            for (let d = 0; d < maxDepth; d++)
+            {
+                out[d + 1] = out[d] - layerThicknesses[d];
+            }
+
+            return out;
+        })();
+
+        const coreRadius = layerRadii[maxDepth];
+
+        // Pad / extend depthColors to exactly maxDepth entries.
+        const depthColors = (() => {
+            const src = CONFIG.depthColors.slice();
+            if (src.length >= maxDepth) return src.slice(0, maxDepth);
+
+            // Interpolate the last provided colour toward `coreColor` for the
+            // remaining layers so the strata visibly deepen into the core.
+            const last = new THREE.Color(src[src.length - 1]);
+            const core = new THREE.Color(CONFIG.coreColor);
+            const missing = maxDepth - src.length;
+            for (let i = 1; i <= missing; i++)
+            {
+                const t = i / (missing + 1);
+                src.push(last.clone().lerp(core, t * 0.5).getHex());
+            }
+
+            return src;
+        })();
 
         // --- Polar caps -------------------------------------------------------
         // Cells very close to a pole degenerate into slivers as cos(lat) → 0.
@@ -1445,7 +1546,7 @@
         scene.add(bodyGroup);
 
         // shared materials (one per depth) -> cheap clipping toggle
-        const depthMaterials = CONFIG.depthColors.map((c, d) => new THREE.MeshStandardMaterial({
+        const depthMaterials = depthColors.map((c, d) => new THREE.MeshStandardMaterial({
             color: c,
             roughness: 0.95,
             metalness: 0.0,
@@ -1456,14 +1557,15 @@
             emissive: new THREE.Color(c).multiplyScalar(0.06 * d),
         }));
 
-        // core — sized just inside the deepest cell's inner radius so it
-        // occludes the inner-facing crust walls in resource mode without
-        // bleeding past them and obscuring the deepest layer (which was the
-        // bug behind the missing third stratum). A tiny inset keeps the
-        // core's surface and the cells' coincident inner faces from
-        // z-fighting.
+        // core — sized to exactly fill the deepest cell's inner radius so it
+        // touches the bottom of the crust with no annular gap on the cut
+        // plane. View mode hides the sub-surface layers (see `applyClipping`)
+        // so the core's outer surface is never visible through them — no
+        // z-fighting concern. In resource mode the clip plane is the only
+        // place the core meets the crust, and the disc cap below shares the
+        // same radius, so the cross-section reads as continuous.
         const core = new THREE.Mesh(
-            new THREE.SphereGeometry(coreRadius - 0.25, 96, 64),
+            new THREE.SphereGeometry(coreRadius, 96, 64),
             new THREE.MeshStandardMaterial({ color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide }),
         );
         bodyGroup.add(core);
@@ -1690,7 +1792,7 @@
         const cellsByDepth = [];                       // cellsByDepth[d] = array of cells in that depth
         const depthMeshes = [];                        // one merged Mesh per depth
 
-        for (let d = 0; d < CONFIG.maxDepth; d++) {
+        for (let d = 0; d < maxDepth; d++) {
             cellsByDepth[d] = [];
 
             const positions = [];
@@ -1698,8 +1800,8 @@
             const indices = [];
             const faceToCell = [];
 
-            const rOuter = CONFIG.planetRadius - d * CONFIG.layerThickness;
-            const rInner = CONFIG.planetRadius - (d + 1) * CONFIG.layerThickness;
+            const rOuter = layerRadii[d];
+            const rInner = layerRadii[d + 1];
 
             // --- Quad cells (the non-cap latitude band) -------------------
             for (let j = capRows; j < CONFIG.latCells - capRows; j++) {
@@ -1882,6 +1984,88 @@
             return cell.edges;
         }
 
+        // ------------------------------------------------------------------
+        // Resource-mode highlight geometry.
+        //
+        // The cached `getCellGeom()` builds the FULL 6-face hexahedron, which
+        // is what view mode wants (only the outer face is visible there
+        // because the deeper layers are hidden). In resource mode the user
+        // sees the cell carved open by the meridian clip plane, and the full
+        // hex would extend half-way through the visible cross-section,
+        // producing the "highlight clips through the cell" artefact.
+        //
+        // Instead we emit a minimal mesh covering only what's *visible*:
+        //   - depth 0:  the outer (sphere-surface) face PLUS the cross-section
+        //               face on the cut plane (camera-facing).
+        //   - depth >0: the cross-section face on the cut plane only.
+        //
+        // The cross-section depends on the current `clipPlane`, so this is
+        // recomputed on every hover change — the geometry is small enough
+        // (≤ a few triangles) that there's no benefit to caching.
+        // ------------------------------------------------------------------
+        function buildResourceHighlightGeometry(cell) {
+            const positions = [];
+            const normals = [];
+            const indices = [];
+
+            // (a) Cross-section face on the clip plane. Same lift as the cap
+            // mesh uses, plus a small extra so the highlight wins the depth
+            // test against the cap underneath it.
+            const cross = cellCrossSection(cell);
+
+            if (cross !== null && cross.length >= 3)
+            {
+                const n = clipPlane.normal;
+                const lift = CONFIG.planetRadius * 0.003;
+                const base = positions.length / 3;
+
+                for (const p of cross)
+                {
+                    positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
+                    normals.push(-n.x, -n.y, -n.z);
+                }
+
+                for (let t = 1; t < cross.length - 1; t++)
+                {
+                    indices.push(base, base + t, base + t + 1);
+                }
+            }
+
+            // (b) On the surface layer, also include the outer (sphere) face
+            // so the highlight reads as a corner wrapping over the top edge.
+            // Quad cells: one quad (two tris). Cap cells: skip — the cap's
+            // outer skin is many fan triangles and the cross-section alone
+            // reads clearly enough.
+            if (cell.depth === 0 && cell.kind === 'quad')
+            {
+                const corners = cell.corners;
+                // FACE_TRIS[0] (outer face) = [0, 2, 1, 0, 3, 2]
+                const tris = FACE_TRIS[0];
+                const base = positions.length / 3;
+
+                for (let t = 0; t < 6; t++)
+                {
+                    const p = corners[tris[t]];
+                    const len = Math.hypot(p.x, p.y, p.z) || 1;
+                    // Push slightly outward so the highlight sits ABOVE the
+                    // surface mesh (same trick as polygonOffset, but baked
+                    // into geometry for predictable behaviour with the cap).
+                    const out = 1 + 0.0008;
+                    positions.push(p.x * out, p.y * out, p.z * out);
+                    normals.push(p.x / len, p.y / len, p.z / len);
+                    indices.push(base + t);
+                }
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geo.setIndex(indices);
+            geo.computeBoundingSphere();
+
+            return geo;
+        }
+
         // ----------------------------------------------------------------------
         // Grid lines (lon/lat) drawn on the surface
         // ----------------------------------------------------------------------
@@ -1966,7 +2150,7 @@
         // really cut by the plane, not hidden). One cap mesh per sliced cell,
         // carrying the cell's coordinates so the cross-section stays clickable.
         // ----------------------------------------------------------------------
-        const capMaterials = CONFIG.depthColors.map((c) => new THREE.MeshStandardMaterial({
+        const capMaterials = depthColors.map((c) => new THREE.MeshStandardMaterial({
             color: new THREE.Color(c).multiplyScalar(0.85),
             roughness: 1, metalness: 0, side: THREE.DoubleSide,
         }));
@@ -2133,7 +2317,7 @@
             const lift = CONFIG.planetRadius * 0.0015; // nudge caps just off the cut, toward the camera
 
             // Merged cap buffers, one per depth.
-            const buffers = CONFIG.depthColors.map(() => ({
+            const buffers = depthColors.map(() => ({
                 positions: [],
                 normals: [],
                 faceToCell: [], // triangle index → cell record (for raycast picking)
@@ -2141,7 +2325,7 @@
 
             const cols = cutColumns(state.focus.lon);
 
-            for (let d = 0; d < CONFIG.maxDepth; d++) {
+            for (let d = 0; d < maxDepth; d++) {
                 for (const cell of cellsByDepth[d]) {
                     // Quad cells only need testing if they're in a column the
                     // cut could possibly cross. Cap cells are always cut by a
@@ -2173,7 +2357,7 @@
             // Emit one merged cap mesh per depth (≤ maxDepth draw calls instead
             // of one per sliced cell). Each carries a faceIndex → cell map so
             // raycasting still resolves to the right cell.
-            for (let d = 0; d < CONFIG.maxDepth; d++) {
+            for (let d = 0; d < maxDepth; d++) {
                 const buf = buffers[d];
 
                 if (buf.positions.length === 0) {
@@ -2192,7 +2376,10 @@
             }
 
             // flat cap for the smooth core so it stays level with the slice too.
-            const coreR = coreRadius - 0.25;
+            // Use the exact `coreRadius` (matching the sphere geometry and the
+            // deepest layer's inner radius) so the cross-section is continuous
+            // from crust → core with no gap.
+            const coreR = coreRadius;
             const k = clipPlane.constant;
 
             if (coreR * coreR > k * k) {
@@ -2218,6 +2405,10 @@
             clipPlane.constant = 0;
             buildCaps();
             state.cutLon = state.focus.lon;
+            // The hover highlight in resource mode is a cross-section on the
+            // clip plane — invalidate the hover cache so the next frame
+            // rebuilds the geometry against the new plane.
+            hoverCache.pointerX = NaN;
         }
 
         // Position the camera to look at the crust cliff edge-on at the focus point,
@@ -2494,23 +2685,46 @@
         });
 
         renderer.domElement.addEventListener('click', (e) => {
-            // Only surface cells (depth 0), in view mode, can be selected. Selecting
-            // one anchors and unlocks resource mode.
-            if (state.mode !== 'view' || !highlight.visible) return;
+            if (!highlight.visible) return;
 
+            // Reject the synthetic `click` that fires at the end of a drag
+            // (orbit in view mode, stroll in resource mode). Movement past
+            // CLICK_SLOP_PX means the user was dragging, not clicking.
             if (pressOrigin.valid)
             {
                 const moved = Math.hypot(e.clientX - pressOrigin.x, e.clientY - pressOrigin.y);
                 pressOrigin.valid = false;
 
-                if (moved > CLICK_SLOP_PX) return; // it was a pan, not a click
+                if (moved > CLICK_SLOP_PX) return;
             }
 
             const cell = highlight.userData.cell;
 
-            if (!cell || cell.depth !== 0) return;
+            if (!cell) return;
 
-            selectSurfaceCell(cell);
+            if (state.mode === 'view')
+            {
+                // Only surface cells (depth 0) can be picked as the anchor
+                // that unlocks resource mode.
+                if (cell.depth !== 0) return;
+
+                selectSurfaceCell(cell);
+                return;
+            }
+
+            // Resource mode: clicking a cell on the cliff snaps the camera
+            // focus to that cell. Same easing as the arrow-key step, so the
+            // transition feels identical to keyboard navigation.
+            //
+            // Clicking on the antipodal half of the cliff (lon = focus.lon
+            // + 180) would normally rebuild the cut at a new meridian — but
+            // that meridian IS the same great circle, just inverted, which
+            // is visually disorienting. So we only adopt the cell's latitude
+            // (and depth readout); the meridian stays put.
+            state.focus.latTarget = snapLatToRow(cell.lat);
+            // Don't touch lonTarget — the cut is already at the right
+            // meridian. The easing in easeFocusToTarget() will glide the
+            // visible focus over to the new latitude.
         });
 
         function selectSurfaceCell(cell) {
@@ -2590,14 +2804,38 @@
                 return;
             }
 
-            highlight.geometry = getCellGeom(cell);
-            highlightEdges.geometry = getCellEdges(cell);
+            // Swap in the right geometry for the mode:
+            //   - view mode: full cached hex (only the outer face is visible).
+            //   - resource mode: a slim mesh of just the visible faces, rebuilt
+            //     each hover because it depends on the current clip plane.
+            // Dispose any previously-owned geometry on the highlight meshes
+            // before reassigning so we don't leak GPU buffers.
+            if (highlight.userData.ownsGeom)
+            {
+                highlight.geometry.dispose();
+                highlightEdges.geometry.dispose();
+                highlight.userData.ownsGeom = false;
+            }
+
+            if (state.mode === 'resource')
+            {
+                const geom = buildResourceHighlightGeometry(cell);
+                highlight.geometry = geom;
+                highlightEdges.geometry = new THREE.EdgesGeometry(geom, 1);
+                highlight.userData.ownsGeom = true;
+            }
+            else
+            {
+                highlight.geometry = getCellGeom(cell);
+                highlightEdges.geometry = getCellEdges(cell);
+            }
+
             highlight.visible = highlightEdges.visible = true;
             highlight.userData.cell = cell;
 
             elLon.textContent = `${cell.lon.toFixed(1)}°`;
             elLat.textContent = `${cell.lat.toFixed(1)}°`;
-            elDepth.textContent = `${cell.depth + 1} / ${CONFIG.maxDepth}`;
+            elDepth.textContent = `${cell.depth + 1} / ${maxDepth}`;
         }
 
         // ----------------------------------------------------------------------
@@ -2647,6 +2885,41 @@
         });
 
         // ----------------------------------------------------------------------
+        // Compass — the HUD widget points to true north as projected on screen.
+        //
+        // The planet's spin axis is +Y in world space, so the "north pole
+        // direction" is just (0, 1, 0). Project that into the camera's screen
+        // basis (its right and up columns) to get the on-screen 2D heading of
+        // north, and rotate the compass rose to match. The compass therefore
+        // reads correctly in BOTH view mode (orbit camera, any orientation)
+        // and resource mode — where horizontal screen drags map to north/
+        // south along the cliff, the compass makes that mapping obvious.
+        // ----------------------------------------------------------------------
+        const compassRose = document.getElementById('compassRose');
+        const _camRight = new THREE.Vector3();
+        const _camUp = new THREE.Vector3();
+
+        function updateCompass() {
+            if (!compassRose) return;
+
+            _camRight.setFromMatrixColumn(camera.matrixWorld, 0);
+            _camUp.setFromMatrixColumn(camera.matrixWorld, 1);
+
+            // World-space north pole direction projected onto the camera's
+            // screen basis:
+            //   x = north-pole's projection along screen-right
+            //   y = north-pole's projection along screen-up
+            const x = _camRight.y;
+            const y = _camUp.y;
+
+            // CSS rotates clockwise; atan2(x, y) measures clockwise from the
+            // +y (screen-up) axis, which is exactly the rose's "N at the top"
+            // convention.
+            const deg = Math.atan2(x, y) * 180 / Math.PI;
+            compassRose.setAttribute('transform', `rotate(${deg.toFixed(2)})`);
+        }
+
+        // ----------------------------------------------------------------------
         // FPS / frame-time counter (EMA-smoothed; updated to the HUD ~4×/sec
         // so the numbers stay readable).
         // ----------------------------------------------------------------------
@@ -2677,6 +2950,7 @@
             // appears fixed at infinity — no parallax.
             skyAnchor.position.copy(camera.position);
             updateHover();
+            updateCompass();
             updateLensFlare(now);
             // Atmosphere shader: sun direction is the only per-frame uniform
             // (camera position is already a built-in). Cheap to copy each
