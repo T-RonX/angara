@@ -2054,20 +2054,24 @@
             const normals = [];
             const indices = [];
 
-            // (a) Cross-section face on the clip plane. Lifted slightly off
-            // the cap (same direction as buildCaps' own lift) so the
-            // highlight wins the depth test against the cap underneath.
+            // The cliff cross-section, its cap mesh, the clipped surface and this
+            // highlight all sit EXACTLY on the cut plane / sphere surface — no
+            // geometric lift. Depth order at the shared seams is resolved purely
+            // by polygon offset (cap -1, highlight -2, selection -3), so nothing
+            // floats off the cut to open a side-face gap or drift under grazing
+            // views.
+            const n = clipPlane.normal;
+
+            // (a) Cross-section face on the clip plane.
             const cross = cellCrossSection(cell);
 
             if (cross !== null)
             {
-                const n = clipPlane.normal;
-                const lift = CONFIG.planetRadius * 0.0015;
                 const base = positions.length / 3;
 
                 for (const p of cross.positions)
                 {
-                    positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
+                    positions.push(p.x, p.y, p.z);
                     normals.push(-n.x, -n.y, -n.z);
                 }
 
@@ -2281,9 +2285,18 @@
         const capMaterials = depthColors.map((c) => new THREE.MeshStandardMaterial({
             color: new THREE.Color(c).multiplyScalar(0.85),
             roughness: 1, metalness: 0, side: THREE.DoubleSide,
+            // Win the depth test against the clipped surface mesh at the shared
+            // cut seam WITHOUT a geometric lift. A geometric nudge toward the
+            // camera used to open a gap between the (un-lifted) clipped surface
+            // edge and the floating cliff, which exposed cell side faces and
+            // shifted the cliff away from where the cursor expected the cell —
+            // making edge-of-screen picks land on the row behind. A depth-only
+            // bias keeps the cliff exactly on the cut plane.
+            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
         }));
         const coreCapMaterial = new THREE.MeshStandardMaterial({
             color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide,
+            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
         });
         const capsGroup = new THREE.Group();
         scene.add(capsGroup);
@@ -2295,6 +2308,7 @@
         const state = {
             mode: 'view',           // 'view' | 'resource'
             selected: null,         // selected SURFACE cell userData (gates resource mode)
+            resourceSelected: null, // cell picked on the cliff in resource mode (blue highlight)
             focus: { lon: 0, lat: 0, lonTarget: 0, latTarget: 0 }, // surface point the crust view is centred on
             cutLon: null,           // longitude the cells are currently cut at
             cutLat: null,           // latitude the cells are currently cut at (latitude-axis mode)
@@ -2318,6 +2332,53 @@
         );
         selectionEdges.visible = false;
         scene.add(selectionEdges);
+
+        // Persistent BLUE highlight for the cell picked on the cliff in resource
+        // mode. Unlike `selection` (a view-mode surface anchor that uses the full
+        // cached hex), this rides the clip plane, so its geometry is rebuilt with
+        // the cut — same builder as the yellow hover, just a different colour and
+        // a slightly stronger polygon offset so it wins over the hover overlay.
+        const resourceSelection = new THREE.Mesh(
+            new THREE.BufferGeometry(),
+            new THREE.MeshBasicMaterial({
+                color: 0x6fb0ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+                depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+            }),
+        );
+        resourceSelection.visible = false;
+        scene.add(resourceSelection);
+        const resourceSelectionEdges = new THREE.LineSegments(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0x9fd0ff }),
+        );
+        resourceSelectionEdges.visible = false;
+        scene.add(resourceSelectionEdges);
+
+        // Rebuild the blue cliff selection from `state.resourceSelected`. The
+        // cross-section geometry depends on the current clip plane, so this is
+        // called both when the user picks a cell and whenever the cut moves.
+        // If the selected cell no longer intersects the cut (it scrolled past
+        // the cliff), the builder yields empty geometry and the mesh hides.
+        function rebuildResourceSelection() {
+            const cell = state.resourceSelected;
+
+            if (state.mode !== 'resource' || cell === null)
+            {
+                resourceSelection.visible = resourceSelectionEdges.visible = false;
+                return;
+            }
+
+            resourceSelection.geometry.dispose();
+            resourceSelectionEdges.geometry.dispose();
+
+            const geom = buildResourceHighlightGeometry(cell);
+            const hasGeom = geom.getAttribute('position') && geom.getAttribute('position').count > 0;
+
+            resourceSelection.geometry = geom;
+            const thresh = cell.kind === 'cap' ? 30 : 1;
+            resourceSelectionEdges.geometry = new THREE.EdgesGeometry(geom, thresh);
+            resourceSelection.visible = resourceSelectionEdges.visible = hasGeom;
+        }
 
         // ----------------------------------------------------------------------
         // Resource-mode slicing
@@ -2597,7 +2658,6 @@
             clearCaps();
 
             const n = clipPlane.normal;
-            const lift = CONFIG.planetRadius * 0.0015; // nudge caps just off the cut, toward the camera
 
             // Merged cap buffers, one per depth.
             const buffers = depthColors.map(() => ({
@@ -2660,7 +2720,7 @@
                         const c = pts[idx[t + 2]];
 
                         for (const p of [a, b, c]) {
-                            buf.positions.push(p.x - n.x * lift, p.y - n.y * lift, p.z - n.z * lift);
+                            buf.positions.push(p.x, p.y, p.z);
                             // Flat cap normals all point along -n (toward camera side).
                             buf.normals.push(-n.x, -n.y, -n.z);
                         }
@@ -2706,7 +2766,7 @@
                 );
                 // orient the disc to the plane and place it at the plane.
                 disc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-                disc.position.copy(n).multiplyScalar(-k - lift);
+                disc.position.copy(n).multiplyScalar(-k);
                 capsGroup.add(disc);
                 // Note: not added to capMeshes — the core isn't a clickable cell.
             }
@@ -2792,6 +2852,8 @@
         function updateResource(cutChanged) {
             if (cutChanged || state.cutLon === null) {
                 updateCut();
+                // The cut moved, so the blue selection's cross-section is stale.
+                rebuildResourceSelection();
             }
 
             positionCrustCamera();
@@ -2819,6 +2881,11 @@
             // grid stays hidden in both modes — see the buildGrid() call above.
             controls.enabled = !resource; // custom drag drives the crust view
             selection.visible = selectionEdges.visible = !resource && state.selected !== null;
+
+            // The blue cliff selection only exists in resource mode. Clear it on
+            // every mode change so re-entering resource mode starts clean.
+            state.resourceSelected = null;
+            resourceSelection.visible = resourceSelectionEdges.visible = false;
 
             resourceControls.hidden = !resource;
             modeBtn.textContent = resource ? 'Exit resource mode' : 'Enter resource mode';
@@ -3074,15 +3141,19 @@
                 return;
             }
 
-            // Resource mode: clicking a cell on the cliff snaps the camera
-            // focus to that cell. Same easing as the arrow-key step, so the
-            // transition feels identical to keyboard navigation.
+            // Resource mode: clicking a cell on the cliff selects it (a
+            // persistent blue highlight) and snaps the camera focus to that
+            // cell. Same easing as the arrow-key step, so the transition feels
+            // identical to keyboard navigation.
             //
             // Clicking on the antipodal half of the cliff (lon = focus.lon
             // + 180) would normally rebuild the cut at a new meridian — but
             // that meridian IS the same great circle, just inverted, which
             // is visually disorienting. So we only adopt the cell's latitude
             // (and depth readout); the meridian stays put.
+            state.resourceSelected = cell;
+            rebuildResourceSelection();
+
             state.focus.latTarget = snapLatToRow(cell.lat);
             // Don't touch lonTarget — the cut is already at the right
             // meridian. The easing in easeFocusToTarget() will glide the
