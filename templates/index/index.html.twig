@@ -272,6 +272,11 @@
             // per-frame fraction of the remaining distance to the target —
             // larger = snappier, smaller = more "gliding".
             focusSnapEase:    0.22,
+            // Duration (milliseconds) of the smooth fly-in / fly-out when
+            // entering or leaving resource mode. The camera glides between the
+            // orbit pose and the crust-cliff pose while the clip plane sweeps
+            // the slice open. Clicking the mode button mid-flight reverses it.
+            modeTransitionMs: 700,
             // Resource-mode traversal axis — which way you "stroll" through the
             // body and, consequently, where the poles sit on screen:
             //   'longitude' : the cut is a meridian (constant-longitude) plane
@@ -2314,6 +2319,12 @@
             cutLat: null,           // latitude the cells are currently cut at (latitude-axis mode)
             camDist: (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoom, // crust-view zoom
             viewSnapshot: null,     // saved orbit-camera state while in resource mode
+            // Smooth mode-change fly-through. While `active`, the camera glides
+            // between the orbit pose and the crust pose and the clip plane
+            // sweeps the slice open/closed. `dir` is +1 toward resource, -1
+            // toward view; `s` is 0 (view pose) … 1 (resource pose). `orbit`
+            // holds the view-mode pose both ends interpolate against.
+            transition: { active: false, dir: 0, s: 0, orbit: null },
         };
 
         // persistent highlight for the selected surface cell
@@ -2654,10 +2665,41 @@
             return { lo, hi };
         }
 
-        function buildCaps() {
+        // Lazily cache a quad cell's bounding sphere (centre + radius) on the
+        // cell record. Used by the offset-plane broad-phase below: testing
+        // |n·centre + k| against the radius works for ANY plane offset, unlike
+        // the through-centre column/row broad-phases.
+        function cellBounds(cell) {
+            if (cell._cr !== undefined) {
+                return;
+            }
+
+            const cs = cell.corners;
+            let cx = 0, cy = 0, cz = 0;
+
+            for (const v of cs) { cx += v.x; cy += v.y; cz += v.z; }
+
+            const inv = 1 / cs.length;
+            cx *= inv; cy *= inv; cz *= inv;
+            let r2 = 0;
+
+            for (const v of cs) {
+                const dx = v.x - cx, dy = v.y - cy, dz = v.z - cz;
+                const d = dx * dx + dy * dy + dz * dz;
+
+                if (d > r2) r2 = d;
+            }
+
+            cell._cx = cx; cell._cy = cy; cell._cz = cz; cell._cr = Math.sqrt(r2);
+        }
+
+        // `slab`: use the generalised offset-plane broad-phase (for the
+        // open-slice transition, where the cut is NOT through the centre).
+        function buildCaps(slab = false) {
             clearCaps();
 
             const n = clipPlane.normal;
+            const k = clipPlane.constant;
 
             // Merged cap buffers, one per depth.
             const buffers = depthColors.map(() => ({
@@ -2675,12 +2717,27 @@
             //     the cut stays within ±focus-lat and latitude is clamped below
             //     the cap boundary, so cap cells are skipped in this mode.
             const latitudeAxis = CONFIG.resourceTraverseAxis === 'latitude';
-            const cols = latitudeAxis ? null : cutColumns(state.focus.lon);
-            const candRows = latitudeAxis ? latitudeCrossingRows() : null;
+            const cols = (!slab && !latitudeAxis) ? cutColumns(state.focus.lon) : null;
+            const candRows = (!slab && latitudeAxis) ? latitudeCrossingRows() : null;
 
             for (let d = 0; d < maxDepth; d++) {
                 for (const cell of cellsByDepth[d]) {
-                    if (cell.kind === 'cap') {
+                    if (slab) {
+                        // Offset-plane broad-phase for the open-slice transition.
+                        // Polar caps aren't offset-aware (capCellCrossSection
+                        // assumes a through-centre meridian), so they're skipped
+                        // during the sweep and reappear when the cut settles at
+                        // the centre (final updateCut(0) uses the exact phase).
+                        if (cell.kind === 'cap') {
+                            continue;
+                        }
+
+                        cellBounds(cell);
+
+                        if (Math.abs(n.x * cell._cx + n.y * cell._cy + n.z * cell._cz + k) > cell._cr) {
+                            continue;
+                        }
+                    } else if (cell.kind === 'cap') {
                         // Latitude-axis cut never reaches the poles; only the
                         // meridian cut slices the caps.
                         if (latitudeAxis) {
@@ -2756,7 +2813,6 @@
             // deepest layer's inner radius) so the cross-section is continuous
             // from crust → core with no gap.
             const coreR = coreRadius;
-            const k = clipPlane.constant;
 
             if (coreR * coreR > k * k) {
                 const discR = Math.sqrt(coreR * coreR - k * k);
@@ -2772,7 +2828,7 @@
             }
         }
 
-        function updateCut() {
+        function updateCut(constant = 0, slab = false) {
             // The cut is always a plane through the body centre (so the cliff
             // exposes the full depth stack — every shell + core). Its
             // orientation depends on the traversal axis:
@@ -2782,6 +2838,10 @@
             //     tangent at the focus; tilting it (changing latitude) sweeps
             //     the cut pole-ward, so the poles read top/bottom.
             // Rebuilt only when the cut actually moves (see updateResource).
+            //
+            // `constant`/`slab` are non-default only during the open-slice
+            // transition, where the plane is offset off-centre and swept toward
+            // the middle (constant: planetRadius → 0) to make the slice open.
             const lonR = deg2rad(state.focus.lon);
             const latR = deg2rad(state.focus.lat);
 
@@ -2795,8 +2855,8 @@
                 clipPlane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));
             }
 
-            clipPlane.constant = 0;
-            buildCaps();
+            clipPlane.constant = constant;
+            buildCaps(slab);
             state.cutLon = state.focus.lon;
             state.cutLat = state.focus.lat;
             // The hover highlight in resource mode is a cross-section on the
@@ -2805,10 +2865,11 @@
             hoverCache.pointerX = NaN;
         }
 
-        // Position the camera to look at the crust cliff edge-on at the focus point,
-        // so the surface-to-max-depth layers run top→bottom. Derived from the focus
-        // point on the sphere, so it follows the body's curvature.
-        function positionCrustCamera() {
+        // Compute (but don't apply) the crust-cliff camera pose for the current
+        // focus point: look at the cliff edge-on so the surface→max-depth layers
+        // run top→bottom. Returned as {position, up, target} so the mode
+        // transition can interpolate between this and the orbit pose.
+        function computeCrustPose() {
             const lonR = deg2rad(state.focus.lon);
             const latR = deg2rad(state.focus.lat);
             const midR = (CONFIG.planetRadius + coreRadius) / 2;
@@ -2831,13 +2892,22 @@
             const target = radialUp.clone().multiplyScalar(midR + crustThickness * CONFIG.crustHeightBias);
 
             const tilt = CONFIG.crustTilt; // tilt above the meridian plane (look down at surface)
-            const camPos = target.clone()
+            const position = target.clone()
                 .add(m.clone().multiplyScalar(state.camDist * Math.cos(tilt)))
                 .add(radialUp.clone().multiplyScalar(state.camDist * Math.sin(tilt)));
 
-            camera.position.copy(camPos);
-            camera.up.copy(radialUp); // keep depth pointing down on screen
-            camera.lookAt(target);
+            return { position, up: radialUp, target };
+        }
+
+        // Position the camera to look at the crust cliff edge-on at the focus point,
+        // so the surface-to-max-depth layers run top→bottom. Derived from the focus
+        // point on the sphere, so it follows the body's curvature.
+        function positionCrustCamera() {
+            const pose = computeCrustPose();
+
+            camera.position.copy(pose.position);
+            camera.up.copy(pose.up); // keep depth pointing down on screen
+            camera.lookAt(pose.target);
         }
 
         function updateFocusReadout() {
@@ -2872,15 +2942,20 @@
                 return;
             }
 
-            const wasResource = state.mode === 'resource';
-            state.mode = mode;
-            const resource = mode === 'resource';
+            // Nothing to do if we're already settled in the requested mode.
+            if (state.mode === mode && !state.transition.active) {
+                return;
+            }
 
-            applyClipping(resource);
+            const resource = mode === 'resource';
+            state.mode = mode;
+
+            // Shared UI bookkeeping (applies to both the start and a reversal).
             sliceVisual.visible = false;
             // grid stays hidden in both modes — see the buildGrid() call above.
-            controls.enabled = !resource; // custom drag drives the crust view
+            controls.enabled = false; // locked while flying; re-enabled on view finish
             selection.visible = selectionEdges.visible = !resource && state.selected !== null;
+            highlight.visible = highlightEdges.visible = false;
 
             // The blue cliff selection only exists in resource mode. Clear it on
             // every mode change so re-entering resource mode starts clean.
@@ -2891,15 +2966,22 @@
             modeBtn.textContent = resource ? 'Exit resource mode' : 'Enter resource mode';
             document.getElementById('rMode').textContent = mode;
 
+            // Mid-flight click: just reverse direction so we glide back smoothly
+            // from wherever we are (no snap, no re-snapshot of the poses).
+            if (state.transition.active) {
+                state.transition.dir = resource ? 1 : -1;
+                return;
+            }
+
             if (resource) {
-                // Snapshot the orbit-camera state so we can return to it on exit.
-                if (!wasResource) {
-                    state.viewSnapshot = {
-                        position: camera.position.clone(),
-                        up:       camera.up.clone(),
-                        target:   controls.target.clone(),
-                    };
-                }
+                // Snapshot the orbit-camera state so we can fly back to it.
+                const orbit = {
+                    position: camera.position.clone(),
+                    up:       camera.up.clone(),
+                    target:   controls.target.clone(),
+                };
+                state.viewSnapshot = orbit;
+                state.transition.orbit = orbit;
 
                 state.focus.lon = state.selected.lon;
                 state.focus.lat = state.selected.lat;
@@ -2909,20 +2991,30 @@
                 state.focus.lat = state.focus.latTarget;
                 state.cutLon = null;
                 state.cutLat = null;
-                updateResource(true);
-            } else {
-                clearCaps();
 
-                // Restore the pre-resource view so we don't snap to a default.
-                if (state.viewSnapshot) {
-                    camera.position.copy(state.viewSnapshot.position);
-                    camera.up.copy(state.viewSnapshot.up);
-                    controls.target.copy(state.viewSnapshot.target);
-                } else {
-                    controls.target.set(0, 0, 0);
+                // Enable clipping and set the cut plane's orientation, but keep
+                // it fully off-centre (constant = planetRadius) so nothing is
+                // sliced away yet — the body still reads whole at s = 0.
+                applyClipping(true);
+                updateCut(CONFIG.planetRadius, true);
+
+                state.transition.s = 0;
+                state.transition.dir = 1;
+                state.transition.active = true;
+            } else {
+                // Fly back out. Clipping/caps stay live and are swept closed
+                // each frame; the orbit pose was captured on the way in.
+                if (!state.transition.orbit) {
+                    state.transition.orbit = state.viewSnapshot ?? {
+                        position: camera.position.clone(),
+                        up:       camera.up.clone(),
+                        target:   new THREE.Vector3(),
+                    };
                 }
 
-                controls.update();
+                state.transition.s = 1;
+                state.transition.dir = -1;
+                state.transition.active = true;
             }
         }
 
@@ -2985,7 +3077,7 @@
         }
 
         renderer.domElement.addEventListener('pointerdown', (e) => {
-            if (state.mode !== 'resource') return;
+            if (state.mode !== 'resource' || state.transition.active) return;
             drag.active = true;
             drag.x = e.clientX;
             drag.y = e.clientY;
@@ -3005,7 +3097,7 @@
         });
 
         window.addEventListener('pointermove', (e) => {
-            if (!drag.active || state.mode !== 'resource') return;
+            if (!drag.active || state.mode !== 'resource' || state.transition.active) return;
 
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
@@ -3036,7 +3128,7 @@
         });
 
         renderer.domElement.addEventListener('wheel', (e) => {
-            if (state.mode !== 'resource') return; // OrbitControls zooms in view mode
+            if (state.mode !== 'resource' || state.transition.active) return; // OrbitControls zooms in view mode
             e.preventDefault();
 
             const min = (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoomMin;
@@ -3053,7 +3145,7 @@
                 return;
             }
 
-            if (state.mode !== 'resource') return;
+            if (state.mode !== 'resource' || state.transition.active) return;
 
             const colDeg = 360 / CONFIG.lonCells;
 
@@ -3114,6 +3206,7 @@
         });
 
         renderer.domElement.addEventListener('click', (e) => {
+            if (state.transition.active) return; // ignore picks during the fly-through
             if (!highlight.visible) return;
 
             // Reject the synthetic `click` that fires at the end of a drag
@@ -3371,16 +3464,91 @@
             }
         }
 
+        // ----------------------------------------------------------------------
+        // Smooth mode transition (view ↔ resource)
+        //
+        // Eases the camera between the orbit pose and the crust-cliff pose while
+        // sweeping the clip plane from fully off-centre (whole body) to through
+        // the centre (the open slice). `s` runs 0 (view) … 1 (resource); `dir`
+        // is the current travel direction so a mid-flight button click can just
+        // flip it and glide back. Input is locked while `transition.active`.
+        // ----------------------------------------------------------------------
+        let lastFrameT = performance.now();
+        const _transTarget = new THREE.Vector3();
+
+        function easeInOut(x) {
+            return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+        }
+
+        function stepTransition(dt) {
+            const tr = state.transition;
+            const dur = Math.max(1, CONFIG.modeTransitionMs) / 1000;
+
+            tr.s = Math.max(0, Math.min(1, tr.s + tr.dir * dt / dur));
+
+            const e = easeInOut(tr.s);
+            const crust = computeCrustPose();
+
+            camera.position.lerpVectors(tr.orbit.position, crust.position, e);
+            camera.up.copy(tr.orbit.up).lerp(crust.up, e).normalize();
+            _transTarget.lerpVectors(tr.orbit.target, crust.target, e);
+            camera.lookAt(_transTarget);
+
+            // Sweep the cut open: constant planetRadius (whole body) → 0 (centre).
+            // The offset-plane broad-phase (slab) keeps the caps correct while the
+            // plane is off-centre.
+            updateCut(CONFIG.planetRadius * (1 - e), true);
+
+            if (tr.dir > 0 && tr.s >= 1) {
+                finishTransition('resource');
+            } else if (tr.dir < 0 && tr.s <= 0) {
+                finishTransition('view');
+            }
+        }
+
+        function finishTransition(mode) {
+            state.transition.active = false;
+            state.transition.dir = 0;
+
+            if (mode === 'resource') {
+                // Settle on the exact through-centre cut with the precise
+                // broad-phase (includes polar caps, which the sweep skipped).
+                updateCut(0, false);
+                rebuildResourceSelection();
+                positionCrustCamera();
+                updateFocusReadout();
+            } else {
+                applyClipping(false);
+                clearCaps();
+
+                // Restore the pre-resource view so we don't snap to a default.
+                if (state.viewSnapshot) {
+                    camera.position.copy(state.viewSnapshot.position);
+                    camera.up.copy(state.viewSnapshot.up);
+                    controls.target.copy(state.viewSnapshot.target);
+                } else {
+                    controls.target.set(0, 0, 0);
+                }
+
+                controls.enabled = true;
+                controls.update();
+            }
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             const now = performance.now();
             updateFps(now);
-            if (state.mode === 'view') controls.update(); // crust view is driven manually
-            else easeFocusToTarget();                     // smooth snap in resource mode
+            const dt = Math.min(0.1, (now - lastFrameT) / 1000); // clamp big tab-switch gaps
+            lastFrameT = now;
+
+            if (state.transition.active) stepTransition(dt);      // smooth mode fly-through
+            else if (state.mode === 'view') controls.update();    // crust view is driven manually
+            else easeFocusToTarget();                             // smooth snap in resource mode
             // Track the camera so the sky group (sun, halo, chroma ring, stars)
             // appears fixed at infinity — no parallax.
             skyAnchor.position.copy(camera.position);
-            updateHover();
+            if (!state.transition.active) updateHover();          // no hover picking mid-flight
             updateCompass();
             updateLensFlare(now);
             // Atmosphere shader: sun direction is the only per-frame uniform
