@@ -46,6 +46,13 @@
         </div>
         <hr>
         <div class="readout">
+            <div><span class="k">Selected cell</span><span class="v" id="rSelType">— none</span></div>
+            <div><span class="k">Sel lon</span><span class="v" id="rSelLon">—</span></div>
+            <div><span class="k">Sel lat</span><span class="v" id="rSelLat">—</span></div>
+            <div><span class="k">Sel layer</span><span class="v" id="rSelLayer">—</span></div>
+        </div>
+        <hr>
+        <div class="readout">
             <div><span class="k">FPS</span><span class="v" id="rFps">—</span></div>
             <div><span class="k">Frame</span><span class="v" id="rFrameMs">—</span></div>
         </div>
@@ -59,6 +66,9 @@
             </label>
             <label>Sun intensity <span class="v" id="rSunInt">—</span>
                 <input type="range" id="sunInt" min="0" max="3" step="0.05">
+            </label>
+            <label>Night darkness <span class="v" id="rNightDark">—</span>
+                <input type="range" id="nightDark" min="0" max="1" step="0.01">
             </label>
         </div>
         <div class="hint">View mode: click + drag to orbit, scroll to zoom. Click a surface cell to select it, then enter resource mode.</div>
@@ -202,6 +212,14 @@
             // make out the silhouette and surface grid.
             ambientIntensity: 0.12,
             rimIntensity:  0.4,
+            // How dark the unlit ("night") side is allowed to get. The
+            // `sunIntensity` slider now drives ONLY the direct sun light (the
+            // lit side), so the dark side no longer brightens/darkens with it.
+            // Instead the dark-side fill (ambient + hemisphere + bottom fill +
+            // rim + atmosphere) is held at a constant level scaled by this
+            // factor: 0 = pitch black night side, 1 = full configured fill.
+            // Tune it to set the floor brightness of the shadowed hemisphere.
+            nightDarkness: 0.1,
             // Hemisphere fill â€” soft sky/ground light that follows surface
             // normal.y, used to keep the anti-sun hemisphere visible
             // without flattening the directional sunlight modelling.
@@ -303,6 +321,14 @@
             // planet (e.g. dusty Mars-like = redder Rayleigh + larger Mie).
             // ------------------------------------------------------------------
             showAtmosphere:        true,
+            // Whether the atmosphere is exposed as a selectable cell shell on
+            // top of the surface grid (same lon/lat grid, one thin shell). The
+            // visible haze is still the scattering shader; this only governs
+            // whether the (near-invisible) atmosphere cells can be hovered /
+            // picked and highlighted with a wireframe box in resource mode.
+            // NOTE: temporary single flag — per-body atmosphere data will come
+            // from the backend in a later refactor.
+            atmosphereSelectable:  true,
             // Atmosphere thickness, as a fraction of `planetRadius`. Earth
             // is ~100/6371 ≈ 0.016, but a thicker shell reads much better
             // at game scale so we exaggerate.
@@ -437,6 +463,48 @@
         const capBoundaryLatN =  90 - capRows * rowDegLat;
         const capBoundaryLatS = -90 + capRows * rowDegLat;
         const capFan = CONFIG.polarCapFan ?? CONFIG.lonCells;
+
+        // Latitude of each polar cap's CENTRE — the focus latitude the crust
+        // view settles on when you stroll onto a pole in latitude-traversal
+        // mode. Reaching it lets the meridian cut slice the cap so its depth
+        // stack ("layer view") is exposed just like a quad cell's cliff.
+        const capCenterLatN =  90 - capRows * rowDegLat / 2;
+        const capCenterLatS = -90 + capRows * rowDegLat / 2;
+
+        // Ordered discrete focus latitudes for latitude-axis stepping: the
+        // south cap, every quad-row centre, then the north cap. Arrow keys and
+        // the pointer-release snap move between adjacent stops so the poles are
+        // reachable (and exitable) one step at a time.
+        const latStops = (() => {
+            const stops = [];
+            const quadMin = -90 + capRows * rowDegLat + rowDegLat / 2;
+            const quadRows = CONFIG.latCells - 2 * capRows;
+
+            if (capRows > 0) stops.push(capCenterLatS);
+
+            for (let i = 0; i < quadRows; i++)
+            {
+                stops.push(quadMin + i * rowDegLat);
+            }
+
+            if (capRows > 0) stops.push(capCenterLatN);
+
+            return stops;
+        })();
+
+        function nearestLatStopIndex(lat) {
+            let best = 0;
+            let bestD = Infinity;
+
+            for (let i = 0; i < latStops.length; i++)
+            {
+                const d = Math.abs(latStops[i] - lat);
+
+                if (d < bestD) { bestD = d; best = i; }
+            }
+
+            return best;
+        }
 
         // ----------------------------------------------------------------------
         // Scene / renderer / camera
@@ -993,23 +1061,20 @@
             sun.position.copy(sunDir).multiplyScalar(CONFIG.skyDistance);
             sun.intensity = CONFIG.sunIntensity;
 
-            // Tie the rest of the lighting model to the sun's intensity so
-            // the slider behaves like an actual "how bright is this star"
-            // dial instead of only dimming the direct light:
-            //
-            //  * The atmosphere shader receives `atmosphereSunIntensity *
-            //    sunIntensity`, so the rim glow / sky brightness fades with
-            //    the star — otherwise the limb stays just as bright when the
-            //    surface goes dark, which reads as broken.
-            //  * Ambient + rim fill scale with sunIntensity too. They model
-            //    light that ultimately *comes from the sun* (planet shine,
-            //    bounce, sky fill). With a constant ambient, dimming the sun
-            //    makes the night side look relatively brighter than the
-            //    day side, which is the opposite of what should happen.
+            // The `sunIntensity` slider drives ONLY the direct sun light above
+            // (i.e. the LIT side of the body). Everything that fills the unlit
+            // ("night") side — ambient, rim, hemisphere, bottom fill and the
+            // atmosphere's own glow — is decoupled from the slider and held at
+            // a constant level scaled by `nightDarkness`. This keeps the dark
+            // side at a fixed, configurable floor brightness instead of letting
+            // it track the sun (which made the night side look relatively
+            // brighter as the sun dimmed — the opposite of correct).
+            const night = CONFIG.nightDarkness;
+
             if (atmosphereUniforms)
             {
                 atmosphereUniforms.uSunIntensity.value =
-                    CONFIG.atmosphereSunIntensity * CONFIG.sunIntensity;
+                    CONFIG.atmosphereSunIntensity;
             }
 
             // Sun visuals live under `skyAnchor`. Their LOCAL position is the
@@ -1036,8 +1101,10 @@
             chromaRing.material.opacity = CONFIG.chromaRingOpacity;
             sunStar.material.opacity    = CONFIG.sunStarOpacity;
 
-            ambient.intensity = CONFIG.ambientIntensity * CONFIG.sunIntensity;
-            rim.intensity     = CONFIG.rimIntensity     * CONFIG.sunIntensity;
+            ambient.intensity    = CONFIG.ambientIntensity     * night;
+            rim.intensity        = CONFIG.rimIntensity         * night;
+            hemiFill.intensity   = CONFIG.hemiIntensity        * night;
+            bottomFill.intensity = CONFIG.bottomFillIntensity  * night;
         }
         updateSun();
 
@@ -1936,6 +2003,71 @@
             }
         }
 
+        // ------------------------------------------------------------------
+        // Atmosphere shell cells (optional — single CONFIG flag for now;
+        // per-body atmosphere data arrives with the later backend refactor).
+        //
+        // A single thin shell on the SAME lon/lat grid (quad cells + polar
+        // caps) sitting between `planetRadius` and `atmosphereRadius`. The
+        // visible haze is still the scattering shader; these near-invisible
+        // cells exist purely so the atmosphere can be hovered / picked in
+        // resource mode and highlighted with a wireframe box. Globe-mode
+        // picking stays surface-only (handled by pickSurfaceCellAnalytical).
+        // ------------------------------------------------------------------
+        const atmosphereCells = [];
+
+        if (CONFIG.atmosphereSelectable && CONFIG.showAtmosphere) {
+            const rOuter = atmosphereRadius;
+            const rInner = CONFIG.planetRadius;
+
+            for (let j = capRows; j < CONFIG.latCells - capRows; j++) {
+                const lat0 = -90 + j * rowDegLat;
+                const lat1 = -90 + (j + 1) * rowDegLat;
+
+                for (let i = 0; i < CONFIG.lonCells; i++) {
+                    const lon0 = (i / CONFIG.lonCells) * 360;
+                    const lon1 = ((i + 1) / CONFIG.lonCells) * 360;
+
+                    atmosphereCells.push({
+                        kind: 'quad',
+                        isAtmosphere: true,
+                        lon: (lon0 + lon1) / 2,
+                        lat: (lat0 + lat1) / 2,
+                        depth: 0,
+                        lonIdx: i,
+                        latIdx: j,
+                        corners: [
+                            sphere(lon0, lat0, rOuter), sphere(lon1, lat0, rOuter),
+                            sphere(lon1, lat1, rOuter), sphere(lon0, lat1, rOuter),
+                            sphere(lon0, lat0, rInner), sphere(lon1, lat0, rInner),
+                            sphere(lon1, lat1, rInner), sphere(lon0, lat1, rInner),
+                        ],
+                        geom: null,
+                        edges: null,
+                    });
+                }
+            }
+
+            if (capRows > 0) {
+                for (const sign of [+1, -1]) {
+                    atmosphereCells.push({
+                        kind: 'cap',
+                        isAtmosphere: true,
+                        sign,
+                        boundaryLat: sign > 0 ? capBoundaryLatN : capBoundaryLatS,
+                        rOuter,
+                        rInner,
+                        fan: capFan,
+                        lon: 0,
+                        lat: sign * (90 - capRows * rowDegLat / 2),
+                        depth: 0,
+                        geom: null,
+                        edges: null,
+                    });
+                }
+            }
+        }
+
         // Recover the cell record from a raycast hit on a merged body mesh.
         function cellFromBodyHit(hit) {
             return hit.object.userData.faceToCell[hit.faceIndex];
@@ -2055,6 +2187,15 @@
         // (≤ a few triangles) that there's no benefit to caching.
         // ------------------------------------------------------------------
         function buildResourceHighlightGeometry(cell) {
+            // Atmosphere cells are see-through, so their resource-mode highlight
+            // is a WIREFRAME BOX of the whole cell (the full hex shell), not a
+            // filled cross-section. The caller hides the fill mesh and shows
+            // only the edges of this geometry. The box is the entire cell (not
+            // clipped to the cut) so the outline frames the cell in space.
+            if (cell.isAtmosphere) {
+                return buildSingleCellGeometry(cell);
+            }
+
             const positions = [];
             const normals = [];
             const indices = [];
@@ -2303,6 +2444,13 @@
             color: CONFIG.coreColor, roughness: 1, side: THREE.DoubleSide,
             polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
         });
+        // Near-invisible cross-section strip for the atmosphere shell on the
+        // cut. It stays see-through (very low opacity, no depth write) but is
+        // still raycastable, so the atmosphere cell can be picked off the cliff.
+        const atmosphereCapMaterial = new THREE.MeshBasicMaterial({
+            color: 0x9fd0ff, transparent: true, opacity: 0.07, side: THREE.DoubleSide,
+            depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        });
         const capsGroup = new THREE.Group();
         scene.add(capsGroup);
         const capMeshes = [];
@@ -2388,7 +2536,13 @@
             resourceSelection.geometry = geom;
             const thresh = cell.kind === 'cap' ? 30 : 1;
             resourceSelectionEdges.geometry = new THREE.EdgesGeometry(geom, thresh);
-            resourceSelection.visible = resourceSelectionEdges.visible = hasGeom;
+            // Selected cells get the blue highlight in BOTH modes. The
+            // atmosphere's box is a thin shell so the translucent blue fill
+            // still reads as see-through, but it now clearly shows as selected
+            // (previously only the faint edges were drawn, which didn't read as
+            // "highlighted in blue").
+            resourceSelection.visible = hasGeom;
+            resourceSelectionEdges.visible = hasGeom;
         }
 
         // ----------------------------------------------------------------------
@@ -2709,16 +2863,18 @@
             }));
 
             // Broad-phase: which cells can the cut possibly cross?
-            //   - longitude (meridian) cut: only the focus column and its
-            //     antipode (≈2 columns, all rows).
-            //   - latitude (tilted great-circle) cut: ≈one row per column, at
-            //     the latitude where the circle crosses that column's meridian
-            //     (see latitudeCrossingRows). The caps are never reached because
-            //     the cut stays within ±focus-lat and latitude is clamped below
-            //     the cap boundary, so cap cells are skipped in this mode.
+            //   - meridian cut (longitude axis, OR latitude axis parked on a
+            //     pole): only the focus column and its antipode (≈2 columns,
+            //     all rows) — and the caps, which a meridian always slices.
+            //   - latitude (tilted great-circle) cut away from the poles: ≈one
+            //     row per column, at the latitude where the circle crosses that
+            //     column's meridian (see latitudeCrossingRows). The caps aren't
+            //     reached, so cap cells are skipped in this case.
             const latitudeAxis = CONFIG.resourceTraverseAxis === 'latitude';
-            const cols = (!slab && !latitudeAxis) ? cutColumns(state.focus.lon) : null;
-            const candRows = (!slab && latitudeAxis) ? latitudeCrossingRows() : null;
+            const meridianPhase = !slab && (!latitudeAxis || isPoleCut());
+            const greatCirclePhase = !slab && latitudeAxis && !isPoleCut();
+            const cols = meridianPhase ? cutColumns(state.focus.lon) : null;
+            const candRows = greatCirclePhase ? latitudeCrossingRows() : null;
 
             for (let d = 0; d < maxDepth; d++) {
                 for (const cell of cellsByDepth[d]) {
@@ -2738,12 +2894,13 @@
                             continue;
                         }
                     } else if (cell.kind === 'cap') {
-                        // Latitude-axis cut never reaches the poles; only the
-                        // meridian cut slices the caps.
-                        if (latitudeAxis) {
+                        // Caps are only sliced by a meridian cut. The tilted
+                        // great-circle cut (latitude axis, off the poles) never
+                        // reaches them.
+                        if (!meridianPhase) {
                             continue;
                         }
-                    } else if (latitudeAxis) {
+                    } else if (greatCirclePhase) {
                         // Quad cells only need testing if their row falls in the
                         // span the great circle traverses within their column.
                         if (cell.latIdx < candRows.lo[cell.lonIdx] - 1 ||
@@ -2751,9 +2908,8 @@
                             continue;
                         }
                     } else if (!cols.has(cell.lonIdx)) {
-                        // Quad cells only need testing if they're in a column the
-                        // cut could possibly cross. Cap cells are always cut by a
-                        // meridian plane, so they fall through.
+                        // Meridian cut: quad cells only need testing if they're
+                        // in a column the cut could possibly cross.
                         continue;
                     }
 
@@ -2808,6 +2964,66 @@
                 capMeshes.push(cap);
             }
 
+            // Atmosphere shell cross-section: a single thin, near-invisible
+            // strip above the crust on the cut, in its own merged mesh (added
+            // to `capMeshes` so it stays pickable). Skipped during the
+            // open-slice transition (`slab`) like the polar caps, since its
+            // cross-section assumes a through-centre cut.
+            if (atmosphereCells.length > 0 && !slab) {
+                const aPos = [];
+                const aNorm = [];
+                const aF2C = [];
+
+                for (const cell of atmosphereCells) {
+                    if (cell.kind === 'cap') {
+                        if (!meridianPhase) {
+                            continue;
+                        }
+                    } else if (greatCirclePhase) {
+                        if (cell.latIdx < candRows.lo[cell.lonIdx] - 1 ||
+                            cell.latIdx > candRows.hi[cell.lonIdx] + 1) {
+                            continue;
+                        }
+                    } else if (!cols.has(cell.lonIdx)) {
+                        continue;
+                    }
+
+                    const cross = cellCrossSection(cell);
+
+                    if (cross === null) {
+                        continue;
+                    }
+
+                    const pts = cross.positions;
+                    const idx = cross.indices;
+
+                    for (let t = 0; t < idx.length; t += 3) {
+                        const a = pts[idx[t]];
+                        const b = pts[idx[t + 1]];
+                        const c = pts[idx[t + 2]];
+
+                        for (const p of [a, b, c]) {
+                            aPos.push(p.x, p.y, p.z);
+                            aNorm.push(-n.x, -n.y, -n.z);
+                        }
+
+                        aF2C.push(cell);
+                    }
+                }
+
+                if (aPos.length > 0) {
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(aPos, 3));
+                    geo.setAttribute('normal', new THREE.Float32BufferAttribute(aNorm, 3));
+                    geo.computeBoundingSphere();
+
+                    const cap = new THREE.Mesh(geo, atmosphereCapMaterial);
+                    cap.userData.faceToCell = aF2C;
+                    capsGroup.add(cap);
+                    capMeshes.push(cap);
+                }
+            }
+
             // flat cap for the smooth core so it stays level with the slice too.
             // Use the exact `coreRadius` (matching the sphere geometry and the
             // deepest layer's inner radius) so the cross-section is continuous
@@ -2828,6 +3044,16 @@
             }
         }
 
+        // True when the latitude-traversal focus has strolled onto a polar
+        // cap. There the tilted great-circle cut can't reach the poles, so the
+        // cut snaps to a vertical meridian (see updateCut) and `buildCaps`
+        // slices the cap cells — exposing the pole's depth/layer stack.
+        function isPoleCut() {
+            return CONFIG.resourceTraverseAxis === 'latitude'
+                && capRows > 0
+                && Math.abs(state.focus.lat) >= capBoundaryLatN - 1e-6;
+        }
+
         function updateCut(constant = 0, slab = false) {
             // The cut is always a plane through the body centre (so the cliff
             // exposes the full depth stack — every shell + core). Its
@@ -2845,13 +3071,17 @@
             const lonR = deg2rad(state.focus.lon);
             const latR = deg2rad(state.focus.lat);
 
-            if (CONFIG.resourceTraverseAxis === 'latitude') {
+            if (CONFIG.resourceTraverseAxis === 'latitude' && !isPoleCut()) {
                 clipPlane.normal.set(
                     -Math.sin(latR) * Math.cos(lonR),
                     Math.cos(latR),
                     -Math.sin(latR) * Math.sin(lonR),
                 );
             } else {
+                // Longitude axis OR latitude axis parked on a pole: a vertical
+                // meridian plane through the poles. At the pole this lets the
+                // existing meridian cap cross-section expose the pole's layer
+                // stack (the tilted great-circle cut never reaches the caps).
                 clipPlane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));
             }
 
@@ -2966,6 +3196,10 @@
             modeBtn.textContent = resource ? 'Exit resource mode' : 'Enter resource mode';
             document.getElementById('rMode').textContent = mode;
 
+            // Reflect the right selection for the new mode (resource starts with
+            // no cliff pick, so it falls back to the surface anchor).
+            updateSelectionReadout();
+
             // Mid-flight click: just reverse direction so we glide back smoothly
             // from wherever we are (no snap, no re-snapshot of the poses).
             if (state.transition.active) {
@@ -3034,6 +3268,14 @@
         // crust view is anchored on quad cells). Used to settle the
         // horizontal scroll on a cell after the user releases the mouse.
         function snapLatToRow(lat) {
+            // In latitude-traversal mode the polar caps are valid focus stops
+            // (so the pole's layer view is reachable), so snap to the nearest
+            // entry of `latStops` (quad-row centres + both cap centres).
+            if (capRows > 0 && CONFIG.resourceTraverseAxis === 'latitude')
+            {
+                return latStops[nearestLatStopIndex(lat)];
+            }
+
             const minLat = -90 + capRows * rowDegLat + rowDegLat / 2;
             const maxLat =  90 - capRows * rowDegLat - rowDegLat / 2;
             const clamped = Math.max(minLat, Math.min(maxLat, lat));
@@ -3115,7 +3357,11 @@
             if (CONFIG.resourceTraverseAxis === 'latitude') {
                 // Vertical drag travels along latitude (toward the poles, now
                 // top/bottom); horizontal drag pans longitude (east-west).
-                state.focus.latTarget = Math.max(minLat, Math.min(maxLat,
+                // The latitude clamp extends onto the polar caps so the pole's
+                // depth/layer view is reachable — and exitable by dragging back.
+                const latMin = capRows > 0 ? capCenterLatS : minLat;
+                const latMax = capRows > 0 ? capCenterLatN : maxLat;
+                state.focus.latTarget = Math.max(latMin, Math.min(latMax,
                     state.focus.latTarget - dy * dpp.lat));
                 state.focus.lonTarget = (state.focus.lonTarget + dx * dpp.lon + 360) % 360;
             } else {
@@ -3153,8 +3399,20 @@
             // visible focus in smoothly. The mapping follows the traversal axis
             // so Up/Down always advances "into the body" along the cut.
             if (CONFIG.resourceTraverseAxis === 'latitude') {
-                if (e.key === 'ArrowUp')    state.focus.latTarget = snapLatToRow(state.focus.latTarget + rowDegLat);
-                if (e.key === 'ArrowDown')  state.focus.latTarget = snapLatToRow(state.focus.latTarget - rowDegLat);
+                // Step latitude one discrete stop at a time (quad rows + the
+                // polar caps) so the poles are reachable and exitable a single
+                // key-press at a time, even though a cap sits several rows from
+                // the last quad row.
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    const dir = e.key === 'ArrowUp' ? 1 : -1;
+                    const i = capRows > 0
+                        ? Math.max(0, Math.min(latStops.length - 1,
+                            nearestLatStopIndex(state.focus.latTarget) + dir))
+                        : null;
+                    state.focus.latTarget = i !== null
+                        ? latStops[i]
+                        : snapLatToRow(state.focus.latTarget + dir * rowDegLat);
+                }
                 if (e.key === 'ArrowLeft')  state.focus.lonTarget = snapLonToCol(state.focus.lonTarget - colDeg);
                 if (e.key === 'ArrowRight') state.focus.lonTarget = snapLonToCol(state.focus.lonTarget + colDeg);
             } else {
@@ -3245,6 +3503,7 @@
             // drag + arrow keys; clicking only marks the cell.
             state.resourceSelected = cell;
             rebuildResourceSelection();
+            updateSelectionReadout();
         });
 
         function selectSurfaceCell(cell) {
@@ -3259,7 +3518,40 @@
             document.getElementById('rSelected').textContent =
                 `lon ${cell.lon.toFixed(0)}° · lat ${cell.lat.toFixed(0)}°`;
 
+            updateSelectionReadout();
             refreshModeButton();
+        }
+
+        // Updates the "Selected cell" HUD section. Works in BOTH modes: in
+        // resource mode it reflects the cell picked on the cliff (falling back
+        // to the surface anchor before one is picked); in view mode it reflects
+        // the selected surface cell. The atmosphere is reported as a layer too.
+        function updateSelectionReadout() {
+            const elType  = document.getElementById('rSelType');
+            const elLon   = document.getElementById('rSelLon');
+            const elLat   = document.getElementById('rSelLat');
+            const elLayer = document.getElementById('rSelLayer');
+
+            const cell = (state.mode === 'resource' && state.resourceSelected)
+                ? state.resourceSelected
+                : state.selected;
+
+            if (!cell)
+            {
+                elType.textContent = '— none';
+                elLon.textContent = elLat.textContent = elLayer.textContent = '—';
+
+                return;
+            }
+
+            elType.textContent  = cell.isAtmosphere
+                ? 'atmosphere'
+                : cell.kind === 'cap'
+                    ? 'polar cap'
+                    : cell.depth === 0 ? 'surface' : 'crust';
+            elLon.textContent   = `${cell.lon.toFixed(1)}°`;
+            elLat.textContent   = `${cell.lat.toFixed(1)}°`;
+            elLayer.textContent = layerLabel(cell);
         }
 
         function updateHover() {
@@ -3354,12 +3646,34 @@
                 highlightEdges.geometry = getCellEdges(cell);
             }
 
-            highlight.visible = highlightEdges.visible = true;
+            // Atmosphere cells are see-through: show only their wireframe box
+            // (hide the fill). Every other cell shows both fill and edges.
+            highlight.visible = !(state.mode === 'resource' && cell.isAtmosphere);
+            highlightEdges.visible = true;
             highlight.userData.cell = cell;
 
             elLon.textContent = `${cell.lon.toFixed(1)}°`;
             elLat.textContent = `${cell.lat.toFixed(1)}°`;
-            elDepth.textContent = `${cell.depth + 1} / ${maxDepth}`;
+            // The atmosphere counts as a real layer: it's the OUTERMOST shell,
+            // so it's layer 1 and the crust layers shift down by one. Total
+            // layer count grows by one whenever the atmosphere shell exists.
+            elDepth.textContent = layerLabel(cell);
+        }
+
+        // Display label for a cell's place in the layer stack, counting the
+        // atmosphere shell (when present) as the outermost layer.
+        function layerLabel(cell) {
+            const hasAtmos = atmosphereCells.length > 0;
+            const total = maxDepth + (hasAtmos ? 1 : 0);
+
+            if (cell.isAtmosphere)
+            {
+                return `atmosphere · 1 / ${total}`;
+            }
+
+            const layerNo = cell.depth + 1 + (hasAtmos ? 1 : 0);
+
+            return `${layerNo} / ${total}`;
         }
 
         // ----------------------------------------------------------------------
@@ -3380,19 +3694,23 @@
         const sunAzInput   = document.getElementById('sunAz');
         const sunElInput   = document.getElementById('sunEl');
         const sunIntInput  = document.getElementById('sunInt');
+        const nightDarkInput = document.getElementById('nightDark');
         const sunAzReadout = document.getElementById('rSunAz');
         const sunElReadout = document.getElementById('rSunEl');
         const sunIntReadout = document.getElementById('rSunInt');
+        const nightDarkReadout = document.getElementById('rNightDark');
 
         function syncSunReadouts() {
             sunAzReadout.textContent  = `${Math.round(CONFIG.sunAzimuth)}°`;
             sunElReadout.textContent  = `${Math.round(CONFIG.sunElevation)}°`;
             sunIntReadout.textContent = CONFIG.sunIntensity.toFixed(2);
+            nightDarkReadout.textContent = CONFIG.nightDarkness.toFixed(2);
         }
 
         sunAzInput.value  = CONFIG.sunAzimuth;
         sunElInput.value  = CONFIG.sunElevation;
         sunIntInput.value = CONFIG.sunIntensity;
+        nightDarkInput.value = CONFIG.nightDarkness;
         syncSunReadouts();
 
         sunAzInput.addEventListener('input', () => {
@@ -3405,6 +3723,10 @@
         });
         sunIntInput.addEventListener('input', () => {
             CONFIG.sunIntensity = parseFloat(sunIntInput.value);
+            updateSun(); syncSunReadouts();
+        });
+        nightDarkInput.addEventListener('input', () => {
+            CONFIG.nightDarkness = parseFloat(nightDarkInput.value);
             updateSun(); syncSunReadouts();
         });
 
