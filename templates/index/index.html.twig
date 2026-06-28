@@ -3141,23 +3141,17 @@
                 return;
             }
 
-            // Resource mode: clicking a cell on the cliff selects it (a
-            // persistent blue highlight) and snaps the camera focus to that
-            // cell. Same easing as the arrow-key step, so the transition feels
-            // identical to keyboard navigation.
-            //
-            // Clicking on the antipodal half of the cliff (lon = focus.lon
-            // + 180) would normally rebuild the cut at a new meridian — but
-            // that meridian IS the same great circle, just inverted, which
-            // is visually disorienting. So we only adopt the cell's latitude
-            // (and depth readout); the meridian stays put.
+            // Resource mode: clicking a cell on the cliff SELECTS it (a
+            // persistent blue highlight) and nothing else. Selection is
+            // decoupled from navigation on purpose: in latitude mode the
+            // diagonal great-circle cut crosses side columns at a different
+            // latitude than the focus row, so snapping the focus to the clicked
+            // cell's latitude used to jerk the camera "backwards" a row whenever
+            // you picked a cell off to the side (and the cell then fell off the
+            // re-tilted cut, leaving a stray floating lid). Navigation stays on
+            // drag + arrow keys; clicking only marks the cell.
             state.resourceSelected = cell;
             rebuildResourceSelection();
-
-            state.focus.latTarget = snapLatToRow(cell.lat);
-            // Don't touch lonTarget — the cut is already at the right
-            // meridian. The easing in easeFocusToTarget() will glide the
-            // visible focus over to the new latitude.
         });
 
         function selectSurfaceCell(cell) {
