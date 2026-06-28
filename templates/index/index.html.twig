@@ -272,6 +272,19 @@
             // per-frame fraction of the remaining distance to the target —
             // larger = snappier, smaller = more "gliding".
             focusSnapEase:    0.22,
+            // Resource-mode traversal axis — which way you "stroll" through the
+            // body and, consequently, where the poles sit on screen:
+            //   'longitude' : the cut is a meridian (constant-longitude) plane
+            //                 through the poles. You travel around the equator;
+            //                 the poles sit to your LEFT and RIGHT.
+            //   'latitude'  : the cut is a through-centre plane whose normal is
+            //                 the north tangent at the focus, so tilting it
+            //                 (changing latitude) sweeps the cut pole-ward. You
+            //                 travel toward the poles; they sit ABOVE and BELOW.
+            // Both cuts pass through the centre, so the cliff always exposes the
+            // full depth stack (every shell + the core) — the two modes look
+            // identical apart from orientation and travel direction.
+            resourceTraverseAxis: 'latitude',
             // ------------------------------------------------------------------
             // Atmosphere — analytical single-scattering Rayleigh + Mie shell
             // rendered on the back faces of a slightly larger sphere. The
@@ -2284,6 +2297,7 @@
             selected: null,         // selected SURFACE cell userData (gates resource mode)
             focus: { lon: 0, lat: 0, lonTarget: 0, latTarget: 0 }, // surface point the crust view is centred on
             cutLon: null,           // longitude the cells are currently cut at
+            cutLat: null,           // latitude the cells are currently cut at (latitude-axis mode)
             camDist: (CONFIG.planetRadius - coreRadius) * CONFIG.crustZoom, // crust-view zoom
             viewSnapshot: null,     // saved orbit-camera state while in resource mode
         };
@@ -2505,6 +2519,42 @@
             return cols;
         }
 
+        // Latitude-axis broad-phase. The tilted through-centre cut is a great
+        // circle whose plane normal is the north tangent at the focus, so it
+        // crosses each longitude column's meridian at exactly one latitude:
+        //
+        //     φc(λc) = atan( tan(φ) · cos(λ − λc) )
+        //
+        // (φ, λ = focus lat/lon; λc = column-centre longitude). We return, per
+        // column, the latitude-row index containing that crossing so buildCaps
+        // only tests the handful of cells the cut actually passes through.
+        function latitudeCrossingRows() {
+            const lonCells = CONFIG.lonCells;
+            const colDeg = 360 / lonCells;
+            const tanPhi = Math.tan(deg2rad(state.focus.lat));
+            const lamR = deg2rad(state.focus.lon);
+            const lo = new Int32Array(lonCells);
+            const hi = new Int32Array(lonCells);
+
+            const rowAt = (lonDeg) => {
+                const latDeg = Math.atan(tanPhi * Math.cos(lamR - deg2rad(lonDeg))) * 180 / Math.PI;
+
+                return Math.floor((latDeg + 90) / rowDegLat);
+            };
+
+            // The crossing latitude can move quickly across a column (steeply
+            // near +/-90 deg from the focus), so evaluate it at BOTH column
+            // edges and keep the inclusive row span the circle traverses.
+            for (let i = 0; i < lonCells; i++) {
+                const a = rowAt(i * colDeg);
+                const b = rowAt((i + 1) * colDeg);
+                lo[i] = Math.min(a, b);
+                hi[i] = Math.max(a, b);
+            }
+
+            return { lo, hi };
+        }
+
         function buildCaps() {
             clearCaps();
 
@@ -2518,14 +2568,37 @@
                 faceToCell: [], // triangle index → cell record (for raycast picking)
             }));
 
-            const cols = cutColumns(state.focus.lon);
+            // Broad-phase: which cells can the cut possibly cross?
+            //   - longitude (meridian) cut: only the focus column and its
+            //     antipode (≈2 columns, all rows).
+            //   - latitude (tilted great-circle) cut: ≈one row per column, at
+            //     the latitude where the circle crosses that column's meridian
+            //     (see latitudeCrossingRows). The caps are never reached because
+            //     the cut stays within ±focus-lat and latitude is clamped below
+            //     the cap boundary, so cap cells are skipped in this mode.
+            const latitudeAxis = CONFIG.resourceTraverseAxis === 'latitude';
+            const cols = latitudeAxis ? null : cutColumns(state.focus.lon);
+            const candRows = latitudeAxis ? latitudeCrossingRows() : null;
 
             for (let d = 0; d < maxDepth; d++) {
                 for (const cell of cellsByDepth[d]) {
-                    // Quad cells only need testing if they're in a column the
-                    // cut could possibly cross. Cap cells are always cut by a
-                    // meridian plane, so they fall through.
-                    if (cell.kind === 'quad' && !cols.has(cell.lonIdx)) {
+                    if (cell.kind === 'cap') {
+                        // Latitude-axis cut never reaches the poles; only the
+                        // meridian cut slices the caps.
+                        if (latitudeAxis) {
+                            continue;
+                        }
+                    } else if (latitudeAxis) {
+                        // Quad cells only need testing if their row falls in the
+                        // span the great circle traverses within their column.
+                        if (cell.latIdx < candRows.lo[cell.lonIdx] - 1 ||
+                            cell.latIdx > candRows.hi[cell.lonIdx] + 1) {
+                            continue;
+                        }
+                    } else if (!cols.has(cell.lonIdx)) {
+                        // Quad cells only need testing if they're in a column the
+                        // cut could possibly cross. Cap cells are always cut by a
+                        // meridian plane, so they fall through.
                         continue;
                     }
 
@@ -2602,14 +2675,32 @@
         }
 
         function updateCut() {
-            // meridian (constant-longitude) plane through the poles at the focus
-            // longitude — exposes a vertical crust cliff (surface→depth). Rebuilt
-            // only when the longitude changes.
+            // The cut is always a plane through the body centre (so the cliff
+            // exposes the full depth stack — every shell + core). Its
+            // orientation depends on the traversal axis:
+            //   - longitude: meridian (constant-longitude) plane through the
+            //     poles — a vertical crust cliff; poles to the left/right.
+            //   - latitude: through-centre plane whose normal is the north
+            //     tangent at the focus; tilting it (changing latitude) sweeps
+            //     the cut pole-ward, so the poles read top/bottom.
+            // Rebuilt only when the cut actually moves (see updateResource).
             const lonR = deg2rad(state.focus.lon);
-            clipPlane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));
+            const latR = deg2rad(state.focus.lat);
+
+            if (CONFIG.resourceTraverseAxis === 'latitude') {
+                clipPlane.normal.set(
+                    -Math.sin(latR) * Math.cos(lonR),
+                    Math.cos(latR),
+                    -Math.sin(latR) * Math.sin(lonR),
+                );
+            } else {
+                clipPlane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));
+            }
+
             clipPlane.constant = 0;
             buildCaps();
             state.cutLon = state.focus.lon;
+            state.cutLat = state.focus.lat;
             // The hover highlight in resource mode is a cross-section on the
             // clip plane — invalidate the hover cache so the next frame
             // rebuilds the geometry against the new plane.
@@ -2624,13 +2715,19 @@
             const latR = deg2rad(state.focus.lat);
             const midR = (CONFIG.planetRadius + coreRadius) / 2;
 
-            // local radial (surface "up") and the meridian-plane normal (east-west).
+            // local radial (surface "up").
             const radialUp = new THREE.Vector3(
                 Math.cos(latR) * Math.cos(lonR),
                 Math.sin(latR),
                 Math.cos(latR) * Math.sin(lonR),
             );
-            const m = new THREE.Vector3(-Math.sin(lonR), 0, Math.cos(lonR));
+            // Face the cut edge-on: the clip-plane normal is the cut's facing
+            // direction, so offset the camera along its negation to look into
+            // the exposed cliff. Works for both axes (longitude: meridian
+            // east-west normal; latitude: the north tangent at the focus).
+            // Keeping `up` on the radial keeps depth pointing straight down in
+            // both modes; only the lateral pole orientation differs.
+            const m = clipPlane.normal.clone().multiplyScalar(-1);
 
             const crustThickness = CONFIG.planetRadius - coreRadius;
             const target = radialUp.clone().multiplyScalar(midR + crustThickness * CONFIG.crustHeightBias);
@@ -2650,10 +2747,12 @@
                 `lon ${state.focus.lon.toFixed(0)}° · lat ${state.focus.lat.toFixed(0)}°`;
         }
 
-        // Called while strolling. Only rebuilds the (expensive) caps when the cut
-        // longitude actually changes; latitude changes just move the camera.
-        function updateResource(lonChanged) {
-            if (lonChanged || state.cutLon === null) {
+        // Called while strolling. Only rebuilds the (expensive) caps when the
+        // cut actually moves. In longitude mode that's a longitude change
+        // (latitude just pans the camera along the cliff); in latitude mode the
+        // through-centre plane is moved by BOTH axes, so either change rebuilds.
+        function updateResource(cutChanged) {
+            if (cutChanged || state.cutLon === null) {
                 updateCut();
             }
 
@@ -2704,6 +2803,7 @@
                 state.focus.lon = state.focus.lonTarget;
                 state.focus.lat = state.focus.latTarget;
                 state.cutLon = null;
+                state.cutLat = null;
                 updateResource(true);
             } else {
                 clearCaps();
@@ -2814,9 +2914,20 @@
             // and a clean cell-aligned settle when they let go.
             const minLat = -90 + capRows * rowDegLat + rowDegLat / 2;
             const maxLat =  90 - capRows * rowDegLat - rowDegLat / 2;
-            state.focus.lonTarget = (state.focus.lonTarget + dy * dpp.lon + 360) % 360;
-            state.focus.latTarget = Math.max(minLat, Math.min(maxLat,
-                state.focus.latTarget + dx * dpp.lat));
+
+            if (CONFIG.resourceTraverseAxis === 'latitude') {
+                // Vertical drag travels along latitude (toward the poles, now
+                // top/bottom); horizontal drag pans longitude (east-west).
+                state.focus.latTarget = Math.max(minLat, Math.min(maxLat,
+                    state.focus.latTarget - dy * dpp.lat));
+                state.focus.lonTarget = (state.focus.lonTarget + dx * dpp.lon + 360) % 360;
+            } else {
+                // Vertical drag travels along longitude (around the equator);
+                // horizontal drag pans latitude along the meridian cliff.
+                state.focus.lonTarget = (state.focus.lonTarget + dy * dpp.lon + 360) % 360;
+                state.focus.latTarget = Math.max(minLat, Math.min(maxLat,
+                    state.focus.latTarget + dx * dpp.lat));
+            }
         });
 
         renderer.domElement.addEventListener('wheel', (e) => {
@@ -2842,11 +2953,19 @@
             const colDeg = 360 / CONFIG.lonCells;
 
             // Arrow keys step targets one full cell; easing carries the
-            // visible focus in smoothly.
-            if (e.key === 'ArrowUp')    state.focus.lonTarget = snapLonToCol(state.focus.lonTarget + colDeg);
-            if (e.key === 'ArrowDown')  state.focus.lonTarget = snapLonToCol(state.focus.lonTarget - colDeg);
-            if (e.key === 'ArrowLeft')  state.focus.latTarget = snapLatToRow(state.focus.latTarget + rowDegLat);
-            if (e.key === 'ArrowRight') state.focus.latTarget = snapLatToRow(state.focus.latTarget - rowDegLat);
+            // visible focus in smoothly. The mapping follows the traversal axis
+            // so Up/Down always advances "into the body" along the cut.
+            if (CONFIG.resourceTraverseAxis === 'latitude') {
+                if (e.key === 'ArrowUp')    state.focus.latTarget = snapLatToRow(state.focus.latTarget + rowDegLat);
+                if (e.key === 'ArrowDown')  state.focus.latTarget = snapLatToRow(state.focus.latTarget - rowDegLat);
+                if (e.key === 'ArrowLeft')  state.focus.lonTarget = snapLonToCol(state.focus.lonTarget - colDeg);
+                if (e.key === 'ArrowRight') state.focus.lonTarget = snapLonToCol(state.focus.lonTarget + colDeg);
+            } else {
+                if (e.key === 'ArrowUp')    state.focus.lonTarget = snapLonToCol(state.focus.lonTarget + colDeg);
+                if (e.key === 'ArrowDown')  state.focus.lonTarget = snapLonToCol(state.focus.lonTarget - colDeg);
+                if (e.key === 'ArrowLeft')  state.focus.latTarget = snapLatToRow(state.focus.latTarget + rowDegLat);
+                if (e.key === 'ArrowRight') state.focus.latTarget = snapLatToRow(state.focus.latTarget - rowDegLat);
+            }
         });
 
         // ----------------------------------------------------------------------
@@ -3177,6 +3296,7 @@
             const EPS = 1e-3;
             const ease = CONFIG.focusSnapEase;
             let lonChanged = false;
+            let latChanged = false;
             let moved = false;
 
             let dLon = state.focus.lonTarget - state.focus.lon;
@@ -3201,15 +3321,24 @@
             if (Math.abs(dLat) > EPS)
             {
                 state.focus.lat += dLat * ease;
+                latChanged = true;
                 moved = true;
             }
             else if (state.focus.lat !== state.focus.latTarget)
             {
                 state.focus.lat = state.focus.latTarget;
+                latChanged = true;
                 moved = true;
             }
 
-            if (moved) updateResource(lonChanged);
+            // Which axis moves the cut depends on the traversal mode: longitude
+            // mode rebuilds only on longitude change (latitude pans the camera);
+            // latitude mode's through-centre plane is moved by both axes.
+            const cutChanged = CONFIG.resourceTraverseAxis === 'latitude'
+                ? (lonChanged || latChanged)
+                : lonChanged;
+
+            if (moved) updateResource(cutChanged);
         }
         animate();
     </script>

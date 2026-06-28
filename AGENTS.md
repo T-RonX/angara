@@ -44,13 +44,13 @@ This is just your typical Symfony project.
 ## Architecture
 - Always use transactions for database operations at the highest level like controllers or commands or facades.
 - Use fixtures for seeding the database. New seeds should be added as new fixtures.
-- In the inline Three.js body explorer (`templates/index/index.html.twig`), resource-mode focus longitude tracks cell centres, but the actual clip plane is intentionally shifted by half a longitude cell so slicing aligns to cell boundaries.
+- In the inline Three.js body explorer (`templates/index/index.html.twig`), the resource-mode clip plane always passes through the body centre, so the cliff exposes the full depth stack (every shell + the core) in both traversal modes.
 - In that same inline Three.js renderer, hover/selection highlight materials should keep `depthTest: true` (with polygon offset) to avoid transparent triangle artifacts and missing overlay patches near clipped seams.
-- Resource-mode traversal orientation is configurable via `CONFIG.resourceTraverseAxis` (`'longitude' | 'latitude'` in `templates/index/index.html.twig`); drag/arrow mappings, camera alignment, and slice-plane updates all follow that axis.
-- Resource camera should look along the active traversal direction (not the clip-plane normal); in longitude traversal mode, use projected world-north as `camera.up` so poles appear vertically (above/below) instead of left/right.
-- Longitude slice orientation can be phase-shifted with `CONFIG.resourceSliceLonOffsetDeg` in `templates/index/index.html.twig` (e.g. `90` rotates the meridian cut by a quarter turn).
-- `CONFIG.resourceSliceLonOffsetDeg` rotates the longitude cut plane only; traversal direction and drag/arrow movement still follow `CONFIG.resourceTraverseAxis`.
-- In longitude traversal, camera anchoring should use the same phase-shifted longitude as the cut plane so slice motion stays aligned with movement.
+- Resource-mode traversal direction is configurable via `CONFIG.resourceTraverseAxis` (`'longitude' | 'latitude'` in `templates/index/index.html.twig`); the clip-plane normal, the cap broad-phase, drag/arrow input mappings, and the camera all branch on it.
+  - `'longitude'`: the cut is a meridian (constant-longitude) plane through the poles. You travel around the equator and the poles sit to the left/right. Only a longitude change rebuilds the caps (latitude just pans the camera along the cliff).
+  - `'latitude'`: the cut is a through-centre plane whose normal is the north tangent at the focus, so tilting it (changing latitude) sweeps the cut pole-ward. You travel toward the poles and they sit top/bottom. Both axes move the plane, so either change rebuilds the caps.
+- The resource camera always looks edge-on along the clip-plane normal with `camera.up` on the surface radial, so depth stays vertical on screen in both modes; only the lateral orientation of the poles changes between axes.
+- In `'latitude'` mode the tilted great-circle cut stays within +/- the focus latitude, and latitude is clamped below the polar-cap boundary, so the cut never reaches the caps — cap cells are skipped from the cross-section there.
 
 ## Fixtures and migrations
 - Always make sure the foreign keys are the first columns after the primary key or logical order. 
