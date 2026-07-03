@@ -4,21 +4,19 @@
 // the wheel zooms, arrow keys step one cell at a time, and a click selects
 // the hovered cell. View-mode orbit/zoom stays with OrbitControls.
 //
-// It only ever sets TARGETS — the FocusController eases the visible focus
-// toward them — so the motion feels analog while dragging and snaps cleanly
-// on release.
+// It only ever sets TARGETS via the topology's traversal strategy — the
+// FocusController eases the visible focus toward them — so the motion feels
+// analog while dragging and snaps cleanly on release. The traversal owns
+// every topology-specific stepping rule.
 // ----------------------------------------------------------------------
 export class InputController
 {
     #sceneContext;
     #state;
     #planet;
-    #capModel;
     #layerModel;
-    #latStops;
-    #traverseAxis;
+    #traversal;
     #cameraCfg;
-    #focus;          // FocusController (snapping)
     #crustCamera;
     #highlights;
     #callbacks;
@@ -28,17 +26,14 @@ export class InputController
 
     static CLICK_SLOP_PX = 4;
 
-    constructor(sceneContext, state, behaviour, planet, capModel, layerModel, latStops, focusController, crustCamera, highlightManager, callbacks)
+    constructor(sceneContext, state, behaviour, planet, layerModel, traversal, crustCamera, highlightManager, callbacks)
     {
         this.#sceneContext = sceneContext;
         this.#state = state;
         this.#planet = planet;
-        this.#capModel = capModel;
         this.#layerModel = layerModel;
-        this.#latStops = latStops;
-        this.#traverseAxis = behaviour.traversal.resourceTraverseAxis;
+        this.#traversal = traversal;
         this.#cameraCfg = behaviour.camera;
-        this.#focus = focusController;
         this.#crustCamera = crustCamera;
         this.#highlights = highlightManager;
         this.#callbacks = callbacks;
@@ -87,9 +82,7 @@ export class InputController
 
         if (this.#state.mode === 'resource')
         {
-            const focus = this.#state.focus;
-            focus.lonTarget = this.#focus.snapLonToCol(focus.lonTarget);
-            focus.latTarget = this.#focus.snapLatToRow(focus.latTarget);
+            this.#traversal.snapTargets(this.#state.focus);
         }
     }
 
@@ -103,28 +96,7 @@ export class InputController
         this.#drag.y = e.clientY;
 
         const dpp = this.#crustCamera.dragDegPerPixel();
-        const focus = this.#state.focus;
-        const { capRows, rowDegLat, capCenterLatN, capCenterLatS } = this.#capModel;
-        const minLat = -90 + capRows * rowDegLat + rowDegLat / 2;
-        const maxLat =  90 - capRows * rowDegLat - rowDegLat / 2;
-
-        if (this.#traverseAxis === 'latitude')
-        {
-            // Vertical drag travels along latitude (toward the poles, now
-            // top/bottom); horizontal pans longitude. The latitude clamp
-            // extends onto the polar caps so the pole's view is reachable.
-            const latMin = capRows > 0 ? capCenterLatS : minLat;
-            const latMax = capRows > 0 ? capCenterLatN : maxLat;
-            focus.latTarget = Math.max(latMin, Math.min(latMax, focus.latTarget - dy * dpp.lat));
-            focus.lonTarget = (focus.lonTarget + dx * dpp.lon + 360) % 360;
-        }
-        else
-        {
-            // Vertical drag travels along longitude (around the equator);
-            // horizontal pans latitude along the meridian cliff.
-            focus.lonTarget = (focus.lonTarget + dy * dpp.lon + 360) % 360;
-            focus.latTarget = Math.max(minLat, Math.min(maxLat, focus.latTarget + dx * dpp.lat));
-        }
+        this.#traversal.onDrag(this.#state.focus, dx, dy, dpp);
     }
 
     #onWheel(e)
@@ -154,34 +126,7 @@ export class InputController
 
         if (this.#busy()) return;
 
-        const focus = this.#state.focus;
-        const { capRows, rowDegLat } = this.#capModel;
-        const colDeg = 360 / this.#planet.lonCells;
-
-        if (this.#traverseAxis === 'latitude')
-        {
-            if (e.key === 'ArrowUp' || e.key === 'ArrowDown')
-            {
-                const dir = e.key === 'ArrowUp' ? 1 : -1;
-                const i = capRows > 0
-                    ? Math.max(0, Math.min(this.#latStops.length - 1,
-                        this.#latStops.nearestIndex(focus.latTarget) + dir))
-                    : null;
-                focus.latTarget = i !== null
-                    ? this.#latStops.at(i)
-                    : this.#focus.snapLatToRow(focus.latTarget + dir * rowDegLat);
-            }
-
-            if (e.key === 'ArrowLeft')  focus.lonTarget = this.#focus.snapLonToCol(focus.lonTarget - colDeg);
-            if (e.key === 'ArrowRight') focus.lonTarget = this.#focus.snapLonToCol(focus.lonTarget + colDeg);
-        }
-        else
-        {
-            if (e.key === 'ArrowUp')    focus.lonTarget = this.#focus.snapLonToCol(focus.lonTarget + colDeg);
-            if (e.key === 'ArrowDown')  focus.lonTarget = this.#focus.snapLonToCol(focus.lonTarget - colDeg);
-            if (e.key === 'ArrowLeft')  focus.latTarget = this.#focus.snapLatToRow(focus.latTarget + rowDegLat);
-            if (e.key === 'ArrowRight') focus.latTarget = this.#focus.snapLatToRow(focus.latTarget - rowDegLat);
-        }
+        this.#traversal.onArrow(this.#state.focus, e.key);
     }
 
     #onClick(e)
@@ -214,4 +159,3 @@ export class InputController
         this.#callbacks.selectResourceCell(cell);
     }
 }
-

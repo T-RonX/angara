@@ -1,32 +1,20 @@
 import * as THREE from 'three';
 import { sphere } from '../core/MathUtils.js';
 
-// Triangulation of the 6 faces of a quad (hexahedron) cell, indexed into
-// the 8 corners [A,B,C,D outer, E,F,G,H inner]. Wound so normals face
-// OUTWARD (FrontSide culling keeps the visible faces).
-export const FACE_TRIS = [
-    [0, 2, 1, 0, 3, 2], // 0: outer
-    [4, 5, 6, 4, 6, 7], // 1: inner
-    [0, 5, 4, 0, 1, 5], // 2: lat0 side
-    [1, 6, 5, 1, 2, 6], // 3: lon1 side
-    [2, 7, 6, 2, 3, 7], // 4: lat1 side
-    [3, 4, 7, 3, 0, 4], // 5: lon0 side
-];
-
-// The 12 edges of a quad cell hexahedron (corner index pairs).
-export const CELL_EDGES = [
-    [0, 1], [1, 2], [2, 3], [3, 0], // outer ring
-    [4, 5], [5, 6], [6, 7], [7, 4], // inner ring
-    [0, 4], [1, 5], [2, 6], [3, 7], // verticals
-];
-
 // ----------------------------------------------------------------------
-// CellGeometryFactory — turns a cell record (quad or polar cap) into raw
-// vertex / normal / index data. The same code feeds either a standalone
-// single-cell geometry (for the hover overlay) or a merged depth-layer
-// mesh. Vertices are duplicated per face so each face carries its own
-// normals: radial for outer/inner faces (smooth across cells), flat for
-// the side faces.
+// CellGeometryFactory — turns a cell record into raw vertex / normal /
+// index data. A cell is either:
+//   * a general N-gon PRISM (quad = 4, pentagon = 5, hexagon = 6, …),
+//     described by an ordered `outerRing` of N corners and a matching
+//     `innerRing` at the deeper radius, or
+//   * a lon/lat polar `cap` dome (a smooth fan — only the lon/lat topology
+//     produces these).
+//
+// The same code feeds either a standalone single-cell geometry (hover
+// overlay) or a merged depth-layer mesh. Prism outer/inner faces carry
+// radial normals (smooth across cells); side faces carry a flat normal.
+// Winding is derived per face from the cell centroid so any ring
+// orientation renders correctly under FrontSide culling.
 // ----------------------------------------------------------------------
 export class CellGeometryFactory
 {
@@ -48,7 +36,7 @@ export class CellGeometryFactory
         }
         else
         {
-            this.#appendQuadCell(cell, positions, normals, indices);
+            this.#appendPrismCell(cell, positions, normals, indices);
         }
 
         cell.triCount = indices.length / 3 - triStart;
@@ -69,48 +57,89 @@ export class CellGeometryFactory
         return geo;
     }
 
-    #appendQuadCell(cell, positions, normals, indices)
+    #appendPrismCell(cell, positions, normals, indices)
     {
-        const corners = cell.corners;
-        const vertBase = positions.length / 3;
+        const outer = cell.outerRing;
+        const inner = cell.innerRing;
+        const n = outer.length;
 
-        for (let f = 0; f < 6; f++)
+        // Cell centroid — used to orient every face's winding / normal
+        // outward regardless of how the ring happens to be wound.
+        const cen = new THREE.Vector3();
+        for (const p of outer) cen.add(p);
+        for (const p of inner) cen.add(p);
+        cen.multiplyScalar(1 / (2 * n));
+
+        // Outer skin (radial-outward normals) and inner skin (inward).
+        this.#appendFan(outer, +1, positions, normals, indices);
+        this.#appendFan(inner, -1, positions, normals, indices);
+
+        // One flat side quad per ring edge.
+        for (let k = 0; k < n; k++)
         {
-            const tris = FACE_TRIS[f];
-
-            // Flat face normal for side / inner faces.
-            const a = corners[tris[0]], b = corners[tris[1]], c = corners[tris[2]];
-            const e1x = b.x - a.x, e1y = b.y - a.y, e1z = b.z - a.z;
-            const e2x = c.x - a.x, e2y = c.y - a.y, e2z = c.z - a.z;
-            let nx = e1y * e2z - e1z * e2y;
-            let ny = e1z * e2x - e1x * e2z;
-            let nz = e1x * e2y - e1y * e2x;
-            const nl = Math.hypot(nx, ny, nz) || 1;
-            nx /= nl; ny /= nl; nz /= nl;
-
-            for (let t = 0; t < 6; t++)
-            {
-                const p = corners[tris[t]];
-                positions.push(p.x, p.y, p.z);
-
-                if (f === 0)
-                {
-                    const len = Math.hypot(p.x, p.y, p.z) || 1;
-                    normals.push(p.x / len, p.y / len, p.z / len);
-                }
-                else if (f === 1)
-                {
-                    const len = Math.hypot(p.x, p.y, p.z) || 1;
-                    normals.push(-p.x / len, -p.y / len, -p.z / len);
-                }
-                else
-                {
-                    normals.push(nx, ny, nz);
-                }
-
-                indices.push(vertBase + f * 6 + t);
-            }
+            const k2 = (k + 1) % n;
+            this.#appendSideQuad(outer[k], outer[k2], inner[k2], inner[k], cen, positions, normals, indices);
         }
+    }
+
+    // Fan-triangulate a ring with radial normals. `dir` = +1 pushes the
+    // normals outward (outer skin), -1 inward (inner skin). The winding is
+    // flipped when needed so the visible face survives FrontSide culling.
+    #appendFan(ring, dir, positions, normals, indices)
+    {
+        const n = ring.length;
+
+        const cen = new THREE.Vector3();
+        for (const p of ring) cen.add(p);
+        cen.multiplyScalar(1 / n);
+        const desired = cen.clone().normalize().multiplyScalar(dir);
+
+        const gn = ring[1].clone().sub(ring[0]).cross(ring[2].clone().sub(ring[0]));
+        const reverse = gn.dot(desired) < 0;
+
+        const base = positions.length / 3;
+
+        for (const p of ring)
+        {
+            positions.push(p.x, p.y, p.z);
+            const inv = dir / (Math.hypot(p.x, p.y, p.z) || 1);
+            normals.push(p.x * inv, p.y * inv, p.z * inv);
+        }
+
+        for (let i = 1; i < n - 1; i++)
+        {
+            if (reverse) indices.push(base, base + i + 1, base + i);
+            else         indices.push(base, base + i, base + i + 1);
+        }
+    }
+
+    // A flat side quad [a,b outer][c,d inner], normal oriented away from the
+    // cell centroid so it faces outward.
+    #appendSideQuad(a, b, c, d, cen, positions, normals, indices)
+    {
+        let nx = (b.y - a.y) * (d.z - a.z) - (b.z - a.z) * (d.y - a.y);
+        let ny = (b.z - a.z) * (d.x - a.x) - (b.x - a.x) * (d.z - a.z);
+        let nz = (b.x - a.x) * (d.y - a.y) - (b.y - a.y) * (d.x - a.x);
+        const nl = Math.hypot(nx, ny, nz) || 1;
+        nx /= nl; ny /= nl; nz /= nl;
+
+        const mx = (a.x + b.x + c.x + d.x) / 4 - cen.x;
+        const my = (a.y + b.y + c.y + d.y) / 4 - cen.y;
+        const mz = (a.z + b.z + c.z + d.z) / 4 - cen.z;
+        const flip = (nx * mx + ny * my + nz * mz) < 0;
+
+        if (flip) { nx = -nx; ny = -ny; nz = -nz; }
+
+        const winding = flip ? [a, d, c, a, c, b] : [a, b, c, a, c, d];
+        const base = positions.length / 3;
+
+        for (const p of winding)
+        {
+            positions.push(p.x, p.y, p.z);
+            normals.push(nx, ny, nz);
+        }
+
+        indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
     }
 
     #appendCapCell(cell, positions, normals, indices)

@@ -63,3 +63,32 @@ export function easeInOut(x)
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
 
+// Lazily cache a cell's bounding sphere (centre `_cx/_cy/_cz`, radius `_cr`)
+// from its `corners`, and return the cell. Shared by every topology's cut
+// broad-phase (generalised plane-vs-cell test).
+export function cellBounds(cell)
+{
+    if (cell._cr !== undefined) return cell;
+
+    const cs = cell.corners;
+    let cx = 0, cy = 0, cz = 0;
+
+    for (const v of cs) { cx += v.x; cy += v.y; cz += v.z; }
+
+    const inv = 1 / cs.length;
+    cx *= inv; cy *= inv; cz *= inv;
+    let r2 = 0;
+
+    for (const v of cs)
+    {
+        const dx = v.x - cx, dy = v.y - cy, dz = v.z - cz;
+        const d = dx * dx + dy * dy + dz * dz;
+
+        if (d > r2) r2 = d;
+    }
+
+    cell._cx = cx; cell._cy = cy; cell._cz = cz; cell._cr = Math.sqrt(r2);
+
+    return cell;
+}
+

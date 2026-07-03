@@ -10,6 +10,7 @@ export class HudView
 {
     #maxDepth;
     #hasAtmosphere;
+    #topology;
 
     #el = {};
     #modeBtn;
@@ -20,10 +21,11 @@ export class HudView
     #camUp = new THREE.Vector3();
     #perf = { last: performance.now(), ema: 0, lastHud: 0 };
 
-    constructor(layerModel, hasAtmosphere)
+    constructor(layerModel, hasAtmosphere, topology)
     {
         this.#maxDepth = layerModel.maxDepth;
         this.#hasAtmosphere = hasAtmosphere;
+        this.#topology = topology;
 
         const id = i => document.getElementById(i);
         this.#el = {
@@ -99,11 +101,7 @@ export class HudView
             return;
         }
 
-        this.#el.selType.textContent = cell.isAtmosphere
-            ? 'atmosphere'
-            : cell.kind === 'cap'
-                ? 'polar cap'
-                : cell.depth === 0 ? 'surface' : 'crust';
+        this.#el.selType.textContent = this.#topology.cellTypeLabel(cell);
         this.#el.selLon.textContent = `${cell.lon.toFixed(1)}°`;
         this.#el.selLat.textContent = `${cell.lat.toFixed(1)}°`;
         this.#el.selLayer.textContent = this.layerLabel(cell);

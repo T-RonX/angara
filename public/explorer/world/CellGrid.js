@@ -63,6 +63,8 @@ export class CellGrid
                     const lon0 = (i / lonCells) * 360;
                     const lon1 = ((i + 1) / lonCells) * 360;
 
+                    const rings = this.#prismRings(lon0, lon1, lat0, lat1, rOuter, rInner);
+
                     this.#addCell(d, {
                         kind: 'quad',
                         lon: (lon0 + lon1) / 2,
@@ -70,7 +72,9 @@ export class CellGrid
                         depth: d,
                         lonIdx: i,
                         latIdx: j,
-                        corners: this.#hexCorners(lon0, lon1, lat0, lat1, rOuter, rInner),
+                        corners: rings.corners,
+                        outerRing: rings.outerRing,
+                        innerRing: rings.innerRing,
                         geom: null,
                         edges: null,
                     });
@@ -120,6 +124,8 @@ export class CellGrid
                 const lon0 = (i / lonCells) * 360;
                 const lon1 = ((i + 1) / lonCells) * 360;
 
+                const rings = this.#prismRings(lon0, lon1, lat0, lat1, rOuter, rInner);
+
                 this.atmosphereCells.push({
                     kind: 'quad',
                     isAtmosphere: true,
@@ -128,7 +134,9 @@ export class CellGrid
                     depth: 0,
                     lonIdx: i,
                     latIdx: j,
-                    corners: this.#hexCorners(lon0, lon1, lat0, lat1, rOuter, rInner),
+                    corners: rings.corners,
+                    outerRing: rings.outerRing,
+                    innerRing: rings.innerRing,
                     geom: null,
                     edges: null,
                 });
@@ -179,14 +187,22 @@ export class CellGrid
         }
     }
 
-    #hexCorners(lon0, lon1, lat0, lat1, rOuter, rInner)
+    // Build a quad cell as a 4-gon prism: an ordered OUTER ring of corners
+    // and a matching INNER ring at the deeper radius. `corners` is the two
+    // rings concatenated (outer first) so the generic prism edge list
+    // (outer ring / inner ring / verticals) indexes straight into it.
+    #prismRings(lon0, lon1, lat0, lat1, rOuter, rInner)
     {
-        return [
+        const outerRing = [
             sphere(lon0, lat0, rOuter), sphere(lon1, lat0, rOuter),
             sphere(lon1, lat1, rOuter), sphere(lon0, lat1, rOuter),
+        ];
+        const innerRing = [
             sphere(lon0, lat0, rInner), sphere(lon1, lat0, rInner),
             sphere(lon1, lat1, rInner), sphere(lon0, lat1, rInner),
         ];
+
+        return { corners: outerRing.concat(innerRing), outerRing, innerRing };
     }
 
     #addCell(depth, cell)

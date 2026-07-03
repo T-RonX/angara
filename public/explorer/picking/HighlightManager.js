@@ -242,11 +242,9 @@ export class HighlightManager
 
         // (b) On the surface layer, also include the outer face so the
         // highlight wraps over the top edge of the cliff.
-        if (cell.depth === 0 && cell.kind === 'quad')
+        if (cell.depth === 0 && cell.kind !== 'cap')
         {
-            const corners = cell.corners;
-            const outerRing = [corners[0], corners[1], corners[2], corners[3]];
-            const clipped = this.#crossSection.clipPolygonToVisibleHalf(outerRing);
+            const clipped = this.#crossSection.clipPolygonToVisibleHalf(cell.outerRing);
 
             if (clipped.length >= 3)
             {

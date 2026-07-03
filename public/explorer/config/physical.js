@@ -13,6 +13,17 @@ export const physical = {
     // ------------------------------------------------------------------
     planet: {
         radius:   500,            // radius of the body
+
+        // Cell topology — the ONE flag that swaps how the body is divided:
+        //   'lonlat'    — longitude/latitude quad grid + polar caps (below),
+        //   'hexsphere' — Goldberg polyhedron (mostly hexagons + exactly 12
+        //                 pentagons, NO poles, so the polar-cap / latitude
+        //                 workaround does not exist there).
+        cellTopology: 'hexsphere',
+        // Hexsphere subdivision frequency (icosahedron edge divisions). The
+        // surface has 10·f²+2 cells; keep modest (e.g. 12–24). lonlat ignores.
+        hexFrequency: 16,
+
         lonCells: (24 * 10) + 1,  // grid divisions around the equator (longitude)
         latCells: (12 * 10) + 1,  // grid divisions from pole to pole (latitude)
         maxDepth: 5,              // number of crust layers (any reasonable number)
@@ -28,7 +39,7 @@ export const physical = {
 
         // The "core" sphere shown beneath the deepest crust layer.
         coreColor: 0xc9743a,
-        // One colour per depth layer (index 0 = surface … deeper). Padded
+        // One colour per depth layer (ex ind0 = surface … deeper). Padded
         // toward `coreColor` automatically when shorter than maxDepth.
         depthColors: [0x6f8b57, 0x8a6d3b, 0x2a2f3a],
 

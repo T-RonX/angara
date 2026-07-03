@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { sphere } from '../core/MathUtils.js';
-import { CELL_EDGES } from './CellGeometryFactory.js';
 
 // ----------------------------------------------------------------------
-// CrossSectionFactory — intersects a cell (quad or polar cap) with the
-// current clip plane, producing the flat polygon that "closes" the cell on
-// the slice. Returns everything as { positions, indices } so callers can
-// treat both cell kinds uniformly. Also offers Sutherland–Hodgman clipping
-// of a polygon to the visible (camera-side) half-space.
+// CrossSectionFactory — intersects a cell (N-gon prism or lon/lat polar
+// cap) with the current clip plane, producing the flat polygon that
+// "closes" the cell on the slice. Returns everything as { positions,
+// indices } so callers can treat both cell kinds uniformly. Also offers
+// Sutherland–Hodgman clipping of a polygon to the visible (camera-side)
+// half-space.
 // ----------------------------------------------------------------------
 export class CrossSectionFactory
 {
@@ -15,6 +15,7 @@ export class CrossSectionFactory
     #focus;
     #planetRadius;
     #rings;
+    #edgeCache = new Map();
 
     constructor(clipPlane, focus, planetRadius, polarCapRings)
     {
@@ -32,7 +33,7 @@ export class CrossSectionFactory
             return this.capCellCrossSection(cell);
         }
 
-        const pts = this.quadCellCrossSection(cell.corners);
+        const pts = this.prismCellCrossSection(cell);
 
         if (pts === null) return null;
 
@@ -47,14 +48,33 @@ export class CrossSectionFactory
         return { positions: pts, indices };
     }
 
-    // Intersect a quad cell hexahedron with the clip plane → ordered polygon.
-    quadCellCrossSection(corners)
+    // The 3N edges of an N-gon prism (outer ring, inner ring, verticals),
+    // indexed into `corners` = outerRing.concat(innerRing). Cached per N.
+    #prismEdges(n)
     {
+        let edges = this.#edgeCache.get(n);
+
+        if (edges) return edges;
+
+        edges = [];
+        for (let k = 0; k < n; k++) edges.push([k, (k + 1) % n]);           // outer ring
+        for (let k = 0; k < n; k++) edges.push([n + k, n + ((k + 1) % n)]); // inner ring
+        for (let k = 0; k < n; k++) edges.push([k, n + k]);                 // verticals
+
+        this.#edgeCache.set(n, edges);
+
+        return edges;
+    }
+
+    // Intersect an N-gon prism with the clip plane → ordered polygon.
+    prismCellCrossSection(cell)
+    {
+        const corners = cell.corners;
         const n = this.#clipPlane.normal, k = this.#clipPlane.constant;
         const dist = corners.map(v => n.dot(v) + k);
         const pts = [];
 
-        for (const [a, b] of CELL_EDGES)
+        for (const [a, b] of this.#prismEdges(cell.outerRing.length))
         {
             const da = dist[a], db = dist[b];
 

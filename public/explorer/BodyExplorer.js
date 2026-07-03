@@ -2,8 +2,6 @@ import * as THREE from 'three';
 
 import { SceneContext } from './core/SceneContext.js';
 import { LayerModel } from './model/LayerModel.js';
-import { PolarCapModel } from './model/PolarCapModel.js';
-import { LatitudeStops } from './model/LatitudeStops.js';
 import { LayerMaterialFactory } from './material/LayerMaterialFactory.js';
 import { LightingRig } from './lighting/LightingRig.js';
 import { SkyAnchor } from './sky/SkyAnchor.js';
@@ -12,12 +10,9 @@ import { StarSystem } from './star/StarSystem.js';
 import { AtmosphereShell } from './atmosphere/AtmosphereShell.js';
 import { CellGeometryFactory } from './geometry/CellGeometryFactory.js';
 import { CrossSectionFactory } from './geometry/CrossSectionFactory.js';
-import { CellGrid } from './world/CellGrid.js';
 import { BodyMesh } from './world/BodyMesh.js';
-import { GridLines } from './world/GridLines.js';
 import { ClipController } from './slicing/ClipController.js';
 import { CapBuilder } from './slicing/CapBuilder.js';
-import { SurfacePicker } from './picking/SurfacePicker.js';
 import { CliffPicker } from './picking/CliffPicker.js';
 import { HighlightManager } from './picking/HighlightManager.js';
 import { HoverController } from './picking/HoverController.js';
@@ -27,6 +22,7 @@ import { InputController } from './navigation/InputController.js';
 import { ModeTransition } from './transition/ModeTransition.js';
 import { HudView } from './hud/HudView.js';
 import { SliderPanel } from './hud/SliderPanel.js';
+import { createTopology } from './topology/createTopology.js';
 
 // ----------------------------------------------------------------------
 // BodyExplorer — the application root. It assembles every subsystem from
@@ -42,6 +38,8 @@ export class BodyExplorer
 
     #scene;
     #state;
+
+    #topology;
 
     #lightingRig;
     #skyAnchor;
@@ -74,6 +72,7 @@ export class BodyExplorer
         this.#buildModels();
         this.#buildScene(rootElement);
         this.#buildSkyAndLights();
+        this.#buildTopology();
         this.#buildBody();
         this.#buildSlicing();
         this.#buildInteraction();
@@ -95,8 +94,17 @@ export class BodyExplorer
     #buildModels()
     {
         this.layerModel = new LayerModel(this.#planet);
-        this.capModel = new PolarCapModel(this.#planet);
-        this.latStops = new LatitudeStops(this.#planet, this.capModel);
+    }
+
+    // Pick the cell topology from config (lonlat | hexsphere) and expose its
+    // grid. The atmosphere shell radius is needed up-front for the optional
+    // selectable atmosphere cells, so this runs after #buildSkyAndLights().
+    #buildTopology()
+    {
+        this.#topology = createTopology(
+            this.#physical, this.layerModel, this.#behaviour, this.#atmosphere.radius,
+        );
+        this.cellGrid = this.#topology.grid;
     }
 
     #buildScene(rootElement)
@@ -139,24 +147,18 @@ export class BodyExplorer
 
         this.#materials = new LayerMaterialFactory(this.#planet, this.layerModel);
         this.#cellGeometry = new CellGeometryFactory(this.#planet.polarCapRings);
-        this.cellGrid = new CellGrid(
-            this.#planet, this.layerModel, this.capModel,
-            this.#physical.atmosphere, this.#atmosphere.radius,
-        );
 
         this.#bodyMesh = new BodyMesh(scene, this.cellGrid, this.#cellGeometry, this.#materials, this.layerModel);
         this.#bodyMesh.add(this.#atmosphere.mesh);
 
-        const gridLines = new GridLines(this.#planet, this.capModel);
-        this.#bodyMesh.add(gridLines.lines);
+        this.#bodyMesh.add(this.#topology.buildGridLines());
     }
 
     #buildSlicing()
     {
         const scene = this.#scene.scene;
-        const axis = this.#behaviour.traversal.resourceTraverseAxis;
 
-        this.#clip = new ClipController(this.#state.focus, axis, this.capModel);
+        this.#clip = new ClipController(this.#state.focus, this.#topology.cutStrategy);
 
         this.#crossSection = new CrossSectionFactory(
             this.#clip.plane, this.#state.focus, this.#planet.radius, this.#planet.polarCapRings,
@@ -164,7 +166,7 @@ export class BodyExplorer
 
         this.#capBuilder = new CapBuilder(
             scene, this.#clip, this.cellGrid, this.#crossSection, this.#materials,
-            this.layerModel, this.#state.focus, this.#planet, axis, this.capModel,
+            this.layerModel, this.#state.focus, this.#topology.createBroadPhase(),
         );
 
         this.#clip.setCapBuilder(this.#capBuilder);
@@ -175,13 +177,13 @@ export class BodyExplorer
         const scene = this.#scene.scene;
         const hasAtmosphere = this.cellGrid.atmosphereCells.length > 0;
 
-        this.#hud = new HudView(this.layerModel, hasAtmosphere);
+        this.#hud = new HudView(this.layerModel, hasAtmosphere, this.#topology);
 
         this.#highlights = new HighlightManager(
             scene, this.#crossSection, this.#cellGeometry, this.#clip, this.#state, this.#planet.polarCapRings,
         );
 
-        const surfacePicker = new SurfacePicker(this.#planet, this.capModel, this.cellGrid);
+        const surfacePicker = this.#topology.createSurfacePicker();
         const cliffPicker = new CliffPicker(this.#capBuilder);
 
         this.#hover = new HoverController(
@@ -197,7 +199,7 @@ export class BodyExplorer
         );
 
         this.#focus = new FocusController(
-            this.#state, this.#planet, this.capModel, this.latStops, this.#behaviour,
+            this.#state, this.#topology.traversal, this.#behaviour,
             this.#clip, this.#crustCamera, this.#highlights, this.#hud,
         );
 
@@ -207,8 +209,8 @@ export class BodyExplorer
         );
 
         new InputController(
-            this.#scene, this.#state, this.#behaviour, this.#planet, this.capModel,
-            this.layerModel, this.latStops, this.#focus, this.#crustCamera, this.#highlights,
+            this.#scene, this.#state, this.#behaviour, this.#planet,
+            this.layerModel, this.#topology.traversal, this.#crustCamera, this.#highlights,
             {
                 toggleMode: () => this.toggleMode(),
                 selectSurfaceCell: cell => this.#selectSurfaceCell(cell),
@@ -287,12 +289,7 @@ export class BodyExplorer
         state.transition.orbit = orbit;
 
         const focus = state.focus;
-        focus.lon = state.selected.lon;
-        focus.lat = state.selected.lat;
-        focus.lonTarget = this.#focus.snapLonToCol(state.selected.lon);
-        focus.latTarget = this.#focus.snapLatToRow(state.selected.lat);
-        focus.lon = focus.lonTarget;
-        focus.lat = focus.latTarget;
+        this.#topology.traversal.enterFocus(focus, state.selected);
         this.#clip.resetCut();
 
         // Enable clipping but keep the plane fully off-centre so nothing is
