@@ -63,7 +63,10 @@ This is just your typical Symfony project.
 `assets/src/Rendeder`: Contains a custom render engine based on Canvas 2D. It must remain game agnostic.
 `assets/src/Game`: Contains the main game code where not directly part of Vue.
 `assets/src/components/Rendering/RenderViewport.vue`: Is the entry point of the application where the Game class is initialized along with some crucial parameters.
-`templates/index/index.html.twig`: Current runtime page for `/` (rendered by `IndexController`) with the inline Three.js planet/resource renderer.
+`templates/index/index.html.twig`: Current runtime page for `/` (rendered by `IndexController`). It now only holds the HUD markup + styles + the `three` importmap and loads the renderer via `<script type="module" src="/explorer/index.js">`.
+`public/explorer/`: The Three.js body/resource renderer, refactored out of the old inline script into small **single-responsibility plain-JS ES modules** (no build step; served statically from `public/`). Data is split from implementation: all tunables live in `public/explorer/config/physical.js` (planet, layers, atmosphere, suns, starfield, lighting) and `config/behaviour.js` (camera, input, traversal, transition) — eventually backend-sourced. `BodyExplorer.js` is the orchestrator (owns `state`, mode switching, the animate loop) and wires the subsystems under `core/`, `model/`, `material/`, `geometry/`, `world/`, `lighting/`, `star/`, `sky/`, `atmosphere/`, `slicing/`, `picking/`, `navigation/`, `transition/`, `hud/`. The old `CONFIG.*` knobs map onto these config objects; behaviour is otherwise unchanged.
+  - **Multiple suns**: each light source is a self-contained `star/Star` (its own directional light + sun disc + chromatic halo + starburst + lens flare + occlusion) held in `star/StarSystem`. `atmosphere/AtmosphereShell` sums scattering over `NUM_SUNS` (compiled from the config star count), and `hud/SliderPanel` generates one az/el/intensity control group per sun, so changing `physical.stars[]` rescales lighting, atmosphere and the UI automatically.
+  - **Texturing seam (reserved)**: `material/LayerMaterialFactory` already reads `physical.planet.layerTextures` / `layerNormalMaps` (null today) so skinning the visible layer faces later is a data-only change.
 `templates/Game/game.html.twig`: Present but currently a stub; not used by the active game route.
 
 ---
