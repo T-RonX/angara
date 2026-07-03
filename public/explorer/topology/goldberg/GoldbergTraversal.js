@@ -27,10 +27,8 @@ import { deg2rad } from '../../core/MathUtils.js';
 //     mouse-left rolls the view left.
 //
 // `FocusController` delegates its easing to advance() when this method exists,
-// so the hexsphere slerps its frame while the lon/lat topology keeps its own
-// lon/lat easing untouched. `focus.lon/lat` are written each frame purely so
-// the generic CrustCamera + HUD read-out keep working. `resourceTraverseAxis`
-// is meaningless here and ignored.
+// so the hexsphere slerps its frame while `focus.lon/lat` stay in sync for the
+// generic CrustCamera + HUD read-out.
 // ----------------------------------------------------------------------
 export class GoldbergTraversal
 {

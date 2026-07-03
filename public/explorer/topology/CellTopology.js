@@ -2,9 +2,9 @@
 // CellTopology — the ABSTRACTION that decides how the body is divided into
 // cells and everything that flows from that choice. The rest of the app
 // (BodyExplorer + subsystems) depends only on this contract, never on a
-// concrete grid, so a single config flag can swap the whole scheme.
+// concrete grid.
 //
-// A concrete topology (LonLatTopology, GoldbergTopology, …) must provide:
+// A concrete topology (currently GoldbergTopology) must provide:
 //
 //   grid                       — { cells, cellsByDepth, atmosphereCells, … }
 //                                where every crust/atmosphere cell is a
@@ -25,9 +25,8 @@
 //   createSliceBuilder(ctx)    — the resource-mode SliceBuilder for this
 //                                topology, implementing
 //                                { build(slab), capMeshes[], clearCaps(),
-//                                  enter(), exit() }. lon/lat slices with a GPU
-//                                clip plane + planar cross-sections (CapBuilder);
-//                                the hexsphere keeps whole cells (CellSliceBuilder).
+//                                  enter(), exit() }. The hexsphere keeps whole
+//                                cells (CellSliceBuilder).
 //                                `ctx` carries the shared subsystems:
 //                                { scene, clip, cellGrid, crossSection,
 //                                  materials, layerModel, focus,
@@ -35,7 +34,6 @@
 //
 //   createResourceHighlight(d) — the hover / selection overlay geometry
 //                                strategy: { build(cell) → BufferGeometry }.
-//                                lon/lat carves a cross-section sliver; the
 //                                hexsphere returns the whole cell. `d` carries
 //                                { crossSection, geometryFactory, clip }.
 //
@@ -49,10 +47,10 @@
 //
 //   cellTypeLabel(cell)        — a short human label for the HUD read-out.
 //
-// The focus point is always expressed as { lon, lat } (degrees) so the
-// crust camera and the focus easing stay topology-agnostic; a topology maps
-// that continuous coordinate onto its own discrete cells inside `traversal`
-// and `createSurfacePicker`.
+// The focus point is always expressed as { lon, lat } (degrees) so the crust
+// camera and the focus easing stay topology-agnostic; the topology maps that
+// continuous coordinate onto its own discrete cells inside `traversal` and
+// `createSurfacePicker`.
 // ----------------------------------------------------------------------
 export class CellTopology
 {

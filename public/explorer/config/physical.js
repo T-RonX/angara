@@ -13,19 +13,10 @@ export const physical = {
     // ------------------------------------------------------------------
     planet: {
         radius:   500,            // radius of the body
-
-        // Cell topology — the ONE flag that swaps how the body is divided:
-        //   'lonlat'    — longitude/latitude quad grid + polar caps (below),
-        //   'hexsphere' — Goldberg polyhedron (mostly hexagons + exactly 12
-        //                 pentagons, NO poles, so the polar-cap / latitude
-        //                 workaround does not exist there).
         cellTopology: 'hexsphere',
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
-        // surface has 10·f²+2 cells; keep modest (e.g. 12–24). lonlat ignores.
+        // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
         hexFrequency: 16,
-
-        lonCells: (24 * 10) + 1,  // grid divisions around the equator (longitude)
-        latCells: (12 * 10) + 1,  // grid divisions from pole to pole (latitude)
         maxDepth: 5,              // number of crust layers (any reasonable number)
 
         // Per-layer thickness (length must be >= maxDepth; entries past
@@ -45,21 +36,14 @@ export const physical = {
 
         // RESERVED for future texturing of the VISIBLE layer faces. When
         // these become arrays (one entry per visible layer) the material
-        // factory will skin the crust/cap faces with them. Null = the flat
-        // `depthColors` look used today. (Schema reserved now so adding
-        // textures later is a data-only change.)
+        // factory will skin the crust faces with them. Null = the flat
+        // `depthColors` look used today.
         layerTextures:    null,   // future: [url | null, …] per visible layer
         layerNormalMaps:  null,   // future: [url | null, …] per visible layer
 
         gridColor:  0x0a0e16,
         background: 0x05070d,
         cellGap:    0.0,          // gap between cells (fraction); 0 = touching
-
-        // Cells closer to a pole than this latitude collapse into one round
-        // "cap" cell per pole, per depth. 90 disables it.
-        polarCapLat:   80,
-        polarCapFan:   null,      // fan resolution; null = lonCells
-        polarCapRings: 6,         // latitudinal subdivisions inside each cap
     },
 
     // ------------------------------------------------------------------
@@ -202,4 +186,3 @@ export const physical = {
         brightnessMax: 1.0,
     },
 };
-

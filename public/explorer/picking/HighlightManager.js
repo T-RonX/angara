@@ -102,8 +102,12 @@ export class HighlightManager
     {
         if (this.highlight.userData.ownsGeom)
         {
-            this.highlight.geometry.dispose();
-            this.highlightEdges.geometry.dispose();
+            if (!this.#resourceHighlight.isStatic)
+            {
+                this.highlight.geometry.dispose();
+                this.highlightEdges.geometry.dispose();
+            }
+
             this.highlight.userData.ownsGeom = false;
         }
 
@@ -112,7 +116,9 @@ export class HighlightManager
             const geom = this.#resourceHighlight.build(cell);
             this.highlight.geometry = geom;
             const thresh = cell.kind === 'cap' ? 30 : 1;
-            this.highlightEdges.geometry = new THREE.EdgesGeometry(geom, thresh);
+            this.highlightEdges.geometry = this.#resourceHighlight.buildEdges
+                ? this.#resourceHighlight.buildEdges(cell, thresh)
+                : new THREE.EdgesGeometry(geom, thresh);
             this.highlight.userData.ownsGeom = true;
         }
         else
@@ -164,15 +170,20 @@ export class HighlightManager
             return;
         }
 
-        this.resourceSelection.geometry.dispose();
-        this.resourceSelectionEdges.geometry.dispose();
+        if (!this.#resourceHighlight.isStatic)
+        {
+            this.resourceSelection.geometry.dispose();
+            this.resourceSelectionEdges.geometry.dispose();
+        }
 
         const geom = this.#resourceHighlight.build(cell);
         const hasGeom = geom.getAttribute('position') && geom.getAttribute('position').count > 0;
 
         this.resourceSelection.geometry = geom;
         const thresh = cell.kind === 'cap' ? 30 : 1;
-        this.resourceSelectionEdges.geometry = new THREE.EdgesGeometry(geom, thresh);
+        this.resourceSelectionEdges.geometry = this.#resourceHighlight.buildEdges
+            ? this.#resourceHighlight.buildEdges(cell, thresh)
+            : new THREE.EdgesGeometry(geom, thresh);
         this.resourceSelection.visible = hasGeom;
         this.resourceSelectionEdges.visible = hasGeom;
     }
@@ -203,5 +214,4 @@ export class HighlightManager
         return cell.edges;
     }
 }
-
 

@@ -95,9 +95,9 @@ export class BodyExplorer
         this.layerModel = new LayerModel(this.#planet);
     }
 
-    // Pick the cell topology from config (lonlat | hexsphere) and expose its
-    // grid. The atmosphere shell radius is needed up-front for the optional
-    // selectable atmosphere cells, so this runs after #buildSkyAndLights().
+    // Build the active topology and expose its grid. The atmosphere shell
+    // radius is needed up-front for the selectable atmosphere cells, so this
+    // runs after #buildSkyAndLights().
     #buildTopology()
     {
         this.#topology = createTopology(
@@ -116,9 +116,9 @@ export class BodyExplorer
             resourceSelected: null,
             focus: {
                 lon: 0, lat: 0, lonTarget: 0, latTarget: 0,
-                // Hexsphere pole-free frame (ignored by the lon/lat topology):
-                // dir = focus direction, nCut = cut-plane normal (dir ⟂ nCut),
-                // eased toward their *Target counterparts by GoldbergTraversal.
+                // Hexsphere pole-free frame: dir = focus direction, nCut =
+                // cut-plane normal (dir ⟂ nCut), eased toward their *Target
+                // counterparts by GoldbergTraversal.
                 dir: new THREE.Vector3(1, 0, 0),
                 dirTarget: new THREE.Vector3(1, 0, 0),
                 nCut: new THREE.Vector3(0, 0, -1),

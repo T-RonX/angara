@@ -16,8 +16,8 @@ import { WholeCellResourceHighlight } from './goldberg/WholeCellResourceHighligh
 // workaround; every cell is a uniform N-gon prism flowing through the shared
 // generic geometry, cross-section, picking, camera and HUD code.
 //
-// It mirrors LonLatTopology's public surface exactly, so BodyExplorer wires
-// it identically — the whole scheme swaps via one config flag.
+// It exposes the full topology contract directly, so BodyExplorer can wire
+// the hexsphere without any lon/lat branch.
 // ----------------------------------------------------------------------
 export class GoldbergTopology extends CellTopology
 {

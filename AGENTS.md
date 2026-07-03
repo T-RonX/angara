@@ -84,6 +84,8 @@ This is just your typical Symfony project.
   - **Atmosphere scattering side** (`AtmosphereShell.updateForCamera`, called per frame): the haze shell flips to `THREE.BackSide` when the camera is inside it (resource mode, camera near the surface) and `FrontSide` from orbit — a static `FrontSide` culled every face from inside, so the Rayleigh scattering disappeared in resource mode. Globe-mode look is unchanged.
 `templates/Game/game.html.twig`: Present but currently a stub; not used by the active game route.
 
+  - The explorer is hexsphere-only now: `topology/GoldbergTopology.js` is the only cell topology wired in `public/explorer`, and the lon/lat implementation was removed.
+
 ---
 
 ## Instructions

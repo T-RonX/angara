@@ -37,15 +37,6 @@ export const behaviour = {
         focusSnapEase:   0.22,
     },
 
-    // Which way you "stroll" through the body and where the poles sit:
-    //   'longitude' : meridian cut through the poles; travel around the
-    //                 equator; poles to your LEFT and RIGHT.
-    //   'latitude'  : through-centre cut tilted by the focus latitude;
-    //                 travel toward the poles; they sit ABOVE and BELOW.
-    traversal: {
-        resourceTraverseAxis: 'latitude',
-    },
-
     // Smooth fly-in / fly-out when entering or leaving resource mode.
     transition: {
         modeTransitionMs: 700,
@@ -55,6 +46,6 @@ export const behaviour = {
     slice: {
         // Duration (ms) of the temporal fade when the advancing cut reveals a
         // new row of whole cells (or hides a leaving one). 0 disables the fade.
-        cellFadeMs: 260,
+        cellFadeMs: 0,
     },
 };
