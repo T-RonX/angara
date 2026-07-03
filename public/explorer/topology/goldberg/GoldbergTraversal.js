@@ -42,11 +42,13 @@ export class GoldbergTraversal
     #tmp = new THREE.Vector3();
     #lastNCut = new THREE.Vector3();
     #hasLast = false;
+    #input;
 
-    constructor(centroidIndex, surfaceByIndex)
+    constructor(centroidIndex, surfaceByIndex, input)
     {
         this.#index = centroidIndex;
         this.#surfaceByIndex = surfaceByIndex;
+        this.#input = input;
     }
 
     enterFocus(focus, cell)
@@ -88,17 +90,18 @@ export class GoldbergTraversal
         //     (the camera→centre axis); mouse-left spins the view left.
         if (button === 2)
         {
-            const roll = deg2rad(dx * dpp.lat);
+            // Roll is faster than pan/advance for a snappier view spin.
+            const roll = deg2rad(dx * dpp.lat * this.#input.rollSensitivity * this.#input.dragDirectionX);
 
             if (roll !== 0) this.#rollTargets(focus, roll);
 
             return;
         }
 
-        // Match the arrow-key sense: drag-left pans like ArrowLeft (pan +),
-        // drag-up advances like ArrowUp (advance −).
-        const panAngle = deg2rad(-dx * dpp.lat);
-        const advAngle = deg2rad(dy * dpp.lat);
+        // Match the arrow-key sense: drag-left pans like ArrowLeft (pan +).
+        // Forward/backward (advance) is inverted so drag-up moves backward.
+        const panAngle = deg2rad(-dx * dpp.lat * this.#input.dragDirectionX);
+        const advAngle = deg2rad(-dy * dpp.lat * this.#input.dragDirectionY);
 
         if (panAngle !== 0) this.#panTargets(focus, panAngle);
         if (advAngle !== 0) this.#advanceTargets(focus, advAngle);

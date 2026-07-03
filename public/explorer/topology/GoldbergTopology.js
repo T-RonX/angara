@@ -42,7 +42,7 @@ export class GoldbergTopology extends CellTopology
 
         this.#index = new CentroidIndex(this.#grid.surfaceCells);
         this.#cutStrategy = new GoldbergCutStrategy();
-        this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex);
+        this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex, behaviour.input);
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
     }
 

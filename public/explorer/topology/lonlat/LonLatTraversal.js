@@ -11,13 +11,15 @@ export class LonLatTraversal
     #capModel;
     #latStops;
     #traverseAxis;
+    #input;
 
-    constructor(planet, capModel, latStops, traverseAxis)
+    constructor(planet, capModel, latStops, traverseAxis, input)
     {
         this.#planet = planet;
         this.#capModel = capModel;
         this.#latStops = latStops;
         this.#traverseAxis = traverseAxis;
+        this.#input = input;
     }
 
     // Set the focus (and its targets) when entering resource mode on `cell`.
@@ -49,15 +51,17 @@ export class LonLatTraversal
             // extends onto the polar caps so the pole's view is reachable.
             const latMin = capRows > 0 ? capCenterLatS : minLat;
             const latMax = capRows > 0 ? capCenterLatN : maxLat;
-            focus.latTarget = Math.max(latMin, Math.min(latMax, focus.latTarget - dy * dpp.lat));
-            focus.lonTarget = (focus.lonTarget + dx * dpp.lon + 360) % 360;
+            focus.latTarget = Math.max(latMin, Math.min(latMax,
+                focus.latTarget + dy * dpp.lat * this.#input.dragDirectionY));
+            focus.lonTarget = (focus.lonTarget + dx * dpp.lon * this.#input.dragDirectionX + 360) % 360;
         }
         else
         {
             // Vertical drag travels along longitude (around the equator);
             // horizontal pans latitude along the meridian cliff.
-            focus.lonTarget = (focus.lonTarget + dy * dpp.lon + 360) % 360;
-            focus.latTarget = Math.max(minLat, Math.min(maxLat, focus.latTarget + dx * dpp.lat));
+            focus.lonTarget = (focus.lonTarget + dy * dpp.lon * this.#input.dragDirectionY + 360) % 360;
+            focus.latTarget = Math.max(minLat, Math.min(maxLat,
+                focus.latTarget + dx * dpp.lat * this.#input.dragDirectionX));
         }
     }
 

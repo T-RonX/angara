@@ -24,6 +24,14 @@ export const behaviour = {
     input: {
         // Drag-to-stroll sensitivity. 1 = cursor 1:1 with the surface.
         dragSensitivity: 1,
+        // Positive values keep the current drag sense; -1 flips that axis.
+        dragDirectionX: 1,
+        dragDirectionY: -1,
+        // Right-drag roll speed multiplier in the hexsphere traversal.
+        rollSensitivity: 3,
+        // Wheel zoom factors for scrolling in/out of resource mode.
+        wheelZoomInFactor: 0.9,
+        wheelZoomOutFactor: 1.1,
         // Per-frame fraction of the remaining distance eased toward the
         // snapped target cell. Larger = snappier, smaller = more gliding.
         focusSnapEase:   0.22,
@@ -50,4 +58,3 @@ export const behaviour = {
         cellFadeMs: 260,
     },
 };
-

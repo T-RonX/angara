@@ -15,6 +15,8 @@ export class LensFlare
 {
     #star;
     #elements;
+    #tint = new THREE.Color();
+    #sizeScale = 1;
 
     #sunNdc = new THREE.Vector3();
     #tmpPos = new THREE.Vector3();
@@ -23,6 +25,8 @@ export class LensFlare
     constructor(scene, star)
     {
         this.#star = star;
+        this.#tint.set(star.color);
+        this.#sizeScale = THREE.MathUtils.clamp(star.size / 500, 0.55, 1.75);
 
         const specs = [
             { offset: 0.22, size: 0.16,  alpha: 0.28, breath: 0.4, tex: softGhostTexture(star.coreColor, 0.65) },
@@ -38,9 +42,10 @@ export class LensFlare
             sprite.renderOrder = 999;     // draw over everything
             sprite.frustumCulled = false; // we manage visibility ourselves
             sprite.visible = false;
+            sprite.material.color.copy(this.#tint);
             scene.add(sprite);
 
-            return { ...spec, sprite };
+            return { ...spec, size: spec.size * this.#sizeScale, sprite };
         });
     }
 
@@ -106,4 +111,3 @@ export class LensFlare
         }
     }
 }
-

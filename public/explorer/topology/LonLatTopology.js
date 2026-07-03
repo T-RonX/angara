@@ -43,7 +43,9 @@ export class LonLatTopology extends CellTopology
         );
 
         this.#cutStrategy = new LonLatCutStrategy(this.#traverseAxis, this.#capModel);
-        this.#traversal = new LonLatTraversal(this.#planet, this.#capModel, this.#latStops, this.#traverseAxis);
+        this.#traversal = new LonLatTraversal(
+            this.#planet, this.#capModel, this.#latStops, this.#traverseAxis, behaviour.input,
+        );
     }
 
     get grid()        { return this.#grid; }

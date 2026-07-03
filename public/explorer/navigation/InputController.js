@@ -17,6 +17,7 @@ export class InputController
     #layerModel;
     #traversal;
     #cameraCfg;
+    #inputCfg;
     #crustCamera;
     #highlights;
     #callbacks;
@@ -34,6 +35,7 @@ export class InputController
         this.#layerModel = layerModel;
         this.#traversal = traversal;
         this.#cameraCfg = behaviour.camera;
+        this.#inputCfg = behaviour.input;
         this.#crustCamera = crustCamera;
         this.#highlights = highlightManager;
         this.#callbacks = callbacks;
@@ -114,8 +116,12 @@ export class InputController
         const thickness = this.#planet.radius - this.#layerModel.coreRadius;
         const min = thickness * this.#cameraCfg.crustZoomMin;
         const max = thickness * this.#cameraCfg.crustZoomMax;
+        const zoomFactor = e.deltaY > 0
+            ? this.#inputCfg.wheelZoomOutFactor
+            : this.#inputCfg.wheelZoomInFactor;
+
         this.#state.camDist = Math.max(min, Math.min(max,
-            this.#state.camDist * (e.deltaY > 0 ? 1.1 : 0.9)));
+            this.#state.camDist * zoomFactor));
         this.#crustCamera.positionCrustCamera();
     }
 
