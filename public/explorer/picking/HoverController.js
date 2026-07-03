@@ -21,6 +21,8 @@ export class HoverController
     #raycaster = new THREE.Raycaster();
     #pointer = new THREE.Vector2();
     #pointerInside = false;
+    #lastHoverCell = null;
+    #lastHoverMode = null;
 
     // Cache so we can skip the work on frames where neither the cursor nor
     // the camera moved (very common).
@@ -83,8 +85,13 @@ export class HoverController
 
         if (!this.#pointerInside)
         {
-            this.#highlights.hideHover();
-            this.#hud.clearHoverReadout();
+            if (this.#lastHoverCell !== null)
+            {
+                this.#highlights.hideHover();
+                this.#hud.clearHoverReadout();
+                this.#lastHoverCell = null;
+                this.#lastHoverMode = null;
+            }
 
             return;
         }
@@ -97,14 +104,27 @@ export class HoverController
 
         if (!cell)
         {
-            this.#highlights.hideHover();
-            this.#hud.clearHoverReadout();
+            if (this.#lastHoverCell !== null)
+            {
+                this.#highlights.hideHover();
+                this.#hud.clearHoverReadout();
+                this.#lastHoverCell = null;
+                this.#lastHoverMode = null;
+            }
 
+            return;
+        }
+
+        if (this.#lastHoverCell === cell && this.#lastHoverMode === this.#state.mode
+            && (this.#state.mode !== 'resource' || this.#highlights.resourceHoverIsStatic))
+        {
             return;
         }
 
         this.#highlights.showHover(cell, this.#state.mode);
         this.#hud.setHoverReadout(cell);
+        this.#lastHoverCell = cell;
+        this.#lastHoverMode = this.#state.mode;
     }
 
     #cacheStillValid(camPos, camQ)

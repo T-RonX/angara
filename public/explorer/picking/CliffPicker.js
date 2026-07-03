@@ -17,7 +17,11 @@ export class CliffPicker
     {
         const hit = raycaster.intersectObjects(this.#sliceBuilder.capMeshes, false)[0];
 
-        return hit ? hit.object.userData.faceToCell[hit.faceIndex] : null;
+        if (!hit || !hit.object.userData.faceToCell)
+        {
+            return null;
+        }
+
+        return hit.object.userData.faceToCell[hit.faceIndex] ?? null;
     }
 }
-

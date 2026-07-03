@@ -647,18 +647,15 @@ export class CellSliceBuilder
     }
 
     // Rebuild the pick list from the CURRENT meshes (opaque buckets + any
-    // pickable transient meshes). Called after every change so raycasting never
-    // sees a stale or disposed mesh.
+    // transient pick meshes / blockers). Called after every change so
+    // raycasting never sees a stale or disposed mesh.
     #refreshCapMeshes()
     {
         this.capMeshes.length = 0;
 
         for (const { mesh } of this.#opaqueBuckets.values()) this.capMeshes.push(mesh);
 
-        for (const m of this.#staticTransient)
-        {
-            if (m.userData.faceToCell) this.capMeshes.push(m);
-        }
+        for (const m of this.#staticTransient) this.capMeshes.push(m);
 
         for (const m of this.#fadeMeshList)
         {

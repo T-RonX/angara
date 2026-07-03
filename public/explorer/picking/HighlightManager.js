@@ -96,6 +96,11 @@ export class HighlightManager
         return this.highlight.userData.cell ?? null;
     }
 
+    get resourceHoverIsStatic()
+    {
+        return this.#resourceHighlight.isStatic;
+    }
+
     // --- Hover overlay -------------------------------------------------
 
     showHover(cell, mode)
@@ -214,4 +219,3 @@ export class HighlightManager
         return cell.edges;
     }
 }
-
