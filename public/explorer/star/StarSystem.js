@@ -28,6 +28,18 @@ export class StarSystem
         return this.stars.length;
     }
 
+    combinedIntensity()
+    {
+        let total = 0;
+
+        for (const star of this.stars)
+        {
+            total += star.intensity;
+        }
+
+        return total;
+    }
+
     update(now, camera)
     {
         for (const star of this.stars)
@@ -36,4 +48,3 @@ export class StarSystem
         }
     }
 }
-

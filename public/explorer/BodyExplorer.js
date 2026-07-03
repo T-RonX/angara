@@ -147,6 +147,7 @@ export class BodyExplorer
         this.#skyAnchor.add(starField.points);
 
         this.#atmosphere = new AtmosphereShell(this.#planet, this.#physical.atmosphere, this.#starSystem.count);
+        this.#updateAtmosphereIntensity();
     }
 
     #buildBody()
@@ -248,6 +249,13 @@ export class BodyExplorer
             this.#starSystem,
             this.#physical.lighting,
             night => this.#lightingRig.applyNight(night),
+        );
+    }
+
+    #updateAtmosphereIntensity()
+    {
+        this.#atmosphere.setSunIntensity(
+            this.#physical.atmosphere.sunIntensity * this.#starSystem.combinedIntensity(),
         );
     }
 
@@ -398,11 +406,11 @@ export class BodyExplorer
         // Suns: update each sun's disc / flare / occlusion, then feed their
         // directions to the atmosphere so it scatters every sun's light.
         this.#starSystem.update(now, this.#scene.camera);
+        this.#updateAtmosphereIntensity();
         this.#atmosphere.setSunDirections(this.#starSystem.directions);
         this.#atmosphere.updateForCamera(this.#scene.camera);
 
         this.#scene.render();
     }
 }
-
 
