@@ -31,8 +31,21 @@ export class FocusController
     // anything moved. Longitude eases along the shortest arc across 0/360.
     easeFocusToTarget()
     {
-        const EPS = 1e-3;
         const focus = this.#state.focus;
+
+        // Topology hook: if the traversal owns its own eased frame (the
+        // hexsphere's pole-free direction/normal frame), delegate to it and
+        // keep the lon/lat easing below strictly for the lon/lat topology.
+        if (typeof this.#traversal.advance === 'function')
+        {
+            const r = this.#traversal.advance(focus, this.#snapEase);
+
+            if (r.moved) this.#updateResource(r.cutChanged);
+
+            return;
+        }
+
+        const EPS = 1e-3;
         let lonChanged = false;
         let latChanged = false;
         let moved = false;

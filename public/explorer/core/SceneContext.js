@@ -26,7 +26,10 @@ export class SceneContext
         this.camera.position.set(0, planet.radius * 1.4, planet.radius * 2.6);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        // Clamp the device-pixel-ratio: the full-screen atmosphere raymarch
+        // runs per device pixel, so DPR² on hi-DPI screens is the dominant
+        // fragment cost. 1.5 keeps edges crisp without the 4×+ fill of DPR 2–3.
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         this.renderer.localClippingEnabled = true; // resource-mode slicing
         this.root.appendChild(this.renderer.domElement);
 

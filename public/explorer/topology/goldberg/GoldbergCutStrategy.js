@@ -23,6 +23,16 @@ export class GoldbergCutStrategy
 
     orient(plane, focus)
     {
+        // Pole-free frame: the traversal maintains nCut ⟂ dir, so the plane
+        // through the centre with normal nCut always contains the focus radial.
+        if (focus.nCut && focus.nCut.lengthSq() > 0.5)
+        {
+            plane.normal.copy(focus.nCut);
+
+            return;
+        }
+
+        // Fallback before the frame is initialised: meridian at focus lon.
         const lonR = deg2rad(focus.lon);
 
         plane.normal.set(Math.sin(lonR), 0, -Math.cos(lonR));

@@ -22,10 +22,27 @@
 //   createBroadPhase()         — { prepare(plane, focus, slab), accept(cell) }
 //                                narrowing which cells the cut can cross.
 //
+//   createSliceBuilder(ctx)    — the resource-mode SliceBuilder for this
+//                                topology, implementing
+//                                { build(slab), capMeshes[], clearCaps(),
+//                                  enter(), exit() }. lon/lat slices with a GPU
+//                                clip plane + planar cross-sections (CapBuilder);
+//                                the hexsphere keeps whole cells (CellSliceBuilder).
+//                                `ctx` carries the shared subsystems:
+//                                { scene, clip, cellGrid, crossSection,
+//                                  materials, layerModel, focus,
+//                                  geometryFactory, bodyMesh }.
+//
+//   createResourceHighlight(d) — the hover / selection overlay geometry
+//                                strategy: { build(cell) → BufferGeometry }.
+//                                lon/lat carves a cross-section sliver; the
+//                                hexsphere returns the whole cell. `d` carries
+//                                { crossSection, geometryFactory, clip }.
+//
 //   traversal                  — how the focus point moves in resource mode:
 //                                { enterFocus(focus, cell), snapTargets(focus),
 //                                  onArrow(focus, key), onDrag(focus, dx, dy,
-//                                  dpp), cutMoved(lonChanged, latChanged) }.
+//                                  dpp, button), cutMoved(lonChanged, latChanged) }.
 //
 //   buildGridLines()           — a THREE.Object3D of faint surface grid lines
 //                                (may be empty), hidden by default.
@@ -45,6 +62,8 @@ export class CellTopology
 
     createSurfacePicker() { throw new Error('CellTopology.createSurfacePicker not implemented'); }
     createBroadPhase()    { throw new Error('CellTopology.createBroadPhase not implemented'); }
+    createSliceBuilder()  { throw new Error('CellTopology.createSliceBuilder not implemented'); }
+    createResourceHighlight() { throw new Error('CellTopology.createResourceHighlight not implemented'); }
     buildGridLines()      { throw new Error('CellTopology.buildGridLines not implemented'); }
 
     cellTypeLabel(cell)

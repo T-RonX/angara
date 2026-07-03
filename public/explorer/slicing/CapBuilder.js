@@ -1,15 +1,21 @@
 import * as THREE from 'three';
 
 // ----------------------------------------------------------------------
-// CapBuilder — closes every sliced cell with a flat polygon ON the clip
-// plane so the cut reads as solid (the cells are really cut, not hidden).
-// One merged cap mesh per depth (cheap draw calls), each carrying a
-// faceIndex → cell map so the cliff stays clickable. Also caps the core and
-// emits a near-invisible atmosphere cross-section strip.
+// CapBuilder — the lon/lat SliceBuilder. It slices the body with a single GPU
+// clip plane (via BodyMesh.applyClipping) and closes every sliced cell with a
+// flat polygon ON the clip plane so the cut reads as solid (the cells are
+// really cut, not hidden). One merged cap mesh per depth (cheap draw calls),
+// each carrying a faceIndex → cell map so the cliff stays clickable. Also caps
+// the core and emits a near-invisible atmosphere cross-section strip.
 //
 // It never tests every cell: the topology's broad-phase narrows the work to
 // the cells the plane can actually cross (and skips the offset-plane sweep's
 // non-crossable cells), keeping the rebuild cheap.
+//
+// SliceBuilder contract: build(slab), capMeshes[], clearCaps(), enter(),
+// exit(). `enter()`/`exit()` toggle the GPU clipping on the shared body
+// materials; the hexsphere's CellSliceBuilder implements the same contract
+// with whole-cell geometry instead.
 // ----------------------------------------------------------------------
 export class CapBuilder
 {
@@ -22,20 +28,34 @@ export class CapBuilder
     #materials;
     #layerModel;
     #focus;
+    #bodyMesh;
     #broadPhase;
 
-    constructor(scene, clipController, cellGrid, crossSectionFactory, materialFactory, layerModel, focus, broadPhase)
+    constructor(ctx, broadPhase)
     {
-        this.#clip = clipController;
-        this.#cellGrid = cellGrid;
-        this.#crossSection = crossSectionFactory;
-        this.#materials = materialFactory;
-        this.#layerModel = layerModel;
-        this.#focus = focus;
+        this.#clip = ctx.clip;
+        this.#cellGrid = ctx.cellGrid;
+        this.#crossSection = ctx.crossSection;
+        this.#materials = ctx.materials;
+        this.#layerModel = ctx.layerModel;
+        this.#focus = ctx.focus;
+        this.#bodyMesh = ctx.bodyMesh;
         this.#broadPhase = broadPhase;
 
         this.capsGroup = new THREE.Group();
-        scene.add(this.capsGroup);
+        ctx.scene.add(this.capsGroup);
+    }
+
+    // Resource mode uses a GPU clip plane on the shared body materials.
+    enter()
+    {
+        this.#bodyMesh.applyClipping(true, this.#clip.plane);
+    }
+
+    exit()
+    {
+        this.#bodyMesh.applyClipping(false, this.#clip.plane);
+        this.clearCaps();
     }
 
     clearCaps()

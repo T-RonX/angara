@@ -42,5 +42,12 @@ export const behaviour = {
     transition: {
         modeTransitionMs: 700,
     },
+
+    // Hexsphere resource-mode staircase slicing.
+    slice: {
+        // Duration (ms) of the temporal fade when the advancing cut reveals a
+        // new row of whole cells (or hides a leaving one). 0 disables the fade.
+        cellFadeMs: 260,
+    },
 };
 

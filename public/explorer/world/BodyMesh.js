@@ -102,5 +102,23 @@ export class BodyMesh
             this.depthMeshes[d].visible = false;
         }
     }
+
+    // Hexsphere resource mode replaces the whole body with a rebuilt slice
+    // group, so the base depth meshes are hidden entirely (the unclipped core
+    // stays visible as the slice's floor).
+    hideAll()
+    {
+        for (const m of this.depthMeshes) m.visible = false;
+    }
+
+    // Restore view-mode visibility: only the surface layer shows (deeper
+    // shells stay occluded, matching the constructor's initial state).
+    restoreView()
+    {
+        for (let d = 0; d < this.depthMeshes.length; d++)
+        {
+            this.depthMeshes[d].visible = d === 0;
+        }
+    }
 }
 

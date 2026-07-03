@@ -16,7 +16,7 @@ export class ClipController
 
     #focus;
     #cutStrategy;
-    #capBuilder = null;
+    #sliceBuilder = null;
 
     constructor(focus, cutStrategy)
     {
@@ -24,9 +24,9 @@ export class ClipController
         this.#cutStrategy = cutStrategy;
     }
 
-    setCapBuilder(capBuilder)
+    setSliceBuilder(sliceBuilder)
     {
-        this.#capBuilder = capBuilder;
+        this.#sliceBuilder = sliceBuilder;
     }
 
     resetCut()
@@ -34,13 +34,13 @@ export class ClipController
         this.cutKey = null;
     }
 
-    // Re-orient and re-place the plane, then rebuild the caps. `constant` /
+    // Re-orient and re-place the plane, then rebuild the slice. `constant` /
     // `slab` are non-default only during the open-slice transition.
     updateCut(constant = 0, slab = false)
     {
         this.#cutStrategy.orient(this.plane, this.#focus);
         this.plane.constant = constant;
-        this.#capBuilder.build(slab);
+        this.#sliceBuilder.build(slab);
         this.cutKey = `${this.#focus.lon},${this.#focus.lat}`;
 
         if (this.onCutChanged) this.onCutChanged();

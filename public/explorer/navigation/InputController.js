@@ -21,7 +21,7 @@ export class InputController
     #highlights;
     #callbacks;
 
-    #drag = { active: false, x: 0, y: 0 };
+    #drag = { active: false, x: 0, y: 0, button: 0 };
     #pressOrigin = { x: 0, y: 0, valid: false };
 
     static CLICK_SLOP_PX = 4;
@@ -51,6 +51,11 @@ export class InputController
         el.addEventListener('wheel', e => this.#onWheel(e), { passive: false });
         window.addEventListener('keydown', e => this.#onKeyDown(e));
 
+        // Suppress the browser context menu so right-drag can advance the cut.
+        el.addEventListener('contextmenu', e => {
+            if (this.#state.mode === 'resource') e.preventDefault();
+        });
+
         // Click selection (distinguished from drag via a slop threshold).
         el.addEventListener('pointerdown', e => {
             this.#pressOrigin.x = e.clientX;
@@ -70,6 +75,7 @@ export class InputController
         if (this.#busy()) return;
 
         this.#drag.active = true;
+        this.#drag.button = e.button;
         this.#drag.x = e.clientX;
         this.#drag.y = e.clientY;
     }
@@ -96,7 +102,7 @@ export class InputController
         this.#drag.y = e.clientY;
 
         const dpp = this.#crustCamera.dragDegPerPixel();
-        this.#traversal.onDrag(this.#state.focus, dx, dy, dpp);
+        this.#traversal.onDrag(this.#state.focus, dx, dy, dpp, this.#drag.button);
     }
 
     #onWheel(e)

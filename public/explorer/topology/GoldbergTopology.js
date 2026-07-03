@@ -6,6 +6,8 @@ import { GoldbergCutStrategy } from './goldberg/GoldbergCutStrategy.js';
 import { GoldbergBroadPhase } from './goldberg/GoldbergBroadPhase.js';
 import { GoldbergTraversal } from './goldberg/GoldbergTraversal.js';
 import { GoldbergGridLines } from './goldberg/GoldbergGridLines.js';
+import { CellSliceBuilder } from './goldberg/CellSliceBuilder.js';
+import { WholeCellResourceHighlight } from './goldberg/WholeCellResourceHighlight.js';
 
 // ----------------------------------------------------------------------
 // GoldbergTopology — the hexsphere: a Goldberg polyhedron (mostly hexagons +
@@ -24,6 +26,7 @@ export class GoldbergTopology extends CellTopology
     #index;
     #cutStrategy;
     #traversal;
+    #fadeMs;
 
     constructor(physical, layerModel, behaviour, atmosphereRadius)
     {
@@ -40,6 +43,7 @@ export class GoldbergTopology extends CellTopology
         this.#index = new CentroidIndex(this.#grid.surfaceCells);
         this.#cutStrategy = new GoldbergCutStrategy();
         this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex);
+        this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
     }
 
     get grid()        { return this.#grid; }
@@ -54,6 +58,16 @@ export class GoldbergTopology extends CellTopology
     createBroadPhase()
     {
         return new GoldbergBroadPhase();
+    }
+
+    createSliceBuilder(ctx)
+    {
+        return new CellSliceBuilder({ ...ctx, fadeMs: this.#fadeMs });
+    }
+
+    createResourceHighlight(deps)
+    {
+        return new WholeCellResourceHighlight(deps.geometryFactory);
     }
 
     buildGridLines()

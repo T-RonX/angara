@@ -4,9 +4,11 @@ import { LatitudeStops } from '../model/LatitudeStops.js';
 import { CellGrid } from '../world/CellGrid.js';
 import { GridLines } from '../world/GridLines.js';
 import { SurfacePicker } from '../picking/SurfacePicker.js';
+import { CapBuilder } from '../slicing/CapBuilder.js';
 import { LonLatCutStrategy } from './lonlat/LonLatCutStrategy.js';
 import { LonLatBroadPhase } from './lonlat/LonLatBroadPhase.js';
 import { LonLatTraversal } from './lonlat/LonLatTraversal.js';
+import { LonLatResourceHighlight } from './lonlat/LonLatResourceHighlight.js';
 
 // ----------------------------------------------------------------------
 // LonLatTopology — the original longitude/latitude grid with polar caps,
@@ -56,6 +58,18 @@ export class LonLatTopology extends CellTopology
     createBroadPhase()
     {
         return new LonLatBroadPhase(this.#planet, this.#capModel, this.#traverseAxis, this.#cutStrategy);
+    }
+
+    createSliceBuilder(ctx)
+    {
+        return new CapBuilder(ctx, this.createBroadPhase());
+    }
+
+    createResourceHighlight(deps)
+    {
+        return new LonLatResourceHighlight(
+            deps.crossSection, deps.geometryFactory, deps.clip, this.#planet.polarCapRings,
+        );
     }
 
     buildGridLines()

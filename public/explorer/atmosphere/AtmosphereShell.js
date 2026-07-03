@@ -46,6 +46,11 @@ export class AtmosphereShell
         const material = new THREE.ShaderMaterial({
             uniforms: this.#uniforms,
             transparent: true,
+            // Side is chosen per-frame by updateForCamera(): FrontSide from
+            // orbit (camera outside → near faces draw over the disc, unchanged
+            // look) and BackSide in resource mode where the camera sits INSIDE
+            // the shell (only the inner faces face it). A static FrontSide
+            // culled everything from inside, so the scattering vanished there.
             side: THREE.FrontSide,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
@@ -75,6 +80,19 @@ export class AtmosphereShell
         for (let i = 0; i < target.length; i++)
         {
             target[i].copy(directions[i] ?? directions[directions.length - 1]);
+        }
+    }
+
+    // Render the near faces from orbit but the inner faces once the camera
+    // dives inside the shell (resource mode), so the haze is visible in both.
+    updateForCamera(camera)
+    {
+        const inside = camera.position.length() < this.radius;
+        const side = inside ? THREE.BackSide : THREE.FrontSide;
+
+        if (this.mesh.material.side !== side)
+        {
+            this.mesh.material.side = side;
         }
     }
 

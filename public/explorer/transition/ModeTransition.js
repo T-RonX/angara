@@ -15,8 +15,7 @@ export class ModeTransition
     #sceneContext;
     #clip;
     #crustCamera;
-    #bodyMesh;
-    #capBuilder;
+    #sliceBuilder;
     #highlights;
     #hud;
     #planet;
@@ -24,14 +23,13 @@ export class ModeTransition
 
     #target = new THREE.Vector3();
 
-    constructor(state, sceneContext, clipController, crustCamera, bodyMesh, capBuilder, highlightManager, hud, planet, behaviour)
+    constructor(state, sceneContext, clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, behaviour)
     {
         this.#state = state;
         this.#sceneContext = sceneContext;
         this.#clip = clipController;
         this.#crustCamera = crustCamera;
-        this.#bodyMesh = bodyMesh;
-        this.#capBuilder = capBuilder;
+        this.#sliceBuilder = sliceBuilder;
         this.#highlights = highlightManager;
         this.#hud = hud;
         this.#planet = planet;
@@ -77,8 +75,7 @@ export class ModeTransition
         }
         else
         {
-            this.#bodyMesh.applyClipping(false, this.#clip.plane);
-            this.#capBuilder.clearCaps();
+            this.#sliceBuilder.exit();
 
             const controls = this.#sceneContext.controls;
             const camera = this.#sceneContext.camera;

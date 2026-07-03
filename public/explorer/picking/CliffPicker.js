@@ -6,16 +6,16 @@
 // ----------------------------------------------------------------------
 export class CliffPicker
 {
-    #capBuilder;
+    #sliceBuilder;
 
-    constructor(capBuilder)
+    constructor(sliceBuilder)
     {
-        this.#capBuilder = capBuilder;
+        this.#sliceBuilder = sliceBuilder;
     }
 
     pick(raycaster)
     {
-        const hit = raycaster.intersectObjects(this.#capBuilder.capMeshes, false)[0];
+        const hit = raycaster.intersectObjects(this.#sliceBuilder.capMeshes, false)[0];
 
         return hit ? hit.object.userData.faceToCell[hit.faceIndex] : null;
     }

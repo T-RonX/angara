@@ -12,7 +12,6 @@ import { CellGeometryFactory } from './geometry/CellGeometryFactory.js';
 import { CrossSectionFactory } from './geometry/CrossSectionFactory.js';
 import { BodyMesh } from './world/BodyMesh.js';
 import { ClipController } from './slicing/ClipController.js';
-import { CapBuilder } from './slicing/CapBuilder.js';
 import { CliffPicker } from './picking/CliffPicker.js';
 import { HighlightManager } from './picking/HighlightManager.js';
 import { HoverController } from './picking/HoverController.js';
@@ -52,7 +51,7 @@ export class BodyExplorer
 
     #bodyMesh;
     #clip;
-    #capBuilder;
+    #sliceBuilder;
 
     #highlights;
     #hover;
@@ -115,7 +114,16 @@ export class BodyExplorer
             mode: 'view',
             selected: null,
             resourceSelected: null,
-            focus: { lon: 0, lat: 0, lonTarget: 0, latTarget: 0 },
+            focus: {
+                lon: 0, lat: 0, lonTarget: 0, latTarget: 0,
+                // Hexsphere pole-free frame (ignored by the lon/lat topology):
+                // dir = focus direction, nCut = cut-plane normal (dir ⟂ nCut),
+                // eased toward their *Target counterparts by GoldbergTraversal.
+                dir: new THREE.Vector3(1, 0, 0),
+                dirTarget: new THREE.Vector3(1, 0, 0),
+                nCut: new THREE.Vector3(0, 0, -1),
+                nCutTarget: new THREE.Vector3(0, 0, -1),
+            },
             camDist: (this.#planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom,
             viewSnapshot: null,
             transition: { active: false, dir: 0, s: 0, orbit: null },
@@ -164,12 +172,19 @@ export class BodyExplorer
             this.#clip.plane, this.#state.focus, this.#planet.radius, this.#planet.polarCapRings,
         );
 
-        this.#capBuilder = new CapBuilder(
-            scene, this.#clip, this.cellGrid, this.#crossSection, this.#materials,
-            this.layerModel, this.#state.focus, this.#topology.createBroadPhase(),
-        );
+        this.#sliceBuilder = this.#topology.createSliceBuilder({
+            scene,
+            clip: this.#clip,
+            cellGrid: this.cellGrid,
+            crossSection: this.#crossSection,
+            materials: this.#materials,
+            layerModel: this.layerModel,
+            focus: this.#state.focus,
+            geometryFactory: this.#cellGeometry,
+            bodyMesh: this.#bodyMesh,
+        });
 
-        this.#clip.setCapBuilder(this.#capBuilder);
+        this.#clip.setSliceBuilder(this.#sliceBuilder);
     }
 
     #buildInteraction()
@@ -180,11 +195,17 @@ export class BodyExplorer
         this.#hud = new HudView(this.layerModel, hasAtmosphere, this.#topology);
 
         this.#highlights = new HighlightManager(
-            scene, this.#crossSection, this.#cellGeometry, this.#clip, this.#state, this.#planet.polarCapRings,
+            scene,
+            this.#topology.createResourceHighlight({
+                crossSection: this.#crossSection,
+                geometryFactory: this.#cellGeometry,
+                clip: this.#clip,
+            }),
+            this.#cellGeometry, this.#state,
         );
 
         const surfacePicker = this.#topology.createSurfacePicker();
-        const cliffPicker = new CliffPicker(this.#capBuilder);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder);
 
         this.#hover = new HoverController(
             this.#scene, this.#state, surfacePicker, cliffPicker, this.#highlights, this.#hud,
@@ -204,8 +225,8 @@ export class BodyExplorer
         );
 
         this.#transition = new ModeTransition(
-            this.#state, this.#scene, this.#clip, this.#crustCamera, this.#bodyMesh,
-            this.#capBuilder, this.#highlights, this.#hud, this.#planet, this.#behaviour,
+            this.#state, this.#scene, this.#clip, this.#crustCamera,
+            this.#sliceBuilder, this.#highlights, this.#hud, this.#planet, this.#behaviour,
         );
 
         new InputController(
@@ -292,9 +313,11 @@ export class BodyExplorer
         this.#topology.traversal.enterFocus(focus, state.selected);
         this.#clip.resetCut();
 
-        // Enable clipping but keep the plane fully off-centre so nothing is
-        // sliced yet — the body still reads whole at s = 0.
-        this.#bodyMesh.applyClipping(true, this.#clip.plane);
+        // Enter resource-mode slicing (lon/lat turns on the GPU clip plane;
+        // the hexsphere swaps in its whole-cell slice group) but keep the cut
+        // fully off-centre so nothing is sliced yet — the body reads whole at
+        // s = 0.
+        this.#sliceBuilder.enter();
         this.#clip.updateCut(this.#planet.radius, true);
 
         state.transition.s = 0;
@@ -359,6 +382,12 @@ export class BodyExplorer
         else if (this.#state.mode === 'view')     this.#scene.controls.update();
         else                                      this.#focus.easeFocusToTarget();
 
+        // Advance the hexsphere cell-reveal fade (no-op for lon/lat / when idle).
+        if (this.#state.mode === 'resource' && this.#sliceBuilder.tick)
+        {
+            this.#sliceBuilder.tick(dt);
+        }
+
         // Keep the sky fixed at infinity (no parallax).
         this.#skyAnchor.follow(this.#scene.camera);
 
@@ -370,6 +399,7 @@ export class BodyExplorer
         // directions to the atmosphere so it scatters every sun's light.
         this.#starSystem.update(now, this.#scene.camera);
         this.#atmosphere.setSunDirections(this.#starSystem.directions);
+        this.#atmosphere.updateForCamera(this.#scene.camera);
 
         this.#scene.render();
     }
