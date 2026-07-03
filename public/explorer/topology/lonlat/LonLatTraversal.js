@@ -38,6 +38,12 @@ export class LonLatTraversal
         focus.latTarget = this.#snapLatToRow(focus.latTarget);
     }
 
+    focusCell(focus, cell)
+    {
+        focus.lonTarget = this.#snapLonToCol(cell.lon);
+        focus.latTarget = this.#snapLatToRow(cell.lat);
+    }
+
     onDrag(focus, dx, dy, dpp)
     {
         const { capRows, rowDegLat, capCenterLatN, capCenterLatS } = this.#capModel;

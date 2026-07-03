@@ -127,6 +127,7 @@ export class BodyExplorer
             camDist: (this.#planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom,
             viewSnapshot: null,
             transition: { active: false, dir: 0, s: 0, orbit: null },
+            resourceMoving: false,
         };
     }
 
@@ -285,6 +286,7 @@ export class BodyExplorer
 
         this.#hud.setMode(mode);
         this.#hud.updateSelectionReadout(state);
+        this.#atmosphere.mesh.visible = !resource && this.#physical.atmosphere.show;
 
         // Mid-flight toggle: just reverse direction.
         if (state.transition.active)
@@ -368,11 +370,17 @@ export class BodyExplorer
 
     #selectResourceCell(cell)
     {
-        // Selection is decoupled from navigation on purpose: clicking only
-        // marks the cell (navigation stays on drag + arrow keys).
-        this.#state.resourceSelected = cell;
+        const state = this.#state;
+
+        state.resourceSelected = cell;
         this.#highlights.rebuildResourceSelection();
-        this.#hud.updateSelectionReadout(this.#state);
+
+        if (typeof this.#topology.traversal.focusCell === 'function')
+        {
+            this.#topology.traversal.focusCell(state.focus, cell);
+        }
+
+        this.#hud.updateSelectionReadout(state);
     }
 
     // --- Render loop ---------------------------------------------------
@@ -411,6 +419,6 @@ export class BodyExplorer
         this.#atmosphere.updateForCamera(this.#scene.camera);
 
         this.#scene.render();
+        this.#hud.updateRenderInfo(this.#scene.renderer.info);
     }
 }
-

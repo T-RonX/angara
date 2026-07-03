@@ -86,6 +86,8 @@ export class CellSliceBuilder
 
         this.sliceGroup = new THREE.Group();
         this.sliceGroup.visible = false;
+        this.sliceGroup.matrixAutoUpdate = false;
+        this.sliceGroup.updateMatrix();
         ctx.scene.add(this.sliceGroup);
 
         // The selectable atmosphere shell must be pickable (its cells stay in
@@ -166,6 +168,7 @@ export class CellSliceBuilder
             this.#fading.clear();
             this.#clearFadeMeshes();
             this.#syncOpaque(inc.byDepth);
+            this.#rebuildFadeMeshes();
             this.#rebuildStaticTransient(inc.atmo, n, k);
             this.#lastKeys = inc.keys;
             this.#lastByDepth = inc.byDepth;
@@ -235,8 +238,8 @@ export class CellSliceBuilder
         this.#fading.set(key, { cell, depth, dir, t0: now });
     }
 
-    // Included cells minus the ones still fading IN (those live in the fade
-    // meshes until their reveal completes).
+    // Included cells minus anything currently in-flight. Fading cells live in
+    // the fade meshes only so they are not rendered twice.
     #opaqueSet(byDepth)
     {
         const out = [];
@@ -249,7 +252,7 @@ export class CellSliceBuilder
             {
                 const f = this.#fading.get(`${d}:${cell.cellIndex}`);
 
-                if (f && f.dir > 0) continue;
+                if (f) continue;
 
                 arr.push(cell);
             }
@@ -329,7 +332,8 @@ export class CellSliceBuilder
     // Incrementally reconcile the persistent opaque buckets to `byDepth`: only
     // buckets whose cell membership changed are disposed + rebuilt; unchanged
     // buckets are kept (no dispose, no GPU re-upload). This is what keeps a
-    // column crossing cheap — the added/removed cells touch ≤1–2 buckets.
+    // column crossing cheap — the added/removed cells touch only a handful of
+    // buckets instead of rebuilding the whole slice every time.
     #syncOpaque(byDepth)
     {
         const maxDepth = this.#layerModel.maxDepth;
@@ -412,11 +416,10 @@ export class CellSliceBuilder
         return mesh;
     }
 
-    // Coarse lon/lat sector key so nearby cells share a frustum-cullable mesh.
     #bucketKey(cell)
     {
-        const AZ = 8;
-        const EL = 4;
+        const AZ = 16;
+        const EL = 8;
         const lonSector = Math.min(AZ - 1, Math.floor((((cell.lon % 360) + 360) % 360) / 360 * AZ));
         const latSector = Math.min(EL - 1, Math.floor((cell.lat + 90) / 180 * EL));
 
@@ -495,6 +498,8 @@ export class CellSliceBuilder
 
         const mesh = new THREE.Mesh(geo, this.#fadeMaterial(depth));
         mesh.userData.faceToCell = faceToCell;
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
 
         this.sliceGroup.add(mesh);
         this.#fadeMeshList.push(mesh);
@@ -565,6 +570,8 @@ export class CellSliceBuilder
 
         const mesh = this.#mesh(positions, normals, indices, this.#atmospherePickMaterial);
         mesh.userData.faceToCell = faceToCell;
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
         this.sliceGroup.add(mesh);
         this.#staticTransient.push(mesh);
     }
@@ -599,7 +606,11 @@ export class CellSliceBuilder
         geo.setIndex(indices);
         geo.computeBoundingSphere();
 
-        return new THREE.Mesh(geo, material);
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
+
+        return mesh;
     }
 
     // The solid cross-section that backs the slice wall and blocks see-through.
@@ -629,6 +640,8 @@ export class CellSliceBuilder
         );
         disc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
         disc.position.copy(n).multiplyScalar(-k);
+        disc.matrixAutoUpdate = false;
+        disc.updateMatrix();
         this.sliceGroup.add(disc);
         this.#staticTransient.push(disc);
     }

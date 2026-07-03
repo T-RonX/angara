@@ -26,7 +26,7 @@ export const behaviour = {
         dragSensitivity: 1,
         // Positive values keep the current drag sense; -1 flips that axis.
         dragDirectionX: 1,
-        dragDirectionY: -1,
+        dragDirectionY: 1,
         // Right-drag roll speed multiplier in the hexsphere traversal.
         rollSensitivity: 3,
         // Wheel zoom factors for scrolling in/out of resource mode.

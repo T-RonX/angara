@@ -65,6 +65,11 @@ export class HoverController
 
     update()
     {
+        if (this.#state.mode === 'resource' && this.#state.resourceMoving)
+        {
+            return;
+        }
+
         const camera = this.#sceneContext.camera;
         const camPos = camera.position;
         const camQ = camera.quaternion;
@@ -126,4 +131,3 @@ export class HoverController
         c.camQx = camQ.x; c.camQy = camQ.y; c.camQz = camQ.z; c.camQw = camQ.w;
     }
 }
-

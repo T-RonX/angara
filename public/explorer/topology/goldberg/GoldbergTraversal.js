@@ -77,6 +77,15 @@ export class GoldbergTraversal
         this.#orthonormalize(focus.nCutTarget, focus.dirTarget);
     }
 
+    focusCell(focus, cell)
+    {
+        this.#ensureFrame(focus);
+
+        focus.dirTarget.copy(cell.centroidDir).normalize();
+        this.#orthonormalize(focus.nCutTarget, focus.dirTarget);
+        this.#syncLonLat(focus);
+    }
+
     onDrag(focus, dx, dy, dpp, button = 0)
     {
         this.#ensureFrame(focus);

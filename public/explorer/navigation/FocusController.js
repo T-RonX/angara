@@ -39,6 +39,7 @@ export class FocusController
         if (typeof this.#traversal.advance === 'function')
         {
             const r = this.#traversal.advance(focus, this.#snapEase);
+            this.#state.resourceMoving = r.moved;
 
             if (r.moved) this.#updateResource(r.cutChanged);
 
@@ -81,6 +82,8 @@ export class FocusController
             latChanged = true;
             moved = true;
         }
+
+        this.#state.resourceMoving = moved;
 
         if (moved) this.#updateResource(this.#traversal.cutMoved(lonChanged, latChanged));
     }

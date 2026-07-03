@@ -55,6 +55,12 @@
         <div class="readout">
             <div><span class="k">FPS</span><span class="v" id="rFps">—</span></div>
             <div><span class="k">Frame</span><span class="v" id="rFrameMs">—</span></div>
+            <div><span class="k">Calls</span><span class="v" id="rCalls">—</span></div>
+            <div><span class="k">Tris</span><span class="v" id="rTris">—</span></div>
+            <div><span class="k">Points</span><span class="v" id="rPoints">—</span></div>
+            <div><span class="k">Lines</span><span class="v" id="rLines">—</span></div>
+            <div><span class="k">Geoms</span><span class="v" id="rGeoms">—</span></div>
+            <div><span class="k">Textures</span><span class="v" id="rTextures">—</span></div>
         </div>
         <hr>
         <div class="sliders">
@@ -76,6 +82,9 @@
         #hud {
             position: fixed; top: 16px; left: 16px; z-index: 10;
             width: 240px; padding: 14px 16px;
+            max-height: calc(100vh - 32px);
+            overflow-x: hidden; overflow-y: auto;
+            scrollbar-width: none; -ms-overflow-style: none;
             background: rgba(10, 16, 28, 0.82);
             border: 1px solid rgba(120, 180, 255, 0.25);
             border-radius: 10px;
@@ -84,6 +93,19 @@
             font-size: 13px;
             backdrop-filter: blur(6px);
             user-select: none;
+        }
+        #hud::-webkit-scrollbar { width: 0; height: 0; }
+        #hud:hover, #hud:focus-within {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(120, 180, 255, 0.45) rgba(0, 0, 0, 0);
+        }
+        #hud:hover::-webkit-scrollbar, #hud:focus-within::-webkit-scrollbar { width: 6px; height: 6px; }
+        #hud:hover::-webkit-scrollbar-track, #hud:focus-within::-webkit-scrollbar-track { background: transparent; }
+        #hud:hover::-webkit-scrollbar-thumb, #hud:focus-within::-webkit-scrollbar-thumb {
+            background: rgba(120, 180, 255, 0.45);
+            border-radius: 999px;
+            border: 2px solid transparent;
+            background-clip: content-box;
         }
         #hud h1 { font-size: 15px; margin: 0 0 10px; color: #9fc6ff; letter-spacing: .5px; }
         #hud hr { border: none; border-top: 1px solid rgba(120,180,255,.18); margin: 10px 0; }
@@ -141,4 +163,3 @@
        public/explorer/. This is just the loader. #}
     <script type="module" src="/explorer/index.js"></script>
 {% endblock %}
-

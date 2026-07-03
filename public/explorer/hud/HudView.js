@@ -35,6 +35,8 @@ export class HudView
             slice: id('rSlice'),
             selType: id('rSelType'), selLon: id('rSelLon'), selLat: id('rSelLat'), selLayer: id('rSelLayer'),
             fps: id('rFps'), frameMs: id('rFrameMs'),
+            calls: id('rCalls'), tris: id('rTris'), points: id('rPoints'), lines: id('rLines'),
+            geoms: id('rGeoms'), textures: id('rTextures'),
         };
         this.#modeBtn = id('modeBtn');
         this.#resourceControls = id('resourceControls');
@@ -152,5 +154,19 @@ export class HudView
             this.#perf.lastHud = now;
         }
     }
-}
 
+    updateRenderInfo(info)
+    {
+        if (!info) return;
+
+        const render = info.render ?? {};
+        const memory = info.memory ?? {};
+
+        if (this.#el.calls)    this.#el.calls.textContent = String(render.calls ?? '—');
+        if (this.#el.tris)     this.#el.tris.textContent = String(render.triangles ?? '—');
+        if (this.#el.points)   this.#el.points.textContent = String(render.points ?? '—');
+        if (this.#el.lines)    this.#el.lines.textContent = String(render.lines ?? '—');
+        if (this.#el.geoms)    this.#el.geoms.textContent = String(memory.geometries ?? '—');
+        if (this.#el.textures) this.#el.textures.textContent = String(memory.textures ?? '—');
+    }
+}
