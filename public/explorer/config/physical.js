@@ -73,6 +73,12 @@ export const physical = {
         mieG:        0.76,
         viewSteps:   12,
         lightSteps:  6,
+        // Cap the scattering raymarch to this many recomputes per second. The
+        // pass renders into a cached texture that is re-composited every frame,
+        // so the expensive integral is decoupled from the display frame rate.
+        // The cache is view-dependent, so it lags slightly while the camera
+        // moves. 0 = recompute every frame (no throttling).
+        updateHz:    30
     },
 
     // ------------------------------------------------------------------

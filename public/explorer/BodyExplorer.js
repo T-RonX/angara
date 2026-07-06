@@ -61,6 +61,7 @@ export class BodyExplorer
     #hud;
 
     #lastFrameT = performance.now();
+    #atmosLastRender = 0;
 
     constructor(physical, behaviour, rootElement)
     {
@@ -79,8 +80,14 @@ export class BodyExplorer
 
         // Initial lighting floor + resize.
         this.#lightingRig.applyNight(this.#physical.lighting.nightDarkness);
-        window.addEventListener('resize', () => this.#scene.resize());
+        window.addEventListener('resize', () => this.#resize());
+        this.#resize();
+    }
+
+    #resize()
+    {
         this.#scene.resize();
+        this.#atmosphere.resize(this.#scene.renderer);
     }
 
     start()
@@ -159,7 +166,6 @@ export class BodyExplorer
         this.#cellGeometry = new CellGeometryFactory(this.#planet.polarCapRings);
 
         this.#bodyMesh = new BodyMesh(scene, this.cellGrid, this.#cellGeometry, this.#materials, this.layerModel);
-        this.#bodyMesh.add(this.#atmosphere.mesh);
 
         this.#bodyMesh.add(this.#topology.buildGridLines());
     }
@@ -411,14 +417,29 @@ export class BodyExplorer
 
         this.#hud.updateCompass(this.#scene.camera);
 
-        // Suns: update each sun's disc / flare / occlusion, then feed their
-        // directions to the atmosphere so it scatters every sun's light.
+        // Suns: update each sun's disc / flare / occlusion.
         this.#starSystem.update(now, this.#scene.camera);
         this.#updateAtmosphereIntensity();
-        this.#atmosphere.setSunDirections(this.#starSystem.directions);
-        this.#atmosphere.updateForCamera(this.#scene.camera);
+
+        // Scattering is throttled to atmosphere.updateHz: re-run the raymarch
+        // into the cached target only when the interval has elapsed, then
+        // composite the cache over the frame every frame (see below).
+        if (this.#atmosphere.mesh.visible)
+        {
+            const hz = this.#physical.atmosphere.updateHz | 0;
+            const interval = hz > 0 ? 1000 / hz : 0;
+
+            if (now - this.#atmosLastRender >= interval)
+            {
+                this.#atmosphere.setSunDirections(this.#starSystem.directions);
+                this.#atmosphere.updateForCamera(this.#scene.camera);
+                this.#atmosphere.renderPass(this.#scene.renderer, this.#scene.camera);
+                this.#atmosLastRender = now;
+            }
+        }
 
         this.#scene.render();
+        this.#atmosphere.composite(this.#scene.renderer);
         this.#hud.updateRenderInfo(this.#scene.renderer.info);
     }
 }
