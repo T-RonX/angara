@@ -410,6 +410,13 @@ export class BodyExplorer
             this.#sliceBuilder.tick(dt);
         }
 
+        // Horizon-cull the resource slice buckets (skip mid-transition: the set
+        // rebuilds every frame and the camera is in flight).
+        if (this.#state.mode === 'resource' && !this.#state.transition.active && this.#sliceBuilder.updateHorizonCull)
+        {
+            this.#sliceBuilder.updateHorizonCull(this.#scene.camera);
+        }
+
         // Keep the sky fixed at infinity (no parallax).
         this.#skyAnchor.follow(this.#scene.camera);
 

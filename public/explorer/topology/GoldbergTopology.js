@@ -27,6 +27,7 @@ export class GoldbergTopology extends CellTopology
     #cutStrategy;
     #traversal;
     #fadeMs;
+    #horizonCull;
 
     constructor(physical, layerModel, behaviour, atmosphereRadius)
     {
@@ -44,6 +45,7 @@ export class GoldbergTopology extends CellTopology
         this.#cutStrategy = new GoldbergCutStrategy();
         this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex, behaviour.input);
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
+        this.#horizonCull = behaviour?.slice?.horizonCull ?? { enabled: false, marginDeg: 6 };
     }
 
     get grid()        { return this.#grid; }
@@ -62,7 +64,12 @@ export class GoldbergTopology extends CellTopology
 
     createSliceBuilder(ctx)
     {
-        return new CellSliceBuilder({ ...ctx, fadeMs: this.#fadeMs });
+        return new CellSliceBuilder({
+            ...ctx,
+            fadeMs: this.#fadeMs,
+            planetRadius: this.#planet.radius,
+            horizonCull: this.#horizonCull,
+        });
     }
 
     createResourceHighlight(deps)

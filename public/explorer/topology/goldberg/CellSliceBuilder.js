@@ -56,6 +56,11 @@ export class CellSliceBuilder
     #lastSig = null;
     #atmospherePickMaterial;
 
+    #planetRadius;
+    #horizonCullEnabled;
+    #horizonMarginRad;
+    #horizonCulling = false;
+
     // Persistent opaque slice: key `${depth}:${bucket}` → { mesh, sig }.
     #opaqueBuckets = new Map();
     // Transient meshes rebuilt each change: atmosphere pick shell + cross-section.
@@ -112,6 +117,11 @@ export class CellSliceBuilder
         });
 
         this.#fadeDur = Math.max(0.001, (ctx.fadeMs ?? 260) / 1000);
+
+        this.#planetRadius = ctx.planetRadius ?? this.#layerModel.layerRadii[0];
+        const hc = ctx.horizonCull ?? {};
+        this.#horizonCullEnabled = hc.enabled ?? false;
+        this.#horizonMarginRad = (hc.marginDeg ?? 6) * Math.PI / 180;
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -135,6 +145,7 @@ export class CellSliceBuilder
     exit()
     {
         this.sliceGroup.visible = false;
+        this.#horizonCulling = false;
         this.#fadeBatches = [];
         this.#fadingInKeys.clear();
         this.#disposeAll();
@@ -653,6 +664,56 @@ export class CellSliceBuilder
     // Rebuild the pick list from the CURRENT meshes (opaque buckets + any
     // transient pick meshes / blockers). Called after every change so
     // raycasting never sees a stale or disposed mesh.
+    // Per-frame horizon (occlusion) cull: hide opaque buckets that curve over
+    // the planet's own horizon relative to the camera. Cheap visibility toggle
+    // only — no geometry work, no membership change. Surface-preserving: each
+    // bucket's own angular extent plus a configurable margin is added, so a
+    // partially-visible bucket is never dropped.
+    updateHorizonCull(camera)
+    {
+        if (!this.#horizonCullEnabled) return;
+
+        const R = this.#planetRadius;
+        const d = camera.position.length();
+
+        // Degenerate: camera at/under the outer surface → no defined horizon.
+        // Restore all buckets and bail (so a previous cull can't leave one hidden).
+        if (d <= R * 1.001)
+        {
+            if (this.#horizonCulling)
+            {
+                for (const { mesh } of this.#opaqueBuckets.values()) mesh.visible = true;
+                this.#horizonCulling = false;
+            }
+
+            return;
+        }
+
+        this.#horizonCulling = true;
+
+        const horizonAngle = Math.acos(R / d);
+        const v = camera.position.clone().multiplyScalar(1 / d);
+
+        for (const { mesh } of this.#opaqueBuckets.values())
+        {
+            const bs = mesh.geometry.boundingSphere;
+
+            if (!bs || bs.center.lengthSq() === 0)
+            {
+                mesh.visible = true;
+
+                continue;
+            }
+
+            const dist = bs.center.length();
+            const cDir = bs.center.clone().multiplyScalar(1 / dist);
+            const bucketHalf = Math.asin(Math.min(1, bs.radius / dist));
+            const angle = Math.acos(Math.max(-1, Math.min(1, cDir.dot(v))));
+
+            mesh.visible = angle <= horizonAngle + bucketHalf + this.#horizonMarginRad;
+        }
+    }
+
     #refreshCapMeshes()
     {
         this.capMeshes.length = 0;

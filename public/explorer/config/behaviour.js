@@ -47,5 +47,15 @@ export const behaviour = {
         // Duration (ms) of the temporal fade when the advancing cut reveals a
         // new row of whole cells (or hides a leaving one). 0 disables the fade.
         cellFadeMs: 200,
+
+        // Resource-mode horizon (occlusion) culling: hide slice buckets that
+        // curve over the planet's own horizon relative to the camera. Purely a
+        // per-frame visibility toggle — no geometry rebuild.
+        horizonCull: {
+            enabled: true,
+            // Angular slack (degrees) added to each bucket's own extent so a
+            // partially-visible bucket is never dropped (surface-preserving).
+            marginDeg: 16,
+        },
     },
 };
