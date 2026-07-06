@@ -52,6 +52,10 @@ export const physical = {
     // ------------------------------------------------------------------
     atmosphere: {
         show:        true,
+        // Whether the atmosphere shell remains visible while the explorer is in
+        // resource mode. The selectable cell shell still needs `selectable`
+        // to be enabled for hover / pick / highlight interaction.
+        showInResourceMode: true,
         // Whether the atmosphere is a selectable cell shell (hover / pick /
         // highlight in resource mode). The visible haze is the shader either
         // way; this only governs interactivity.

@@ -292,7 +292,11 @@ export class BodyExplorer
 
         this.#hud.setMode(mode);
         this.#hud.updateSelectionReadout(state);
-        this.#atmosphere.mesh.visible = !resource && this.#physical.atmosphere.show;
+
+        const atmosphereVisible = this.#physical.atmosphere.show && (
+            !resource || this.#physical.atmosphere.showInResourceMode
+        );
+        this.#atmosphere.mesh.visible = atmosphereVisible;
 
         // Mid-flight toggle: just reverse direction.
         if (state.transition.active)
