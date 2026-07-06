@@ -29,16 +29,22 @@ export class AtmosphereShell
         this.shellHeight = this.radius - planet.radius;
 
         const sunDirs = [];
+        const sunColors = [];
+        const sunEnergies = [];
 
         for (let i = 0; i < numSuns; i++)
         {
             sunDirs.push(new THREE.Vector3(1, 0, 0));
+            sunColors.push(new THREE.Vector3(1, 1, 1));
+            sunEnergies.push(1);
         }
 
         this.#uniforms = {
             uPlanetRadius:  { value: planet.radius },
             uAtmosRadius:   { value: this.radius },
             uSunDir:        { value: sunDirs },
+            uSunColor:      { value: sunColors },
+            uSunEnergy:     { value: sunEnergies },
             uSunIntensity:  { value: atmosphere.sunIntensity },
             uOpacity:       { value: atmosphere.opacity },
             uBaseColor:     { value: new THREE.Vector3(...atmosphere.baseColor) },
@@ -133,6 +139,29 @@ export class AtmosphereShell
         for (let i = 0; i < target.length; i++)
         {
             target[i].copy(directions[i] ?? directions[directions.length - 1]);
+        }
+    }
+
+    // Copy each sun's light colour (linear RGB) into the shader uniform array.
+    setSunColors(colors)
+    {
+        const target = this.#uniforms.uSunColor.value;
+
+        for (let i = 0; i < target.length; i++)
+        {
+            const c = colors[i] ?? colors[colors.length - 1];
+            target[i].set(c.r, c.g, c.b);
+        }
+    }
+
+    // Copy each sun's own energy (intensity) into the shader uniform array.
+    setSunEnergies(energies)
+    {
+        const target = this.#uniforms.uSunEnergy.value;
+
+        for (let i = 0; i < target.length; i++)
+        {
+            target[i] = energies[i] ?? energies[energies.length - 1];
         }
     }
 

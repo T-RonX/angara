@@ -261,9 +261,7 @@ export class BodyExplorer
 
     #updateAtmosphereIntensity()
     {
-        this.#atmosphere.setSunIntensity(
-            this.#physical.atmosphere.sunIntensity * this.#starSystem.combinedIntensity(),
-        );
+        this.#atmosphere.setSunIntensity(this.#physical.atmosphere.sunIntensity);
     }
 
     // --- Mode switching ------------------------------------------------
@@ -443,6 +441,8 @@ export class BodyExplorer
             if (now - this.#atmosLastRender >= interval)
             {
                 this.#atmosphere.setSunDirections(this.#starSystem.directions);
+                this.#atmosphere.setSunColors(this.#starSystem.colors);
+                this.#atmosphere.setSunEnergies(this.#starSystem.energies());
                 this.#atmosphere.updateForCamera(this.#scene.camera);
                 this.#atmosphere.renderPass(this.#scene.renderer, this.#scene.camera);
                 this.#atmosLastRender = now;

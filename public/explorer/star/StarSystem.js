@@ -12,6 +12,7 @@ export class StarSystem
 {
     stars = [];
     directions = [];
+    colors = [];
 
     constructor(scene, skyAnchor, starConfigs, { planetRadius, skyDistance })
     {
@@ -20,6 +21,7 @@ export class StarSystem
             const star = new Star(scene, skyAnchor, cfg, { planetRadius, skyDistance });
             this.stars.push(star);
             this.directions.push(star.direction);
+            this.colors.push(star.colorRGB);
         }
     }
 
@@ -28,16 +30,10 @@ export class StarSystem
         return this.stars.length;
     }
 
-    combinedIntensity()
+    // Per-sun energy (own intensity), for the atmosphere scattering pass.
+    energies()
     {
-        let total = 0;
-
-        for (const star of this.stars)
-        {
-            total += star.intensity;
-        }
-
-        return total;
+        return this.stars.map((star) => star.intensity);
     }
 
     update(now, camera)

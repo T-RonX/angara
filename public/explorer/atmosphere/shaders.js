@@ -28,6 +28,8 @@ export const fragmentShader = /* glsl */`
     uniform float uPlanetRadius;
     uniform float uAtmosRadius;
     uniform vec3  uSunDir[NUM_SUNS];
+    uniform vec3  uSunColor[NUM_SUNS];
+    uniform float uSunEnergy[NUM_SUNS];
     uniform float uSunIntensity;
     uniform float uOpacity;
     uniform vec3  uBaseColor;
@@ -50,8 +52,9 @@ export const fragmentShader = /* glsl */`
         return vec2(-b - d, -b + d);
     }
 
-    // In-scattered colour for a single sun direction pSun.
-    vec3 atmosphere(vec3 r, vec3 r0, vec3 pSun) {
+    // In-scattered colour for a single sun: direction pSun, its light colour
+    // sunColor (the illuminant spectrum) and its own energy.
+    vec3 atmosphere(vec3 r, vec3 r0, vec3 pSun, vec3 sunColor, float energy) {
         r0 = r0 - uPlanetCenter;
 
         // The base colour multiplies the PHYSICAL Rayleigh coefficient, so
@@ -114,7 +117,10 @@ export const fragmentShader = /* glsl */`
             iTime    += iStepSize;
         }
 
-        return uSunIntensity * (pRlh * rayleighEff * totalRlh
+        // The star's light colour multiplies the whole in-scattering as the
+        // incoming illuminant spectrum, so a bluish sun scatters bluer light
+        // than a white one. Its own energy scales its contribution.
+        return uSunIntensity * energy * sunColor * (pRlh * rayleighEff * totalRlh
                               + pMie * uMieCoeff   * totalMie);
     }
 
@@ -124,7 +130,8 @@ export const fragmentShader = /* glsl */`
         // Sum the in-scattering from EVERY sun.
         vec3 col = vec3(0.0);
         for (int i = 0; i < NUM_SUNS; i++) {
-            col += atmosphere(viewDir, cameraPosition, normalize(uSunDir[i]));
+            col += atmosphere(viewDir, cameraPosition, normalize(uSunDir[i]),
+                              uSunColor[i], uSunEnergy[i]);
         }
 
         // Soft tonemap so fragments near a sun don't blow out to white.

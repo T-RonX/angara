@@ -37,6 +37,10 @@ export class Star
 
         this.#skyDistance = skyDistance;
 
+        // Linear-space copy of the light colour, used as the atmosphere's
+        // illuminant spectrum (the scattering pass renders in NoColorSpace).
+        this.colorRGB = new THREE.Color(this.color).convertSRGBToLinear();
+
         this.#light = new THREE.DirectionalLight(this.color, this.intensity);
         scene.add(this.#light);
 
