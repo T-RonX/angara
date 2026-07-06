@@ -17,8 +17,9 @@ export class CrustCamera
     #cameraCfg;
     #input;
     #state;
+    #shapeField;
 
-    constructor(sceneContext, clipController, layerModel, planet, cameraCfg, input, state)
+    constructor(sceneContext, clipController, layerModel, planet, cameraCfg, input, state, shapeField)
     {
         this.#sceneContext = sceneContext;
         this.#clip = clipController;
@@ -27,6 +28,21 @@ export class CrustCamera
         this.#cameraCfg = cameraCfg;
         this.#input = input;
         this.#state = state;
+        this.#shapeField = shapeField ?? null;
+    }
+
+    // Local surface radius at the focus direction (the displaced body's radius
+    // where the camera is looking). Falls back to the base radius for a sphere.
+    #focusSurfaceRadius(radialUp)
+    {
+        if (this.#shapeField && !this.#shapeField.isSphere)
+        {
+            const dir = this.#state.focus.dir ?? radialUp;
+
+            if (dir) return this.#shapeField.surfaceRadius(dir);
+        }
+
+        return this.#planet.radius;
     }
 
     // Compute (but don't apply) the crust-cliff pose for the current focus,
@@ -34,12 +50,10 @@ export class CrustCamera
     computeCrustPose()
     {
         const focus = this.#state.focus;
-        const planetRadius = this.#planet.radius;
         const coreRadius = this.#layerModel.coreRadius;
 
         const lonR = deg2rad(focus.lon);
         const latR = deg2rad(focus.lat);
-        const midR = (planetRadius + coreRadius) / 2;
 
         const radialUp = new THREE.Vector3(
             Math.cos(latR) * Math.cos(lonR),
@@ -47,12 +61,15 @@ export class CrustCamera
             Math.cos(latR) * Math.sin(lonR),
         );
 
+        const surfaceRadius = this.#focusSurfaceRadius(radialUp);
+        const midR = (surfaceRadius + coreRadius) / 2;
+
         // Face the cut edge-on: the clip-plane normal is the cut's facing
         // direction, so offset the camera along its negation. Keeping `up` on
         // the radial keeps depth pointing straight down on screen.
         const m = this.#clip.plane.normal.clone().multiplyScalar(-1);
 
-        const crustThickness = planetRadius - coreRadius;
+        const crustThickness = surfaceRadius - coreRadius;
         const target = radialUp.clone().multiplyScalar(midR + crustThickness * this.#cameraCfg.crustHeightBias);
 
         const tilt = this.#cameraCfg.crustTilt;
@@ -79,7 +96,7 @@ export class CrustCamera
     {
         const camera = this.#sceneContext.camera;
         const h = this.#sceneContext.domElement.clientHeight || 1;
-        const midR = (this.#planet.radius + this.#layerModel.coreRadius) / 2;
+        const midR = (this.#focusSurfaceRadius() + this.#layerModel.coreRadius) / 2;
 
         const worldPerPx = (2 * this.#state.camDist * Math.tan(deg2rad(camera.fov) / 2)) / h;
         const degLatPerPx = worldPerPx * 180 / Math.PI / midR;

@@ -14,6 +14,7 @@ export class LayerModel
     maxDepth;
     layerThicknesses;
     layerRadii;
+    layerFrac;
     coreRadius;
     depthColors;
     coreColor;
@@ -25,6 +26,7 @@ export class LayerModel
         this.layerThicknesses = this.#deriveThicknesses(planet);
         this.layerRadii = this.#deriveRadii(planet.radius);
         this.coreRadius = this.layerRadii[this.maxDepth];
+        this.layerFrac = this.#deriveLayerFrac(planet.radius);
         this.depthColors = this.#deriveDepthColors(planet.depthColors);
     }
 
@@ -55,6 +57,26 @@ export class LayerModel
         for (let d = 0; d < this.maxDepth; d++)
         {
             out[d + 1] = out[d] - this.layerThicknesses[d];
+        }
+
+        return out;
+    }
+
+    // Fraction of the way from the core (0) to the surface (1) for each layer
+    // boundary. On a displaced (irregular) body the crust column is scaled
+    // between the FIXED core and the displaced surface using these fractions,
+    // so the crust always spans core→surface with no layer inversion and layer
+    // thicknesses track the local crust thickness.
+    //
+    //   frac[0] = 1 (surface) … frac[maxDepth] = 0 (core)
+    #deriveLayerFrac(planetRadius)
+    {
+        const crust = planetRadius - this.coreRadius;
+        const out = new Array(this.maxDepth + 1);
+
+        for (let d = 0; d <= this.maxDepth; d++)
+        {
+            out[d] = crust > 0 ? (this.layerRadii[d] - this.coreRadius) / crust : 0;
         }
 
         return out;

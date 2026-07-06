@@ -20,10 +20,11 @@ export class ModeTransition
     #hud;
     #planet;
     #durationMs;
+    #sliceStartRadius;
 
     #target = new THREE.Vector3();
 
-    constructor(state, sceneContext, clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, behaviour)
+    constructor(state, sceneContext, clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, behaviour, sliceStartRadius)
     {
         this.#state = state;
         this.#sceneContext = sceneContext;
@@ -34,6 +35,7 @@ export class ModeTransition
         this.#hud = hud;
         this.#planet = planet;
         this.#durationMs = behaviour.transition.modeTransitionMs;
+        this.#sliceStartRadius = sliceStartRadius ?? planet.radius;
     }
 
     step(dt)
@@ -52,8 +54,8 @@ export class ModeTransition
         this.#target.lerpVectors(tr.orbit.target, crust.target, e);
         camera.lookAt(this.#target);
 
-        // Sweep the cut open: constant planetRadius (whole body) → 0 (centre).
-        this.#clip.updateCut(this.#planet.radius * (1 - e), true);
+        // Sweep the cut open: constant maxRadius (whole body) → 0 (centre).
+        this.#clip.updateCut(this.#sliceStartRadius * (1 - e), true);
 
         if (tr.dir > 0 && tr.s >= 1)      this.#finish('resource');
         else if (tr.dir < 0 && tr.s <= 0) this.#finish('view');

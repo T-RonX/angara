@@ -10,17 +10,22 @@ export class GoldbergGridLines
 {
     lines;
 
-    constructor(planet, faces)
+    constructor(planet, faces, shapeField)
     {
-        this.lines = this.#build(planet, faces);
+        this.lines = this.#build(planet, faces, shapeField);
         this.lines.visible = false;
     }
 
-    #build(planet, faces)
+    #build(planet, faces, shapeField)
     {
         const { radius, gridColor } = planet;
-        const rr = (radius + 0.05) / radius; // scale unit corners just above the surface
+        const lift = (radius + 0.05) / radius; // nudge just above the surface
         const pts = [];
+
+        // Place each corner at the (possibly displaced) surface radius in its
+        // own direction so the outlines hug an irregular body; a sphere shape
+        // field returns the constant `radius`, identical to before.
+        const cornerR = u => (shapeField ? shapeField.surfaceRadius(u) : radius) * lift;
 
         for (const face of faces)
         {
@@ -30,7 +35,7 @@ export class GoldbergGridLines
             {
                 const a = ring[k];
                 const b = ring[(k + 1) % ring.length];
-                pts.push(a.clone().multiplyScalar(radius * rr), b.clone().multiplyScalar(radius * rr));
+                pts.push(a.clone().multiplyScalar(cornerR(a)), b.clone().multiplyScalar(cornerR(b)));
             }
         }
 

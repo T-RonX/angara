@@ -11,13 +11,79 @@ export const physical = {
     // The planet itself: its size, how finely it is gridded, and how its
     // crust is layered from the surface down to the core.
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // ORIGINAL perfect-sphere planet config. Kept here (commented out) so it
+    // can be re-enabled later — set `shape.type: 'sphere'` on the active config
+    // below for the identical look, or restore this block wholesale.
+    // ------------------------------------------------------------------
+    // planet: {
+    //     radius:   500,            // radius of the body
+    //     cellTopology: 'hexsphere',
+    //     // Hexsphere subdivision frequency (icosahedron edge divisions). The
+    //     // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
+    //     hexFrequency: 16,
+    //     maxDepth: 5,              // number of crust layers (any reasonable number)
+    //
+    //     // Per-layer thickness (length must be >= maxDepth; entries past
+    //     // maxDepth are ignored). Set to null to auto-generate a sensible
+    //     // monotonically-thickening default.
+    //     layerThicknesses: null,
+    //     // Auto-thickness knobs (only used when `layerThicknesses === null`):
+    //     //   thickness(d) = layerThicknessBase + d * layerThicknessGrowth
+    //     layerThicknessBase:   10,
+    //     layerThicknessGrowth: 2,
+    //
+    //     // The "core" sphere shown beneath the deepest crust layer.
+    //     coreColor: 0xc9743a,
+    //     // One colour per depth layer (ex ind0 = surface … deeper). Padded
+    //     // toward `coreColor` automatically when shorter than maxDepth.
+    //     depthColors: [0x6f8b57, 0x8a6d3b, 0x2a2f3a],
+    //
+    //     // RESERVED for future texturing of the VISIBLE layer faces. When
+    //     // these become arrays (one entry per visible layer) the material
+    //     // factory will skin the crust faces with them. Null = the flat
+    //     // `depthColors` look used today.
+    //     layerTextures:    null,   // future: [url | null, …] per visible layer
+    //     layerNormalMaps:  null,   // future: [url | null, …] per visible layer
+    //
+    //     gridColor:  0x0a0e16,
+    //     background: 0x05070d,
+    //     cellGap:    0.0,          // gap between cells (fraction); 0 = touching
+    // },
+
+    // ------------------------------------------------------------------
+    // ACTIVE planet config: an irregular, star-shaped (asteroid-like) body.
+    // The shape is generated DETERMINISTICALLY from `radius` (overall size)
+    // and `shape.seed` — the same size + seed ALWAYS produces the exact same
+    // body (see model/ShapeField.js). This will eventually be delivered by the
+    // backend, so it is plain serialisable data.
+    // ------------------------------------------------------------------
     planet: {
-        radius:   500,            // radius of the body
+        radius:   500,            // overall size / base radius of the body
         cellTopology: 'hexsphere',
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
         // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
         hexFrequency: 16,
         maxDepth: 5,              // number of crust layers (any reasonable number)
+
+        // --------------------------------------------------------------
+        // SHAPE — deterministic radial displacement (star-shaped bodies).
+        //   type 'sphere' → perfect sphere, pixel-identical to the original.
+        //   type 'noise'  → seeded fBm heightfield: R(dir) = radius·(1 + fBm),
+        //                   clamped so the body stays star-shaped (no overhangs).
+        // Same seed ⇒ same body, every time.
+        // --------------------------------------------------------------
+        shape: {
+            type: 'sphere',        // 'sphere' | 'noise'
+            seed: 1337,           // integer; same seed ⇒ identical body
+            octaves: 2,           // fBm octave count
+            baseFrequency: 1.4,   // noise frequency of the first octave
+            lacunarity: 2.0,      // frequency multiplier per octave
+            gain: 0.55,           // amplitude multiplier per octave
+            amplitude: 0.35,      // overall displacement strength (fraction of radius)
+            maxDisplacement: 0.11,// hard clamp on |displacement| (fraction) — keeps it star-shaped
+            axisScale: [1.0, 0.82, 1.15], // optional elongation (still star-shaped)
+        },
 
         // Per-layer thickness (length must be >= maxDepth; entries past
         // maxDepth are ignored). Set to null to auto-generate a sensible
@@ -51,7 +117,12 @@ export const physical = {
     // shell. Every knob is exposed so the look can be retuned per planet.
     // ------------------------------------------------------------------
     atmosphere: {
-        show:        true,
+        // Disabled for the irregular (asteroid) body: the analytic scattering
+        // shell is a perfect sphere, so a displaced surface would poke through
+        // it. Asteroids realistically have no atmosphere anyway. Set back to
+        // `true` (and use a `shape.type:'sphere'` planet) to restore the haze.
+        show:        true,       // was: true
+        // show:        true,
         // Whether the atmosphere shell remains visible while the explorer is in
         // resource mode. The selectable cell shell still needs `selectable`
         // to be enabled for hover / pick / highlight interaction.

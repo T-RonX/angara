@@ -8,6 +8,7 @@ import { GoldbergTraversal } from './goldberg/GoldbergTraversal.js';
 import { GoldbergGridLines } from './goldberg/GoldbergGridLines.js';
 import { CellSliceBuilder } from './goldberg/CellSliceBuilder.js';
 import { WholeCellResourceHighlight } from './goldberg/WholeCellResourceHighlight.js';
+import { ShapeField } from '../model/ShapeField.js';
 
 // ----------------------------------------------------------------------
 // GoldbergTopology — the hexsphere: a Goldberg polyhedron (mostly hexagons +
@@ -26,6 +27,7 @@ export class GoldbergTopology extends CellTopology
     #index;
     #cutStrategy;
     #traversal;
+    #shapeField;
     #fadeMs;
     #horizonCull;
 
@@ -37,8 +39,10 @@ export class GoldbergTopology extends CellTopology
 
         const frequency = physical.planet.hexFrequency ?? 16;
 
+        this.#shapeField = new ShapeField(physical.planet.shape, physical.planet.radius);
+
         this.#grid = new GoldbergGrid(
-            this.#planet, layerModel, physical.atmosphere, atmosphereRadius, frequency,
+            this.#planet, layerModel, physical.atmosphere, atmosphereRadius, frequency, this.#shapeField,
         );
 
         this.#index = new CentroidIndex(this.#grid.surfaceCells);
@@ -51,10 +55,11 @@ export class GoldbergTopology extends CellTopology
     get grid()        { return this.#grid; }
     get cutStrategy() { return this.#cutStrategy; }
     get traversal()   { return this.#traversal; }
+    get shapeField()  { return this.#shapeField; }
 
-    createSurfacePicker()
+    createSurfacePicker(surfaceMesh)
     {
-        return new GoldbergSurfacePicker(this.#planet, this.#index);
+        return new GoldbergSurfacePicker(this.#planet, this.#index, this.#shapeField, surfaceMesh);
     }
 
     createBroadPhase()
@@ -79,7 +84,7 @@ export class GoldbergTopology extends CellTopology
 
     buildGridLines()
     {
-        return new GoldbergGridLines(this.#planet, this.#grid.faces).lines;
+        return new GoldbergGridLines(this.#planet, this.#grid.faces, this.#shapeField).lines;
     }
 
     cellTypeLabel(cell)

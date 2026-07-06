@@ -212,7 +212,7 @@ export class BodyExplorer
             this.#cellGeometry, this.#state,
         );
 
-        const surfacePicker = this.#topology.createSurfacePicker();
+        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
         const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
 
         this.#hover = new HoverController(
@@ -224,7 +224,7 @@ export class BodyExplorer
 
         this.#crustCamera = new CrustCamera(
             this.#scene, this.#clip, this.layerModel, this.#planet,
-            this.#behaviour.camera, this.#behaviour.input, this.#state,
+            this.#behaviour.camera, this.#behaviour.input, this.#state, this.#topology.shapeField,
         );
 
         this.#focus = new FocusController(
@@ -235,6 +235,7 @@ export class BodyExplorer
         this.#transition = new ModeTransition(
             this.#state, this.#scene, this.#clip, this.#crustCamera,
             this.#sliceBuilder, this.#highlights, this.#hud, this.#planet, this.#behaviour,
+            this.#topology.shapeField.maxRadius,
         );
 
         new InputController(
@@ -334,9 +335,9 @@ export class BodyExplorer
         // Enter resource-mode slicing (lon/lat turns on the GPU clip plane;
         // the hexsphere swaps in its whole-cell slice group) but keep the cut
         // fully off-centre so nothing is sliced yet — the body reads whole at
-        // s = 0.
+        // s = 0. Use the shape's max radius so displaced peaks aren't clipped.
         this.#sliceBuilder.enter();
-        this.#clip.updateCut(this.#planet.radius, true);
+        this.#clip.updateCut(this.#topology.shapeField.maxRadius, true);
 
         state.transition.s = 0;
         state.transition.dir = 1;
