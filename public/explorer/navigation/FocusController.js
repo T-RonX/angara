@@ -15,6 +15,7 @@ export class FocusController
     #crustCamera;
     #highlights;
     #hud;
+    #wasMoving = false;
 
     constructor(state, traversal, behaviour, clipController, crustCamera, highlightManager, hud)
     {
@@ -41,7 +42,10 @@ export class FocusController
             const r = this.#traversal.advance(focus, this.#snapEase);
             this.#state.resourceMoving = r.moved;
 
-            if (r.moved) this.#updateResource(r.cutChanged);
+            if (r.moved) this.#updateResource(r.cutChanged, true);
+            else this.#settle();
+
+            this.#wasMoving = r.moved;
 
             return;
         }
@@ -85,20 +89,35 @@ export class FocusController
 
         this.#state.resourceMoving = moved;
 
-        if (moved) this.#updateResource(this.#traversal.cutMoved(lonChanged, latChanged));
+        if (moved) this.#updateResource(this.#traversal.cutMoved(lonChanged, latChanged), true);
+        else this.#settle();
+
+        this.#wasMoving = moved;
     }
 
     // Rebuild the cut (only when it actually moved), re-aim the crust camera
-    // and refresh the focus read-out.
-    #updateResource(cutChanged)
+    // and refresh the focus read-out. `throttle` caps the expensive geometry
+    // rebuild to a fixed rate while continuously moving; the plane/camera
+    // itself still updates every frame so aiming never lags.
+    #updateResource(cutChanged, throttle = false)
     {
         if (cutChanged || this.#clip.cutKey === null)
         {
-            this.#clip.updateCut();
-            this.#highlights.rebuildResourceSelection();
+            const built = this.#clip.updateCut(0, false, { throttle });
+
+            if (built) this.#highlights.rebuildResourceSelection();
         }
 
         this.#crustCamera.positionCrustCamera();
         this.#hud.updateFocusReadout(this.#state.focus);
+    }
+
+    // Catch up any rebuild deferred by throttling once motion stops, so the
+    // geometry always settles to the exact final cut with no stale state.
+    #settle()
+    {
+        if (!this.#wasMoving) return;
+
+        if (this.#clip.flush()) this.#highlights.rebuildResourceSelection();
     }
 }

@@ -207,7 +207,7 @@ export class BodyExplorer
         );
 
         const surfacePicker = this.#topology.createSurfacePicker();
-        const cliffPicker = new CliffPicker(this.#sliceBuilder);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
 
         this.#hover = new HoverController(
             this.#scene, this.#state, surfacePicker, cliffPicker, this.#highlights, this.#hud,

@@ -34,7 +34,7 @@ export const behaviour = {
         wheelZoomOutFactor: 1.1,
         // Per-frame fraction of the remaining distance eased toward the
         // snapped target cell. Larger = snappier, smaller = more gliding.
-        focusSnapEase:   0.22,
+        focusSnapEase:   0.1,
     },
 
     // Smooth fly-in / fly-out when entering or leaving resource mode.
@@ -46,6 +46,6 @@ export const behaviour = {
     slice: {
         // Duration (ms) of the temporal fade when the advancing cut reveals a
         // new row of whole cells (or hides a leaving one). 0 disables the fade.
-        cellFadeMs: 0,
+        cellFadeMs: 200,
     },
 };

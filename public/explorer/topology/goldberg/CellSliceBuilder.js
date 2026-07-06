@@ -28,12 +28,16 @@ import * as THREE from 'three';
 // is a solid stack of whole cells over the kept hemisphere, so no layered
 // cross-section backing is needed.
 //
-// FADE — newly revealed / leaving cells fade independently via a per-cell
-// reveal time: each fading cell records an absolute start time `t0` and a
-// direction, and a single global `uTime` uniform drives the alpha, so every
-// in-flight cell keeps animating smoothly no matter how many rebuilds a
-// continuous advance triggers. A cell folds into the opaque buckets only once
-// its own fade-in completes.
+// FADE — cheap BATCH fade (not per-cell independent timing — that used an
+// alphaHash custom shader with per-vertex time attributes and was very
+// expensive to keep rebuilding on every throttled advance). Instead, all
+// cells that change membership in one rebuild form a single fade batch per
+// direction (added cells fade in, removed cells fade out), rendered with a
+// plain cloned material per depth whose `.opacity` is animated directly each
+// frame — no custom shader, no per-vertex attributes. If a new membership
+// change arrives before the current batch finishes, the in-flight batch is
+// snapped to complete first (a rare, brief pop during very fast direction
+// changes) rather than stacking independent per-cell clocks.
 //
 // SliceBuilder contract: build(slab), capMeshes[], clearCaps(), enter(), exit().
 // ----------------------------------------------------------------------
@@ -56,19 +60,27 @@ export class CellSliceBuilder
     #opaqueBuckets = new Map();
     // Transient meshes rebuilt each change: atmosphere pick shell + cross-section.
     #staticTransient = [];
-    // Transient reveal-fade meshes (per-cell reveal-time driven).
+    // Transient reveal-fade meshes for all in-flight batches (see #fadeBatches).
     #fadeMeshList = [];
 
-    // Per-cell reveal fade — see build()/tick().
-    // #fading: cellKey → { cell, depth, dir (+1 in / -1 out), t0 (seconds) }.
-    #fading = new Map();
+    // In-flight fade batches — a NEW list entry per membership change, each:
+    // { t0, entries: [{ dir (+1 in / -1 out), material, mesh }] }. Concurrent
+    // batches are supported (not just one at a time): with the drag-rebuild
+    // throttle (~55ms) shorter than a typical fadeDur (hundreds of ms), a
+    // continuous advance starts a new batch well before the previous one
+    // finishes, so cutting the old one short on every new build would make
+    // cells pop instead of fade. Each batch owns its own small (uncached)
+    // material clones so concurrent batches touching the same depth never
+    // fight over one shared opacity value. See build()/tick().
+    #fadeBatches = [];
     #lastKeys = null;      // membership Set from the previous build
     #lastByDepth = null;   // membership cells (per depth) from the previous build
     #clock = 0;            // monotonic seconds, drives the fade
     #fadeDur = 0.26;
-    #timeUniform = { value: 0 };
-    #durUniform = { value: 0.26 };
-    #fadeMaterials = [];
+    // Cells (by `${depth}:${cellIndex}` key) currently fading in across ALL
+    // active batches — excluded from the opaque set until their own batch
+    // finishes.
+    #fadingInKeys = new Set();
 
     constructor(ctx)
     {
@@ -100,7 +112,6 @@ export class CellSliceBuilder
         });
 
         this.#fadeDur = Math.max(0.001, (ctx.fadeMs ?? 260) / 1000);
-        this.#durUniform.value = this.#fadeDur;
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -115,7 +126,8 @@ export class CellSliceBuilder
 
         this.#lastKeys = null;
         this.#lastByDepth = null;
-        this.#fading.clear();
+        this.#fadeBatches = [];
+        this.#fadingInKeys.clear();
         this.#disposeAll();
         this.#lastSig = null; // force a rebuild on the next updateCut
     }
@@ -123,7 +135,8 @@ export class CellSliceBuilder
     exit()
     {
         this.sliceGroup.visible = false;
-        this.#fading.clear();
+        this.#fadeBatches = [];
+        this.#fadingInKeys.clear();
         this.#disposeAll();
 
         this.#bodyMesh.core.material.clippingPlanes = [];
@@ -144,11 +157,14 @@ export class CellSliceBuilder
     // transition sweep does. Per-frame membership collection is O(cells) dot
     // products with no geometry work, so it stays cheap.
     //
-    // On a steady advance the reveal is animated per-cell: shared cells stay in
-    // the persistent opaque buckets, newly included cells fade 0→1 and leaving
-    // cells fade 1→0, each on its own clock (see tick()). During the transition
-    // fly-through (slab=true) the far cull is disabled and the set changes every
-    // frame, so it rebuilds directly with no fade.
+    // On a steady advance the reveal is animated via one NEW fade batch per
+    // rebuild (see header comment) — multiple batches can be in flight at
+    // once. `#fadingInKeys` tracks every cell currently fading in across ALL
+    // active batches so the opaque set always excludes them (a cell only
+    // folds into the opaque buckets once ITS OWN batch finishes, not just
+    // because a later rebuild happened to include it). During the transition
+    // fly-through (slab=true) the far cull is disabled and the set changes
+    // every frame, so it rebuilds directly with no fade.
     build(slab = false)
     {
         const plane = this.#clip.plane;
@@ -165,10 +181,8 @@ export class CellSliceBuilder
         // is disabled; otherwise the whole revealed set would fade at once.
         if (slab || this.#fadeDur <= 0.001)
         {
-            this.#fading.clear();
-            this.#clearFadeMeshes();
+            this.#retireAllBatches();
             this.#syncOpaque(inc.byDepth);
-            this.#rebuildFadeMeshes();
             this.#rebuildStaticTransient(inc.atmo, n, k);
             this.#lastKeys = inc.keys;
             this.#lastByDepth = inc.byDepth;
@@ -177,119 +191,148 @@ export class CellSliceBuilder
             return;
         }
 
-        const now = this.#clock;
-        const prev = this.#lastKeys ?? new Set();
+        const prevKeys = this.#lastKeys ?? new Set();
+        const addedByDepth = [];
+        const removedByDepth = [];
+        const newAddedKeys = [];
+        let hasAdded = false;
+        let hasRemoved = false;
 
-        // Added cells (in the new set, not the previous) start fading in.
         for (let d = 0; d < inc.byDepth.length; d++)
         {
+            const arr = [];
+
             for (const cell of inc.byDepth[d])
             {
-                const key = `${d}:${cell.cellIndex}`;
-
-                if (!prev.has(key)) this.#startFade(key, cell, d, 1, now);
+                if (!prevKeys.has(`${d}:${cell.cellIndex}`))
+                {
+                    arr.push(cell);
+                    hasAdded = true;
+                }
             }
+
+            addedByDepth[d] = arr;
         }
 
-        // Removed cells (in the previous set, not the new) start fading out.
         if (this.#lastByDepth)
         {
             for (let d = 0; d < this.#lastByDepth.length; d++)
             {
+                const arr = [];
+
                 for (const cell of this.#lastByDepth[d])
                 {
-                    const key = `${d}:${cell.cellIndex}`;
-
-                    if (!inc.keys.has(key)) this.#startFade(key, cell, d, -1, now);
+                    if (!inc.keys.has(`${d}:${cell.cellIndex}`))
+                    {
+                        arr.push(cell);
+                        hasRemoved = true;
+                    }
                 }
+
+                removedByDepth[d] = arr;
             }
         }
 
+        // Register the newly-added cells as "fading in" BEFORE computing the
+        // opaque set, so they (and any still-fading-in cells from earlier,
+        // still-active batches) are excluded until their own batch completes.
+        for (let d = 0; d < addedByDepth.length; d++)
+        {
+            for (const cell of addedByDepth[d])
+            {
+                const key = `${d}:${cell.cellIndex}`;
+                this.#fadingInKeys.add(key);
+                newAddedKeys.push(key);
+            }
+        }
+
+        this.#syncOpaque(this.#opaqueExcludingFadingIn(inc.byDepth));
+        this.#rebuildStaticTransient(inc.atmo, n, k);
         this.#lastKeys = inc.keys;
         this.#lastByDepth = inc.byDepth;
 
-        // Opaque = included cells that are not currently fading IN.
-        this.#syncOpaque(this.#opaqueSet(inc.byDepth));
-        this.#rebuildFadeMeshes();
-        this.#rebuildStaticTransient(inc.atmo, n, k);
+        if (hasAdded || hasRemoved)
+        {
+            const entries = this.#buildFadeBatchMeshes(addedByDepth, removedByDepth);
+            this.#fadeBatches.push({ t0: this.#clock, entries, addedKeys: newAddedKeys });
+        }
+
         this.#refreshCapMeshes();
     }
 
-    // Register (or re-target) a per-cell fade. Re-targeting a cell that is
-    // already fading the other way flips it while preserving its current alpha,
-    // so a cell that reappears mid-fade never snaps.
-    #startFade(key, cell, depth, dir, now)
-    {
-        const existing = this.#fading.get(key);
-
-        if (existing)
-        {
-            if (existing.dir === dir) return;
-
-            const p = Math.min(1, Math.max(0, (now - existing.t0) / this.#fadeDur));
-            const alpha = existing.dir < 0 ? 1 - p : p;
-            const targetP = dir > 0 ? alpha : 1 - alpha;
-            existing.dir = dir;
-            existing.t0 = now - targetP * this.#fadeDur;
-
-            return;
-        }
-
-        this.#fading.set(key, { cell, depth, dir, t0: now });
-    }
-
-    // Included cells minus anything currently in-flight. Fading cells live in
-    // the fade meshes only so they are not rendered twice.
-    #opaqueSet(byDepth)
+    // The opaque set is the current membership minus any cell still fading in
+    // (from this build's new batch or any earlier still-active batch).
+    #opaqueExcludingFadingIn(byDepth)
     {
         const out = [];
 
         for (let d = 0; d < byDepth.length; d++)
         {
-            const arr = [];
-
-            for (const cell of byDepth[d])
-            {
-                const f = this.#fading.get(`${d}:${cell.cellIndex}`);
-
-                if (f) continue;
-
-                arr.push(cell);
-            }
-
-            out[d] = arr;
+            out[d] = byDepth[d].filter(cell => !this.#fadingInKeys.has(`${d}:${cell.cellIndex}`));
         }
 
         return out;
     }
 
-    // Advance the per-cell reveal fade; called once per frame from the animate
-    // loop. Only the global uTime uniform updates each frame — the fade meshes
-    // are rebuilt solely when a fade completes (a cell folds into opaque or a
-    // leaving cell is dropped).
+    // Advance every in-flight fade batch; called once per frame from the
+    // animate loop. Only material `.opacity` values update most frames — the
+    // fade meshes themselves are rebuilt only when a batch starts or a batch
+    // finishes (folding its cells into the opaque buckets).
     tick(dt)
     {
         this.#clock += dt;
-        this.#timeUniform.value = this.#clock;
 
-        if (this.#fading.size === 0) return;
+        if (this.#fadeBatches.length === 0) return;
 
-        let changed = false;
+        let completed = false;
 
-        for (const [key, f] of this.#fading)
+        for (let i = this.#fadeBatches.length - 1; i >= 0; i--)
         {
-            if (this.#clock - f.t0 >= this.#fadeDur)
+            const batch = this.#fadeBatches[i];
+            const p = Math.min(1, (this.#clock - batch.t0) / this.#fadeDur);
+
+            for (const e of batch.entries) e.material.opacity = e.dir > 0 ? p : (1 - p);
+
+            if (p >= 1)
             {
-                this.#fading.delete(key);
-                changed = true;
+                this.#retireBatch(batch);
+                this.#fadeBatches.splice(i, 1);
+                completed = true;
             }
         }
 
-        if (!changed) return;
+        if (completed && this.#lastByDepth)
+        {
+            this.#syncOpaque(this.#opaqueExcludingFadingIn(this.#lastByDepth));
+            this.#refreshCapMeshes();
+        }
+    }
 
-        this.#syncOpaque(this.#opaqueSet(this.#lastByDepth ?? []));
-        this.#rebuildFadeMeshes();
-        this.#refreshCapMeshes();
+    // Dispose one finished batch's meshes/materials and drop its cells from
+    // the "fading in" exclusion set so they can fold into the opaque buckets.
+    #retireBatch(batch)
+    {
+        for (const key of batch.addedKeys) this.#fadingInKeys.delete(key);
+
+        for (const e of batch.entries)
+        {
+            this.sliceGroup.remove(e.mesh);
+            e.mesh.geometry.dispose();
+            e.material.dispose();
+
+            const idx = this.#fadeMeshList.indexOf(e.mesh);
+
+            if (idx !== -1) this.#fadeMeshList.splice(idx, 1);
+        }
+    }
+
+    // Retire every in-flight batch immediately (hard rebuild / mode exit).
+    #retireAllBatches()
+    {
+        for (const batch of this.#fadeBatches) this.#retireBatch(batch);
+
+        this.#fadeBatches = [];
+        this.#fadingInKeys.clear();
     }
 
     // Gather the included cells (per depth + atmosphere) and a cheap membership
@@ -433,117 +476,78 @@ export class CellSliceBuilder
         this.#emitCoreDisc(n, k);
     }
 
-    // Rebuild the per-cell reveal-fade meshes from the current #fading registry
-    // (one merged mesh per depth). Each vertex carries the cell's absolute fade
-    // start time `aT0` and direction `aDir`; a single global uTime uniform then
-    // animates every in-flight cell independently (see #fadeMaterial / tick()).
-    #rebuildFadeMeshes()
+    // Build the (few) transient meshes for the current fade batch: one merged
+    // Build the (few) transient meshes for one fade batch: one merged mesh
+    // per depth for the added (fading-in) cells and one for the removed
+    // (fading-out) cells, each with its OWN cloned material (not cached/
+    // shared across batches — concurrent batches touching the same depth
+    // must never fight over one shared opacity value). Returns the batch's
+    // entry list; only `.opacity` changes afterward, every frame, via tick().
+    #buildFadeBatchMeshes(addedByDepth, removedByDepth)
     {
-        this.#clearFadeMeshes();
+        const entries = [];
 
-        if (this.#fading.size === 0) return;
-
-        const byDepth = new Map();
-
-        for (const f of this.#fading.values())
+        for (let d = 0; d < addedByDepth.length; d++)
         {
-            let list = byDepth.get(f.depth);
+            if (!addedByDepth[d]?.length) continue;
 
-            if (!list)
-            {
-                list = [];
-                byDepth.set(f.depth, list);
-            }
-
-            list.push(f);
+            const material = this.#fadeMaterialClone(d, 0);
+            const mesh = this.#emitBatchMesh(addedByDepth[d], material);
+            entries.push({ dir: 1, material, mesh });
         }
 
-        for (const [depth, list] of byDepth) this.#emitFadeMesh(list, depth);
+        for (let d = 0; d < removedByDepth.length; d++)
+        {
+            if (!removedByDepth[d]?.length) continue;
+
+            const material = this.#fadeMaterialClone(d, 1);
+            const mesh = this.#emitBatchMesh(removedByDepth[d], material);
+            entries.push({ dir: -1, material, mesh });
+        }
+
+        return entries;
     }
 
-    #emitFadeMesh(list, depth)
+    #emitBatchMesh(cells, material)
     {
         const positions = [];
         const normals = [];
         const indices = [];
-        const startAttr = [];
-        const dirAttr = [];
         const faceToCell = [];
 
-        for (const f of list)
+        for (const cell of cells)
         {
-            const vStart = positions.length / 3;
             const triStart = indices.length / 3;
-            this.#geometryFactory.appendCell(f.cell, positions, normals, indices);
-
-            for (let v = vStart; v < positions.length / 3; v++)
-            {
-                startAttr.push(f.t0);
-                dirAttr.push(f.dir);
-            }
+            this.#geometryFactory.appendCell(cell, positions, normals, indices);
 
             for (let t = triStart; t < indices.length / 3; t++)
             {
-                faceToCell.push(f.cell);
+                faceToCell.push(cell);
             }
         }
 
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-        geo.setAttribute('aT0', new THREE.Float32BufferAttribute(startAttr, 1));
-        geo.setAttribute('aDir', new THREE.Float32BufferAttribute(dirAttr, 1));
-        geo.setIndex(indices);
-        geo.computeBoundingSphere();
-
-        const mesh = new THREE.Mesh(geo, this.#fadeMaterial(depth));
+        const mesh = this.#mesh(positions, normals, indices, material);
         mesh.userData.faceToCell = faceToCell;
-        mesh.matrixAutoUpdate = false;
-        mesh.updateMatrix();
 
         this.sliceGroup.add(mesh);
         this.#fadeMeshList.push(mesh);
+
+        return mesh;
     }
 
-    // An order-INDEPENDENT-transparency clone of the lit depth material whose
-    // per-vertex alpha ramps from the cell's absolute reveal time `aT0` over
-    // `uDur` seconds, driven by the shared uTime uniform. aDir flips the ramp
-    // for leaving cells. Uses alphaHash (stochastic dithered alpha that WRITES
-    // depth) instead of blended transparency, so overlapping staircase cells
-    // resolve through the depth buffer and never flicker by draw order.
-    #fadeMaterial(depth)
+    // A plain transparent clone of the lit depth material, freshly created per
+    // batch (uncached — each batch owns its own material instances so
+    // concurrent batches never share/overwrite one opacity value). No custom
+    // shader/derivatives/per-vertex attributes: `.opacity` is just a uniform
+    // updated directly every frame. `depthWrite` stays on (like the old
+    // alphaHash approach) so overlapping staircase cells still resolve
+    // through the depth buffer without draw-order flicker.
+    #fadeMaterialClone(depth, initialOpacity)
     {
-        if (this.#fadeMaterials[depth]) return this.#fadeMaterials[depth];
-
         const mat = this.#materials.depthMaterials[depth].clone();
-        mat.alphaHash = true;
+        mat.transparent = true;
         mat.depthWrite = true;
-        // Distinct program from the opaque depth material in the shader cache.
-        mat.customProgramCacheKey = () => 'cellfade2';
-
-        const uTime = this.#timeUniform;
-        const uDur = this.#durUniform;
-
-        mat.onBeforeCompile = (shader) =>
-        {
-            shader.uniforms.uTime = uTime;
-            shader.uniforms.uDur = uDur;
-
-            shader.vertexShader = 'attribute float aT0;\nattribute float aDir;\nuniform float uTime;\nuniform float uDur;\nvarying float vFadeA;\n'
-                + shader.vertexShader.replace(
-                    'void main() {',
-                    'void main() {\n  float _p = clamp((uTime - aT0) / max(uDur, 0.0001), 0.0, 1.0);\n  vFadeA = (aDir < 0.0) ? (1.0 - _p) : _p;',
-                );
-
-            shader.fragmentShader = 'varying float vFadeA;\n'
-                + shader.fragmentShader.replace(
-                    'vec4 diffuseColor = vec4( diffuse, opacity );',
-                    'vec4 diffuseColor = vec4( diffuse, opacity * clamp(vFadeA, 0.0, 1.0) );',
-                );
-        };
-
-        mat.needsUpdate = true;
-        this.#fadeMaterials[depth] = mat;
+        mat.opacity = initialOpacity;
 
         return mat;
     }
@@ -663,17 +667,6 @@ export class CellSliceBuilder
         }
     }
 
-    #clearFadeMeshes()
-    {
-        for (const m of this.#fadeMeshList)
-        {
-            this.sliceGroup.remove(m);
-            m.geometry.dispose();
-        }
-
-        this.#fadeMeshList.length = 0;
-    }
-
     #clearStaticTransient()
     {
         for (const m of this.#staticTransient)
@@ -690,8 +683,7 @@ export class CellSliceBuilder
         for (const [key, entry] of this.#opaqueBuckets) this.#disposeBucket(key, entry);
 
         this.#opaqueBuckets.clear();
-        this.#fading.clear();
-        this.#clearFadeMeshes();
+        this.#retireAllBatches();
         this.#clearStaticTransient();
 
         // Safety: drop any stray children (should be none).

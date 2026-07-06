@@ -3,14 +3,22 @@
 // cross-section geometry that isn't a sphere, so there's no closed-form
 // shortcut: raycast the (few) merged cap meshes and map the hit triangle
 // back to its cell via the faceToCell table.
+//
+// The solid core sphere sits in front of some cap geometry from the crust
+// camera's point of view (cells whose cap face is farther along the ray than
+// the core's own surface), so the core mesh is raycast alongside the caps and
+// any cap hit behind it is rejected — otherwise cells hidden behind the core
+// would still be selectable/hoverable.
 // ----------------------------------------------------------------------
 export class CliffPicker
 {
     #sliceBuilder;
+    #coreMesh;
 
-    constructor(sliceBuilder)
+    constructor(sliceBuilder, coreMesh)
     {
         this.#sliceBuilder = sliceBuilder;
+        this.#coreMesh = coreMesh;
     }
 
     pick(raycaster)
@@ -20,6 +28,17 @@ export class CliffPicker
         if (!hit || !hit.object.userData.faceToCell)
         {
             return null;
+        }
+
+        // Reject cap hits that are occluded by the (always-opaque) core.
+        if (this.#coreMesh && this.#coreMesh.visible)
+        {
+            const coreHit = raycaster.intersectObject(this.#coreMesh, false)[0];
+
+            if (coreHit && coreHit.distance < hit.distance)
+            {
+                return null;
+            }
         }
 
         return hit.object.userData.faceToCell[hit.faceIndex] ?? null;
