@@ -21,6 +21,11 @@ export class SunOcclusion
         this.#planetRadius = planetRadius;
     }
 
+    setRadius(radius)
+    {
+        this.#planetRadius = radius;
+    }
+
     measure(camera, sunWorldPos, sunSize)
     {
         this.#camToBody.set(0, 0, 0).sub(camera.position);

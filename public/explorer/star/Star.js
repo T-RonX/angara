@@ -61,6 +61,11 @@ export class Star
         this.#visual.place(this.direction, this.#skyDistance);
     }
 
+    setOcclusionRadius(radius)
+    {
+        this.#occlusion.setRadius(radius);
+    }
+
     // Per-frame: animate the disc, measure occlusion and place the flare.
     update(now, camera)
     {

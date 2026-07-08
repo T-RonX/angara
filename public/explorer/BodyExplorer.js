@@ -200,6 +200,7 @@ export class BodyExplorer
         this.#bodyMesh     = body.bodyMesh;
         this.#clip         = body.clip;
         this.#sliceBuilder = body.sliceBuilder;
+        this.#starSystem?.setOcclusionRadius(body.planet.radius);
     }
 
     #buildScene(rootElement)

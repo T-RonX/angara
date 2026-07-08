@@ -30,6 +30,14 @@ export class StarSystem
         return this.stars.length;
     }
 
+    setOcclusionRadius(radius)
+    {
+        for (const star of this.stars)
+        {
+            star.setOcclusionRadius(radius);
+        }
+    }
+
     // Per-sun energy (own intensity), for the atmosphere scattering pass.
     energies()
     {
