@@ -19,6 +19,15 @@ export class CliffPicker
     {
         this.#sliceBuilder = sliceBuilder;
         this.#coreMesh = coreMesh;
+
+        // The core sphere is raycast every pointer-move frame for occlusion
+        // rejection; give it a BVH too so that test is O(log n) rather than a
+        // brute-force scan over the full sphere's triangles.
+        const geo = coreMesh?.geometry;
+
+        // `indirect: true` keeps the geometry index (and reported faceIndex)
+        // in original order — required so faceToCell mapping stays correct.
+        if (geo && geo.computeBoundsTree && !geo.boundsTree) geo.computeBoundsTree({ indirect: true });
     }
 
     pick(raycaster)

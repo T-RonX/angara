@@ -650,6 +650,18 @@ export class CellSliceBuilder
         geo.setIndex(indices);
         geo.computeBoundingSphere();
 
+        // Accelerate resource-mode picking: every merged pick mesh (opaque
+        // buckets, atmosphere shell, fade batches) is raycast every frame the
+        // pointer moves. A BVH turns that from a brute-force triangle scan into
+        // an O(log n) traversal. `indirect: true` is REQUIRED here: the default
+        // build reorders the geometry index in place and reports the reordered
+        // faceIndex, which would break the `faceToCell[hit.faceIndex]` mapping
+        // (picks a consistently-wrong cell). Indirect mode keeps the index
+        // untouched and maps faceIndex back to the original triangle order. The
+        // tree is owned by the geometry, so it is dropped together with it on
+        // dispose (no separate teardown needed).
+        if (geo.computeBoundsTree) geo.computeBoundsTree({ indirect: true });
+
         const mesh = new THREE.Mesh(geo, material);
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
@@ -678,8 +690,10 @@ export class CellSliceBuilder
         if (v <= 1e-8) return;
 
         const discR = Math.sqrt(v);
+        const discGeo = new THREE.CircleGeometry(discR, 96);
+        if (discGeo.computeBoundsTree) discGeo.computeBoundsTree({ indirect: true });
         const disc = new THREE.Mesh(
-            new THREE.CircleGeometry(discR, 96),
+            discGeo,
             this.#materials.coreCapMaterial,
         );
         disc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);

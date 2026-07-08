@@ -24,6 +24,14 @@ export class GoldbergSurfacePicker
         this.#index = centroidIndex;
         this.#shapeField = shapeField;
         this.#surfaceMesh = surfaceMesh ?? null;
+
+        // Displaced bodies fall back to raycasting the merged surface mesh; a
+        // BVH keeps that O(log n) instead of scanning every surface triangle.
+        const geo = this.#surfaceMesh?.geometry;
+
+        // `indirect: true` keeps the geometry index (and reported faceIndex)
+        // in original order — required so faceToCell mapping stays correct.
+        if (geo && geo.computeBoundsTree && !geo.boundsTree) geo.computeBoundsTree({ indirect: true });
     }
 
     pick(raycaster)
