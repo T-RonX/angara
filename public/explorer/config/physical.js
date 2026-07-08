@@ -147,6 +147,95 @@ export const physical = {
                     ascendingNodeDeg: 32
                 },
             },
+            {
+                id: 'satellite-1',
+                name: 'Ferros',
+                cellTopology: 'hexsphere',
+                hexFrequency: 20,
+                maxDepth: 3,
+                shape: {
+                    type: 'noise',
+                    seed: 9876,
+                    octaves: 3,
+                    baseFrequency: 2.1,
+                    lacunarity: 2.2,
+                    gain: 0.48,
+                    amplitude: 0.40,
+                    maxDisplacement: 0.16
+                },
+                layerThicknesses: null,
+                layerThicknessBase: 1,
+                layerThicknessGrowth: 1.3,
+                coreColor: 0x7a6b4a,
+                depthColors: [0xa0826d, 0x6b5a47, 0x4a3f2f],
+                gridColor: 0x0a0e16,
+                background: 0x05070d,
+                cellGap: 0.0,
+
+                atmosphere: {
+                    show: false,
+                },
+
+                orbit: {
+                    semiMajorAxis: 4500,
+                    eccentricity: 0.05,
+                    periodSec: 1200,
+                    phaseDeg: 25,
+                    inclinationDeg: 8,
+                    ascendingNodeDeg: 78
+                },
+            },
+            {
+                id: 'satellite-2',
+                name: 'Glacios',
+                cellTopology: 'hexsphere',
+                hexFrequency: 24,
+                maxDepth: 3,
+                shape: {
+                    type: 'sphere',
+                    seed: 1111,
+                    octaves: 1,
+                    baseFrequency: 0.5,
+                    lacunarity: 1.0,
+                    gain: 0.0,
+                    amplitude: 0.0,
+                    maxDisplacement: 0.0
+                },
+                layerThicknesses: null,
+                layerThicknessBase: 1.2,
+                layerThicknessGrowth: 1.4,
+                coreColor: 0x4a5f8a,
+                depthColors: [0xe8f0ff, 0xc5deff, 0x9abeff],
+                gridColor: 0x0a0e16,
+                background: 0x05070d,
+                cellGap: 0.0,
+
+                atmosphere: {
+                    show:        true,
+                    showInResourceMode: true,
+                    selectable:  true,
+                    thickness:   0.038,
+                    sunIntensity: 0.80,
+                    opacity:     0.85,
+                    baseColor:      [0.88, 0.93, 1.2],
+                    rayleighCoeff:  [0.24, 0.26, 0.30],
+                    rayleighScaleFrac: 0.32,
+                    mieScaleFrac:      0.14,
+                    mieCoeff:    0.25,
+                    mieG:        0.68,
+                    viewSteps:   12,
+                    lightSteps:  6,
+                },
+
+                orbit: {
+                    semiMajorAxis: 9000,
+                    eccentricity: 0.32,
+                    periodSec: 3000,
+                    phaseDeg: 210,
+                    inclinationDeg: 22,
+                    ascendingNodeDeg: 145
+                },
+            },
         ],
     },
 

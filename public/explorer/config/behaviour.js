@@ -52,8 +52,8 @@ export const behaviour = {
     // is swapped for a cheap low-poly impostor sphere — at that apparent size
     // the per-cell detail and the shape displacement are sub-pixel anyway.
     lod: {
-        enabled: true,
-        impostorBelowAngular: 0.02,   // ~1.1° angular radius
+        enabled: false,
+        impostorBelowAngular: 0.008,  // ~0.46° angular radius
         hysteresis: 1.35,             // must grow 35% past the threshold to go back to full
         impostorSegments: 24,
     },
