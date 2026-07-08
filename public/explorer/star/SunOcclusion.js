@@ -12,50 +12,68 @@ import { discOverlapArea } from '../core/MathUtils.js';
 // ----------------------------------------------------------------------
 export class SunOcclusion
 {
-    #planetRadius;
+    #bodies = [];
     #camToBody = new THREE.Vector3();
     #camToSun  = new THREE.Vector3();
 
-    constructor(planetRadius)
+    constructor(bodies = [])
     {
-        this.#planetRadius = planetRadius;
+        this.#bodies = bodies;
     }
 
-    setRadius(radius)
+    setBodies(bodies)
     {
-        this.#planetRadius = radius;
+        this.#bodies = bodies;
     }
 
     measure(camera, sunWorldPos, sunSize)
     {
-        this.#camToBody.set(0, 0, 0).sub(camera.position);
-        const dBody = this.#camToBody.length();
-
-        if (dBody <= this.#planetRadius)
-        {
-            // Camera inside the body — pathological; treat as fully covered.
-            return 0;
-        }
-
         this.#camToSun.copy(sunWorldPos).sub(camera.position);
         const dSun = this.#camToSun.length();
 
-        // A sun closer than the body can't be occluded by it.
-        if (dSun <= dBody) return 1;
+        if (dSun <= 0) return 0;
 
-        const aBody = Math.asin(this.#planetRadius / dBody);
-        const aSun  = Math.asin(Math.min(1, sunSize / dSun));
+        let bestVisibility = 1;
 
-        const cosSep = THREE.MathUtils.clamp(
-            this.#camToBody.dot(this.#camToSun) / (dBody * dSun),
-            -1, 1,
-        );
-        const sep = Math.acos(cosSep);
+        for (const body of this.#bodies)
+        {
+            const radius = body?.radius ?? body?.planet?.radius ?? 0;
+            const position = body?.position ?? body?.worldPosition ?? null;
 
-        const overlap = discOverlapArea(aBody, aSun, sep);
-        const sunArea = Math.PI * aSun * aSun;
+            if (radius <= 0 || !position) continue;
 
-        return Math.max(0, 1 - overlap / sunArea);
+            this.#camToBody.copy(position).sub(camera.position);
+            const dBody = this.#camToBody.length();
+
+            if (dBody <= radius)
+            {
+                // Camera inside this body — pathological; treat as fully covered.
+                return 0;
+            }
+
+            // A sun closer than the body can't be occluded by it.
+            if (dSun <= dBody) continue;
+
+            const aBody = Math.asin(Math.min(1, radius / dBody));
+            const aSun  = Math.asin(Math.min(1, sunSize / dSun));
+
+            const cosSep = THREE.MathUtils.clamp(
+                this.#camToBody.dot(this.#camToSun) / (dBody * dSun),
+                -1, 1,
+            );
+            const sep = Math.acos(cosSep);
+
+            const overlap = discOverlapArea(aBody, aSun, sep);
+            const sunArea = Math.PI * aSun * aSun;
+            const visibility = Math.max(0, 1 - overlap / sunArea);
+
+            if (visibility < bestVisibility)
+            {
+                bestVisibility = visibility;
+            }
+        }
+
+        return bestVisibility;
     }
 }
 

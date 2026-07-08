@@ -200,7 +200,6 @@ export class BodyExplorer
         this.#bodyMesh     = body.bodyMesh;
         this.#clip         = body.clip;
         this.#sliceBuilder = body.sliceBuilder;
-        this.#starSystem?.setOcclusionRadius(body.planet.radius);
     }
 
     #buildScene(rootElement)
@@ -237,7 +236,6 @@ export class BodyExplorer
         this.#skyAnchor = new SkyAnchor(scene);
 
         this.#starSystem = new StarSystem(scene, this.#skyAnchor, this.#physical.stars, {
-            planetRadius: this.#planet.radius,
             skyDistance,
         });
 
@@ -559,6 +557,10 @@ export class BodyExplorer
         this.#hud.updateCompass(this.#scene.camera);
 
         // Suns: update each sun's disc / flare / occlusion.
+        this.#starSystem.setOcclusionBodies(this.#registry.bodies.map(body => ({
+            radius: body.planet.radius,
+            position: body.group.getWorldPosition(new THREE.Vector3()),
+        })));
         this.#starSystem.update(now, this.#scene.camera);
 
         // Per-body scattering: position + (throttled) render each visible haze

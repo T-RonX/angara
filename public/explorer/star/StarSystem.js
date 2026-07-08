@@ -14,11 +14,11 @@ export class StarSystem
     directions = [];
     colors = [];
 
-    constructor(scene, skyAnchor, starConfigs, { planetRadius, skyDistance })
+    constructor(scene, skyAnchor, starConfigs, { skyDistance })
     {
         for (const cfg of starConfigs)
         {
-            const star = new Star(scene, skyAnchor, cfg, { planetRadius, skyDistance });
+            const star = new Star(scene, skyAnchor, cfg, { skyDistance });
             this.stars.push(star);
             this.directions.push(star.direction);
             this.colors.push(star.colorRGB);
@@ -30,11 +30,11 @@ export class StarSystem
         return this.stars.length;
     }
 
-    setOcclusionRadius(radius)
+    setOcclusionBodies(bodies)
     {
         for (const star of this.stars)
         {
-            star.setOcclusionRadius(radius);
+            star.setOcclusionBodies(bodies);
         }
     }
 

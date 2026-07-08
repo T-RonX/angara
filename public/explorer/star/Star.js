@@ -29,7 +29,7 @@ export class Star
     // EMA-smoothed visible fraction of the disc (0 = covered, 1 = clear).
     #visibility = 1;
 
-    constructor(scene, skyAnchor, starConfig, { planetRadius, skyDistance })
+    constructor(scene, skyAnchor, starConfig, { skyDistance })
     {
         // Copy the config onto the instance so the HUD can mutate az/el/
         // intensity and the visual/flare read the tints directly.
@@ -46,7 +46,7 @@ export class Star
 
         this.#visual = new SunVisual(skyAnchor, this);
         this.#flare = new LensFlare(scene, this);
-        this.#occlusion = new SunOcclusion(planetRadius);
+        this.#occlusion = new SunOcclusion();
 
         this.refresh();
     }
@@ -61,9 +61,9 @@ export class Star
         this.#visual.place(this.direction, this.#skyDistance);
     }
 
-    setOcclusionRadius(radius)
+    setOcclusionBodies(bodies)
     {
-        this.#occlusion.setRadius(radius);
+        this.#occlusion.setBodies(bodies);
     }
 
     // Per-frame: animate the disc, measure occlusion and place the flare.
