@@ -22,7 +22,7 @@ export const physical = {
         // `radius` is derived from this via the global `cellSize`.
         hexFrequency: 32,
         maxDepth: 5,              // number of crust layers (any reasonable number)
-        shape: {a
+        shape: {
             type: 'sphere',        // 'sphere' | 'noise'
             seed: 1337,           // integer; same seed ⇒ identical body
             octaves: 2,           // fBm octave count
