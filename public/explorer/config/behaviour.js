@@ -70,7 +70,11 @@ export const behaviour = {
         // so the expensive integral is decoupled from the display frame rate.
         // The cache is view-dependent, so it lags slightly while the camera
         // moves. 0 = recompute every frame (no throttling).
-        updateHz: 30,
+        updateHz: 60,
+        // Render target resolution scale (0.25–1.0). Lower = cheaper raymarch but
+        // grainier haze. The downsampled texture is upsampled to full screen during
+        // composite (bilinear filtering). 1.0 = full resolution (default).
+        fidelity: 0.25,
     },
 
     // Hexsphere resource-mode staircase slicing.

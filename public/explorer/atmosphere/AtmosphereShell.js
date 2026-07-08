@@ -12,6 +12,7 @@ export class AtmosphereShell
     mesh;
     radius;
     shellHeight;
+    #fidelity;
 
     #uniforms;
     // Offscreen caching: the haze mesh lives in its own private scene and is
@@ -24,10 +25,11 @@ export class AtmosphereShell
     #quadCamera;
     #depthOnly;
 
-    constructor(planet, atmosphere, numSuns)
+    constructor(planet, atmosphere, numSuns, fidelity = 1.0)
     {
         this.radius = planet.radius * (1 + atmosphere.thickness);
         this.shellHeight = this.radius - planet.radius;
+        this.#fidelity = Math.max(0.01, Math.min(1.0, fidelity));
 
         const sunDirs = [];
         const sunColors = [];
@@ -239,11 +241,13 @@ export class AtmosphereShell
         renderer.autoClear = prevAutoClear;
     }
 
-    // Keep the cache resolution matched to the canvas (device pixels).
+    // Keep the cache resolution matched to the canvas (device pixels), scaled by fidelity.
     resize(renderer)
     {
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-        this.#target.setSize(Math.max(1, size.x), Math.max(1, size.y));
+        const scaledWidth = Math.max(1, size.x * this.#fidelity);
+        const scaledHeight = Math.max(1, size.y * this.#fidelity);
+        this.#target.setSize(scaledWidth, scaledHeight);
     }
 
     setSunIntensity(value)

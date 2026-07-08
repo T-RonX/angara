@@ -114,7 +114,7 @@ export class CelestialBody
         // scene + render target); the AtmosphereSystem positions + composites
         // it. Only built when this body actually has an atmosphere.
         this.#atmosphere = this.#atmosphereConfig.show
-            ? new AtmosphereShell(this.#planet, this.#atmosphereConfig, starCount)
+            ? new AtmosphereShell(this.#planet, this.#atmosphereConfig, starCount, behaviour?.atmosphere?.fidelity ?? 1.0)
             : null;
     }
 
