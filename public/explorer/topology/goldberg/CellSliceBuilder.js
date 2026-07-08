@@ -56,6 +56,12 @@ export class CellSliceBuilder
     #lastSig = null;
     #atmospherePickMaterial;
 
+    // Opt-in rebuild profiling (behaviour.debug.profileSlice). Off by default.
+    #profile = false;
+    #profileEvery = 30;
+    #profAcc = { total: 0, collect: 0, sync: 0, buckets: 0, n: 0 };
+    #bucketsRebuilt = 0;
+
     #planetRadius;
     #horizonCullEnabled;
     #horizonMarginRad;
@@ -162,6 +168,9 @@ export class CellSliceBuilder
         // Stride larger than any cellIndex (cellIndex is a 0-based surface face
         // index, identical across depths for a stacked column).
         this.#cellStride = surfaceCount + 1;
+
+        this.#profile = ctx.profileSlice ?? false;
+        this.#profileEvery = Math.max(1, ctx.profileEvery ?? 30);
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -222,9 +231,15 @@ export class CellSliceBuilder
         const n = plane.normal;
         const k = plane.constant;
 
+        const prof = this.#profile;
+        const t0 = prof ? performance.now() : 0;
+
         const inc = this.#collect(n, k);
 
         if (inc.sig === this.#lastSig) return;
+
+        const tCollect = prof ? performance.now() : 0;
+        if (prof) this.#bucketsRebuilt = 0;
 
         this.#lastSig = inc.sig;
 
@@ -246,6 +261,8 @@ export class CellSliceBuilder
             this.#lastKeys = inc.keys;
             this.#lastByDepth = inc.byDepth;
             this.#refreshCapMeshes();
+
+            if (prof) this.#profRecord(t0, tCollect);
 
             return;
         }
@@ -317,6 +334,33 @@ export class CellSliceBuilder
         }
 
         this.#refreshCapMeshes();
+
+        if (prof) this.#profRecord(t0, tCollect);
+    }
+
+    // Accumulate one rebuild's sub-phase timings and log a rolling average every
+    // `#profileEvery` rebuilds (opt-in via behaviour.debug.profileSlice).
+    #profRecord(t0, tCollect)
+    {
+        const end = performance.now();
+        const a = this.#profAcc;
+
+        a.total += end - t0;
+        a.collect += tCollect - t0;
+        a.sync += end - tCollect;
+        a.buckets += this.#bucketsRebuilt;
+        a.n++;
+
+        if (a.n < this.#profileEvery) return;
+
+        const n = a.n;
+        console.log(
+            `[slice] rebuild avg over ${n}: total ${(a.total / n).toFixed(2)}ms `
+            + `(collect ${(a.collect / n).toFixed(2)}ms, geom ${(a.sync / n).toFixed(2)}ms, `
+            + `${(a.buckets / n).toFixed(1)} buckets/rebuild)`,
+        );
+
+        a.total = a.collect = a.sync = a.buckets = a.n = 0;
     }
 
     // The opaque set is the current membership minus any cell still fading in
@@ -395,33 +439,57 @@ export class CellSliceBuilder
     }
 
     // Gather the included crust cells (per depth) and a cheap membership
-    // signature in one pass. The atmosphere is NOT scanned here — it is built
-    // lazily on the next pick (see ensureAtmosphere), so it costs nothing while
-    // the cut advances. Membership keys are allocation-free numbers.
+    // signature in one pass — driven by COLUMNS, not individual cells. A column
+    // (one surface face, shared cellIndex across depths) is tested ONCE from its
+    // surface cell and its whole depth stack is emitted as a unit, so a rendered
+    // cliff column is always a contiguous, gap-free stack (fixes the under-
+    // surface notch) and membership churns coherently (far fewer buckets flip per
+    // advance step). The atmosphere is NOT scanned here — it is built lazily on
+    // the next pick (see ensureAtmosphere). Membership keys are allocation-free
+    // numbers.
     #collect(n, k)
     {
         const maxDepth = this.#layerModel.maxDepth;
         const stride = this.#cellStride;
         const byDepth = [];
+        for (let d = 0; d < maxDepth; d++) byDepth[d] = [];
         const keys = new Set();
         let hash = 0;
         let count = 0;
 
-        for (let d = 0; d < maxDepth; d++)
+        const cellsByDepth = this.#cellGrid.cellsByDepth;
+        const surface = cellsByDepth[0];
+        const nx = n.x, ny = n.y, nz = n.z;
+
+        for (let i = 0; i < surface.length; i++)
         {
-            const arr = [];
+            const surfCell = surface[i];
+            const c = this.#centroid(surfCell);
+            const s0 = nx * c.x + ny * c.y + nz * c.z + k;
 
-            for (const cell of this.#cellGrid.cellsByDepth[d])
+            // Whole column off the kept (+normal) hemisphere.
+            if (s0 < -this.#eps) continue;
+
+            // Depth 0 (the surface skin) is kept across the whole hemisphere so
+            // the visible surface is never holed.
+            byDepth[0].push(surfCell);
+            keys.add(surfCell.cellIndex);
+            count++;
+            hash = (Math.imul(hash, 31) + surfCell.cellIndex) >>> 0;
+
+            // Non-wall column: surface only (its deep cells are occluded).
+            if (s0 > this.#wallBandDist) continue;
+
+            // Wall column at the cliff: emit the ENTIRE deep stack together so
+            // the column is a complete, contiguous depth stack (no gaps).
+            for (let d = 1; d < maxDepth; d++)
             {
-                if (!this.#included(cell, n, k)) continue;
-
-                arr.push(cell);
+                const cell = cellsByDepth[d][i];
+                byDepth[d].push(cell);
                 keys.add(d * stride + cell.cellIndex);
                 count++;
                 hash = (Math.imul(hash, 31) + cell.cellIndex * (d + 1)) >>> 0;
             }
-
-            byDepth[d] = arr;
         }
 
         return { byDepth, keys, sig: `${count}:${hash}` };
@@ -471,6 +539,7 @@ export class CellSliceBuilder
             const mesh = this.#buildBucketMesh(e.cells, e.depth);
             this.sliceGroup.add(mesh);
             this.#opaqueBuckets.set(key, { mesh, sig });
+            this.#bucketsRebuilt++;
         }
     }
 
@@ -492,24 +561,72 @@ export class CellSliceBuilder
 
     #buildBucketMesh(cells, depth)
     {
-        const positions = [];
-        const normals = [];
-        const indices = [];
-        const faceToCell = [];
+        return this.#mergedMesh(cells, this.#materials.depthMaterials[depth]);
+    }
+
+    // Build one merged Mesh from the cells' CACHED per-cell typed arrays. The
+    // total vertex / index counts are summed first so a single Float32Array per
+    // attribute (and one index array) is allocated and each cell's cache is
+    // copied in with `.set()` at its offset — no intermediate JS arrays and no
+    // second copy inside a Float32BufferAttribute. `matrixAutoUpdate` is off
+    // (the slice group never moves). Shared by every merged slice mesh (opaque
+    // buckets, fade batches, atmosphere pick shell).
+    //
+    // NOTE: no BVH is built here. Resource-mode picking builds a bounds tree
+    // LAZILY at pick time (CliffPicker#ensureBoundsTrees); building it in this
+    // hot rebuild path tanked FPS while advancing (picking is skipped mid-move).
+    #mergedMesh(cells, material)
+    {
+        const factory = this.#geometryFactory;
+
+        let floatCount = 0;
+        let idxCount = 0;
 
         for (const cell of cells)
         {
-            const triStart = indices.length / 3;
-            this.#geometryFactory.appendCell(cell, positions, normals, indices);
-
-            for (let t = triStart; t < indices.length / 3; t++)
-            {
-                faceToCell.push(cell);
-            }
+            const g = factory.cellArrays(cell);
+            floatCount += g.pos.length;
+            idxCount += g.idx.length;
         }
 
-        const mesh = this.#mesh(positions, normals, indices, this.#materials.depthMaterials[depth]);
+        const positions = new Float32Array(floatCount);
+        const normals = new Float32Array(floatCount);
+        const indices = new Uint32Array(idxCount);
+        const faceToCell = [];
+
+        let floatOff = 0;
+        let idxOff = 0;
+        let vertBase = 0;
+
+        for (const cell of cells)
+        {
+            const g = factory.cellArrays(cell);
+
+            positions.set(g.pos, floatOff);
+            normals.set(g.nrm, floatOff);
+
+            for (let j = 0; j < g.idx.length; j++)
+            {
+                indices[idxOff + j] = vertBase + g.idx[j];
+            }
+
+            for (let t = 0; t < g.triCount; t++) faceToCell.push(cell);
+
+            floatOff += g.pos.length;
+            idxOff += g.idx.length;
+            vertBase += g.pos.length / 3;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+        geo.setIndex(new THREE.BufferAttribute(indices, 1));
+        geo.computeBoundingSphere();
+
+        const mesh = new THREE.Mesh(geo, material);
         mesh.userData.faceToCell = faceToCell;
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
 
         return mesh;
     }
@@ -595,24 +712,7 @@ export class CellSliceBuilder
 
     #emitBatchMesh(cells, material)
     {
-        const positions = [];
-        const normals = [];
-        const indices = [];
-        const faceToCell = [];
-
-        for (const cell of cells)
-        {
-            const triStart = indices.length / 3;
-            this.#geometryFactory.appendCell(cell, positions, normals, indices);
-
-            for (let t = triStart; t < indices.length / 3; t++)
-            {
-                faceToCell.push(cell);
-            }
-        }
-
-        const mesh = this.#mesh(positions, normals, indices, material);
-        mesh.userData.faceToCell = faceToCell;
+        const mesh = this.#mergedMesh(cells, material);
 
         this.sliceGroup.add(mesh);
         this.#fadeMeshList.push(mesh);
@@ -639,39 +739,17 @@ export class CellSliceBuilder
 
     #emitAtmosphere(cells)
     {
-        const positions = [];
-        const normals = [];
-        const indices = [];
-        const faceToCell = [];
+        if (cells.length === 0) return;
 
-        for (const cell of cells)
-        {
-            const triStart = indices.length / 3;
-            this.#geometryFactory.appendCell(cell, positions, normals, indices);
-
-            for (let t = triStart; t < indices.length / 3; t++)
-            {
-                faceToCell.push(cell);
-            }
-        }
-
-        if (positions.length === 0) return;
-
-        const mesh = this.#mesh(positions, normals, indices, this.#atmospherePickMaterial);
-        mesh.userData.faceToCell = faceToCell;
-        mesh.matrixAutoUpdate = false;
-        mesh.updateMatrix();
+        const mesh = this.#mergedMesh(cells, this.#atmospherePickMaterial);
         this.sliceGroup.add(mesh);
         this.#atmosphereMesh = mesh;
     }
 
-    // Membership test. A cell is on the kept (+normal) half of the cut iff its
-    // signed distance to the plane s = n·centroid + k >= -eps. Depth 0 (the
-    // surface skin) and the atmosphere are kept across the WHOLE kept hemisphere
-    // so the visible surface is never holed. Deeper crust layers form only the
-    // cliff wall (they are occluded everywhere else), so they are kept only
-    // within #wallBandDist of the cut plane — this is what stops the slice from
-    // materialising the huge occluded interior at high hexFrequency.
+    // Membership test for the ATMOSPHERE shell only (the crust is handled
+    // column-wise in #collect). Atmosphere cells are depth 0, so this keeps them
+    // across the WHOLE kept hemisphere (s = n·centroid + k >= -eps). The deep
+    // branch is retained for completeness / any non-depth-0 caller.
     #included(cell, n, k)
     {
         const c = this.#centroid(cell);
@@ -694,31 +772,6 @@ export class CellSliceBuilder
         cell.sliceCentroid = c;
 
         return c;
-    }
-
-    #mesh(positions, normals, indices, material)
-    {
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-        geo.setIndex(indices);
-        geo.computeBoundingSphere();
-
-        // Accelerate resource-mode picking. NOTE: the BVH is built LAZILY at
-        // pick time (see CliffPicker#ensureBoundsTrees), NOT here. Building it
-        // eagerly in the rebuild path tanked FPS while advancing the cut: every
-        // throttled rebuild re-created changed buckets + the whole-hemisphere
-        // atmosphere pick shell, and picking is SKIPPED while the view is moving
-        // (HoverController bails on state.resourceMoving), so those eager trees
-        // were pure waste. Lazy building defers the cost to the first pick after
-        // motion settles, and persistent bucket meshes keep their tree across
-        // pans.
-
-        const mesh = new THREE.Mesh(geo, material);
-        mesh.matrixAutoUpdate = false;
-        mesh.updateMatrix();
-
-        return mesh;
     }
 
     // The solid cross-section that backs the slice wall and blocks see-through.

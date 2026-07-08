@@ -42,6 +42,29 @@ export class CellGeometryFactory
         cell.triCount = indices.length / 3 - triStart;
     }
 
+    // Cell geometry is STATIC (it depends only on the cell's corner rings, which
+    // never change), so compute each cell's raw arrays ONCE and cache them on the
+    // cell. The merged-slice rebuild path (#buildBucketMesh / fade / atmosphere)
+    // re-runs every ~55ms while the cut advances; recomputing appendCell there
+    // meant per-corner Vector3 clone/normalize/cross math for thousands of cells
+    // every step. With the cache those rebuilds become plain number copies.
+    cellArrays(cell)
+    {
+        if (cell.geoCache) return cell.geoCache;
+
+        const positions = [], normals = [], indices = [];
+        this.appendCell(cell, positions, normals, indices);
+
+        cell.geoCache = {
+            pos: new Float32Array(positions),
+            nrm: new Float32Array(normals),
+            idx: new Uint32Array(indices),
+            triCount: cell.triCount,
+        };
+
+        return cell.geoCache;
+    }
+
     // Standalone BufferGeometry for ONE cell (hover / selection overlay).
     buildSingleCellGeometry(cell)
     {

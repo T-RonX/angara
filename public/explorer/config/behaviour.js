@@ -74,10 +74,9 @@ export const behaviour = {
     },
 
     // Hexsphere resource-mode staircase slicing.
-    slice: {
-        // Duration (ms) of the temporal fade when the advancing cut reveals a
+    slice: {        // Duration (ms) of the temporal fade when the advancing cut reveals a
         // new row of whole cells (or hides a leaving one). 0 disables the fade.
-        cellFadeMs: 200,
+        cellFadeMs: 0,
 
         // Interior-cull band that keeps resource mode fast at high hexFrequency.
         // The deeper crust layers (depth >= 1) are only ever visible AT the cut
@@ -99,5 +98,17 @@ export const behaviour = {
             // partially-visible bucket is never dropped (surface-preserving).
             marginDeg: 16,
         },
+    },
+
+    // Developer diagnostics (off in normal play).
+    debug: {
+        // Log a rolling average of the resource-mode slice rebuild cost
+        // (CellSliceBuilder.build): total time, the #collect membership scan,
+        // and the #syncOpaque bucket rebuild (with the number of buckets
+        // rebuilt). Written to the console every `profileEvery` rebuilds while
+        // the cut advances. Use it to see where an advance-time FPS dip comes
+        // from before reaching for a heavier optimisation.
+        profileSlice: true,
+        profileEvery: 30,
     },
 };

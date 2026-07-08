@@ -101,7 +101,7 @@ export const physical = {
                 hexFrequency: 16,
                 maxDepth: 4,
                 shape: {
-                    type: 'sphere',
+                    type: 'noise',
                     seed: 4242,
                     octaves: 2,
                     baseFrequency: 1.6,
@@ -139,7 +139,7 @@ export const physical = {
                     lightSteps:  6,
                 },
                 orbit: {
-                    semiMajorAxis: 1600,
+                    semiMajorAxis: 7000,
                     eccentricity: 0.11,
                     periodSec: 1800,
                     phaseDeg: 115,

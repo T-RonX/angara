@@ -31,6 +31,8 @@ export class GoldbergTopology extends CellTopology
     #fadeMs;
     #horizonCull;
     #wallBandCells;
+    #profileSlice;
+    #profileEvery;
 
     constructor(physical, layerModel, behaviour, atmosphereRadius, faceData = null)
     {
@@ -52,6 +54,8 @@ export class GoldbergTopology extends CellTopology
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
         this.#horizonCull = behaviour?.slice?.horizonCull ?? { enabled: false, marginDeg: 6 };
         this.#wallBandCells = behaviour?.slice?.wallBandCells ?? 4;
+        this.#profileSlice = behaviour?.debug?.profileSlice ?? false;
+        this.#profileEvery = behaviour?.debug?.profileEvery ?? 30;
     }
 
     get grid()        { return this.#grid; }
@@ -77,6 +81,8 @@ export class GoldbergTopology extends CellTopology
             planetRadius: this.#planet.radius,
             horizonCull: this.#horizonCull,
             wallBandCells: this.#wallBandCells,
+            profileSlice: this.#profileSlice,
+            profileEvery: this.#profileEvery,
         });
     }
 
