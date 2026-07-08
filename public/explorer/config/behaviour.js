@@ -63,6 +63,16 @@ export const behaviour = {
         modeTransitionMs: 700,
     },
 
+    // Atmosphere GRAPHICS optimisation (not physical data — shared by all bodies).
+    atmosphere: {
+        // Cap the scattering raymarch to this many recomputes per second. The
+        // pass renders into a cached texture that is re-composited every frame,
+        // so the expensive integral is decoupled from the display frame rate.
+        // The cache is view-dependent, so it lags slightly while the camera
+        // moves. 0 = recompute every frame (no throttling).
+        updateHz: 30,
+    },
+
     // Hexsphere resource-mode staircase slicing.
     slice: {
         // Duration (ms) of the temporal fade when the advancing cut reveals a

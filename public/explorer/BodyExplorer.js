@@ -79,6 +79,12 @@ export class BodyExplorer
         this.#planet = physical.planet;
         this.#root = rootElement;
 
+        // Derive every body's radius from its hexFrequency and the global cell
+        // size (radius = hexFrequency × cellSize), so all bodies share the same
+        // physical cell dimensions. Done once, in place, before any subsystem
+        // reads `planet.radius`.
+        this.#resolveRadii(this.#planet, physical.cellSize);
+
         this.#buildScene(rootElement);
         this.#buildSkyAndLights();
 
@@ -126,6 +132,19 @@ export class BodyExplorer
 
     // --- Construction --------------------------------------------------
 
+    // Recursively set `radius = hexFrequency × cellSize` on a body and all its
+    // companions, so downstream consumers keep reading a plain `planet.radius`
+    // while cell sizes stay consistent across every body.
+    #resolveRadii(config, cellSize)
+    {
+        config.radius = (config.hexFrequency ?? 16) * cellSize;
+
+        for (const companion of config.companions ?? [])
+        {
+            this.#resolveRadii(companion, cellSize);
+        }
+    }
+
     // Build the active body plus every companion (recursively) from the config,
     // registering each with the OrbitSystem under its parent. The shared
     // subsystems only ever talk to the ACTIVE body's handles (cached via
@@ -137,7 +156,7 @@ export class BodyExplorer
 
         await this.#buildBodyTree(this.#planet, null);
 
-        this.#atmosphereSystem = new AtmosphereSystem(this.#registry, this.#starSystem);
+        this.#atmosphereSystem = new AtmosphereSystem(this.#registry, this.#starSystem, this.#behaviour);
 
         this.#adoptActiveBody(this.#registry.active);
 

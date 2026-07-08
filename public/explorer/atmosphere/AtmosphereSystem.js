@@ -18,16 +18,18 @@ export class AtmosphereSystem
 {
     #registry;
     #starSystem;
+    #behaviour;
     #lastRender = new Map();    // shell → last render timestamp (throttle)
     #occluders;                 // scene of depth-only body proxies
     #proxies = new Map();       // body → proxy mesh
     #mode = 'view';
     #tmp = new THREE.Vector3();
 
-    constructor(registry, starSystem)
+    constructor(registry, starSystem, behaviour)
     {
         this.#registry = registry;
         this.#starSystem = starSystem;
+        this.#behaviour = behaviour;
         this.#occluders = new THREE.Scene();
     }
 
@@ -124,7 +126,7 @@ export class AtmosphereSystem
             shell.setSunIntensity(body.atmosphereConfig.sunIntensity);
             shell.updateForCamera(camera);
 
-            const hz = body.atmosphereConfig.updateHz | 0;
+            const hz = (this.#behaviour.atmosphere?.updateHz ?? 0) | 0;
             const interval = hz > 0 ? 1000 / hz : 0;
             const last = this.#lastRender.get(shell) ?? -Infinity;
 

@@ -60,9 +60,9 @@ export class CelestialBody
     // chain is untouched and every body (primary or moon) is built by the exact
     // same code path.
     //
-    // `isPrimary` only decides the atmosphere DEFAULT: the primary keeps the
-    // shared `physical.atmosphere` for backward compatibility; a companion gets
-    // no atmosphere unless it declares its own `atmosphere` block.
+    // `isPrimary` is retained for the API but no longer affects the atmosphere:
+    // every body (primary or companion) owns its OWN inline `atmosphere` block,
+    // and a body with no block simply has no atmosphere.
     constructor(scene, physical, bodyConfig, behaviour, focus, starCount, isPrimary, generated = null)
     {
         this.#config = bodyConfig;
@@ -118,26 +118,12 @@ export class CelestialBody
             : null;
     }
 
-    // Resolve the atmosphere config for this body. A companion inherits NOTHING
-    // by default (its own `atmosphere` block or none); the primary keeps the
-    // shared `physical.atmosphere` so existing single-body configs are
-    // unchanged. Per-body overrides merge over the shared defaults so a
-    // companion only has to specify what differs.
+    // Resolve the atmosphere config for this body. Every body owns its OWN
+    // inline `atmosphere` block; there is no shared/global default. A body with
+    // no block simply has no atmosphere.
     #resolveAtmosphere(physical, bodyConfig, isPrimary)
     {
-        const base = physical.atmosphere ?? { show: false, thickness: 0 };
-
-        if (bodyConfig.atmosphere)
-        {
-            return { ...base, ...bodyConfig.atmosphere };
-        }
-
-        if (isPrimary)
-        {
-            return base;
-        }
-
-        return { ...base, show: false, selectable: false };
+        return bodyConfig.atmosphere ?? { show: false, thickness: 0 };
     }
 
     // Shared body-generation worker client (one worker serves every body).

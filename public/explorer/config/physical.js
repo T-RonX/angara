@@ -7,31 +7,22 @@
 // keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
 export const physical = {
-    // ------------------------------------------------------------------
-    // ACTIVE planet config: an irregular, star-shaped (asteroid-like) body.
-    // The shape is generated DETERMINISTICALLY from `radius` (overall size)
-    // and `shape.seed` — the same size + seed ALWAYS produces the exact same
-    // body (see model/ShapeField.js). This will eventually be delivered by the
-    // backend, so it is plain serialisable data.
-    // ------------------------------------------------------------------
+    // Global cell size: world units of body radius per unit of `hexFrequency`.
+    // Every body derives its `radius = hexFrequency × cellSize`, so all bodies
+    // share the same physical cell dimensions regardless of size. Anchored to
+    // the primary's historical 500 / 128 so it keeps radius 500 at f = 128.
+    cellSize: 3.90625,
+
     planet: {
         id:       'primary',      // stable identifier (UI + future backend)
         name:     'Angara',       // display name in the body-picker UI
-        radius:   500,            // overall size / base radius of the body
         cellTopology: 'hexsphere',
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
-        // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
-        hexFrequency: 128,
+        // surface has 10·f²+2 cells; keep modest (e.g. 12–24). The body's
+        // `radius` is derived from this via the global `cellSize`.
+        hexFrequency: 32,
         maxDepth: 5,              // number of crust layers (any reasonable number)
-
-        // --------------------------------------------------------------
-        // SHAPE — deterministic radial displacement (star-shaped bodies).
-        //   type 'sphere' → perfect sphere, pixel-identical to the original.
-        //   type 'noise'  → seeded fBm heightfield: R(dir) = radius·(1 + fBm),
-        //                   clamped so the body stays star-shaped (no overhangs).
-        // Same seed ⇒ same body, every time.
-        // --------------------------------------------------------------
-        shape: {
+        shape: {a
             type: 'sphere',        // 'sphere' | 'noise'
             seed: 1337,           // integer; same seed ⇒ identical body
             octaves: 2,           // fBm octave count
@@ -70,40 +61,42 @@ export const physical = {
         cellGap:    0.0,          // gap between cells (fraction); 0 = touching
 
         // ------------------------------------------------------------------
-        // COMPANIONS — moons / asteroids orbiting this body. Each entry is a
-        // FULL body spec (the same fields as `planet` above) PLUS an `orbit`
-        // block, and may itself carry `companions[]` (moons-of-moons), so the
-        // hierarchy is arbitrarily deep. Every companion is selectable in the
-        // UI and can become the active body (turning on its own resource mode).
-        // Empty by default → single-body behaviour is unchanged. Eventually
-        // this whole tree is delivered by the backend, so keep it plain data.
-        //
-        // orbit: {
-        //   semiMajorAxis:   1400,   // scene units from the parent centre
-        //   eccentricity:    0.1,    // 0 = circle … <0.9
-        //   periodSec:       40,     // seconds per full revolution
-        //   phaseDeg:        0,      // starting angle
-        //   inclinationDeg:  12,     // tilt of the orbit plane
-        //   ascendingNodeDeg: 30,    // spin of the orbit plane about Y
-        // }
-        //
-        // Each companion may also carry its OWN `atmosphere: { … }` block (same
-        // fields as the primary's `atmosphere` below) to give it its own haze;
-        // omit it and the companion has NO atmosphere (moons/asteroids usually
-        // don't). Only the primary inherits the shared `atmosphere` block by
-        // default, so a companion never shows the main body's sky.
+        // This body's atmosphere — an analytical single-scattering Rayleigh +
+        // Mie shell. Every knob is exposed so the look can be retuned per body.
+        // Each body owns its OWN block; there is no shared/global atmosphere.
         // ------------------------------------------------------------------
+        atmosphere: {
+            show:        true,
+            // Whether the shell remains visible while the explorer is in
+            // resource mode. `selectable` still governs pick/hover interaction.
+            showInResourceMode: true,
+            // Whether the atmosphere is a selectable cell shell (hover / pick /
+            // highlight in resource mode). The visible haze is the shader either
+            // way; this only governs interactivity.
+            selectable:  true,
+            // Thickness as a fraction of this body's `radius`.
+            thickness:   0.03,
+            // Sun energy poured into the atmosphere integral (independent from a
+            // sun's surface-lighting intensity). Shared by all suns.
+            sunIntensity: 1.0,
+            opacity:     1.0,
+            // Base colour participates in the PHYSICS (multiplies the Rayleigh
+            // coefficient), which is what gives the blue-day / red-terminator look.
+            baseColor:      [0.34, 0.77, 1.89],
+            rayleighCoeff:  [0.222, 0.222, 0.222],
+            // Scale heights as a FRACTION of the shell thickness.
+            rayleighScaleFrac: 0.30,
+            mieScaleFrac:      0.12,
+            mieCoeff:    0.21,
+            mieG:        0.76,
+            viewSteps:   12,
+            lightSteps:  6,
+        },
+
         companions: [
-            // A ready-to-use example moon. Uncomment to see it orbit the
-            // primary and appear in te top-right body-picker. The orbit is
-            //             // sized to sit clearly OUTShIDE the primary and `phaseDeg: 90` starts
-            // it on the camera side so it is visible immediately; if it drifts
-            // behind the primary as it orbits, just orbit/zoom the view. Every
-            // field here is the same serialisable data the backend will send.
             {
                 id: 'moon-1',
                 name: 'Moon',
-                radius: 24,
                 cellTopology: 'hexsphere',
                 hexFrequency: 16,
                 maxDepth: 4,
@@ -125,6 +118,26 @@ export const physical = {
                 gridColor: 0x0a0e16,
                 background: 0x05070d,
                 cellGap: 0.0,
+
+                // The moon's OWN atmosphere — a thin, cooler haze, distinct from
+                // the primary's to demonstrate that every body renders its own.
+                atmosphere: {
+                    show:        true,
+                    showInResourceMode: true,
+                    selectable:  true,
+                    thickness:   0.02,
+                    sunIntensity: 0.7,
+                    opacity:     0.8,
+                    baseColor:      [0.34, 0.77, 1.89],
+                    rayleighCoeff:  [0.222, 0.222, 0.222],
+                    // Scale heights as a FRACTION of the shell thickness.
+                    rayleighScaleFrac: 0.30,
+                    mieScaleFrac:      0.12,
+                    mieCoeff:    0.21,
+                    mieG:        0.76,
+                    viewSteps:   12,
+                    lightSteps:  6,
+                },
                 orbit: {
                     semiMajorAxis: 800,
                     eccentricity: 0.05,
@@ -135,50 +148,6 @@ export const physical = {
                 },
             },
         ],
-    },
-
-    // ------------------------------------------------------------------
-    // The atmosphere — an analytical single-scattering Rayleigh + Mie
-    // shell. Every knob is exposed so the look can be retuned per planet.
-    // ------------------------------------------------------------------
-    atmosphere: {
-        // Disabled for the irregular (asteroid) body: the analytic scattering
-        // shell is a perfect sphere, so a displaced surface would poke through
-        // it. Asteroids realistically have no atmosphere anyway. Set back to
-        // `true` (and use a `shape.type:'sphere'` planet) to restore the haze.
-        show:        true,       // was: true
-        // show:        true,
-        // Whether the atmosphere shell remains visible while the explorer is in
-        // resource mode. The selectable cell shell still needs `selectable`
-        // to be enabled for hover / pick / highlight interaction.
-        showInResourceMode: true,
-        // Whether the atmosphere is a selectable cell shell (hover / pick /
-        // highlight in resource mode). The visible haze is the shader either
-        // way; this only governs interactivity.
-        selectable:  true,
-        // Thickness as a fraction of `planet.radius`.
-        thickness:   0.03,
-        // Sun energy poured into the atmosphere integral (independent from a
-        // sun's surface-lighting intensity). Shared by all suns.
-        sunIntensity: 1.0,
-        opacity:     1.0,
-        // Base colour participates in the PHYSICS (multiplies the Rayleigh
-        // coefficient), which is what gives the blue-day / red-terminator look.
-        baseColor:      [0.34, 0.77, 1.89],
-        rayleighCoeff:  [0.222, 0.222, 0.222],
-        // Scale heights as a FRACTION of the shell thickness.
-        rayleighScaleFrac: 0.30,
-        mieScaleFrac:      0.12,
-        mieCoeff:    0.21,
-        mieG:        0.76,
-        viewSteps:   12,
-        lightSteps:  6,
-        // Cap the scattering raymarch to this many recomputes per second. The
-        // pass renders into a cached texture that is re-composited every frame,
-        // so the expensive integral is decoupled from the display frame rate.
-        // The cache is view-dependent, so it lags slightly while the camera
-        // moves. 0 = recompute every frame (no throttling).
-        updateHz:    30
     },
 
     // ------------------------------------------------------------------
@@ -198,13 +167,6 @@ export const physical = {
         bottomFillIntensity: 0.18,
     },
 
-    // ------------------------------------------------------------------
-    // The SUNS. Each entry is a complete light source: it lights the
-    // surface (one directional light each), draws its own sun disc +
-    // corona + chromatic halo + starburst, and casts its own lens flare.
-    // Add or remove entries freely — the HUD builds its controls from this
-    // list automatically.
-    // ------------------------------------------------------------------
     stars: [
         {
             name:      'Sun',
@@ -274,9 +236,6 @@ export const physical = {
         },
     ],
 
-    // ------------------------------------------------------------------
-    // The background star field (decorative; not light sources).
-    // ------------------------------------------------------------------
     starfield: {
         show:  true,
         count: 2500,
