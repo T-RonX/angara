@@ -139,7 +139,9 @@ export const physical = {
                     lightSteps:  6,
                 },
                 orbit: {
-                    semiMajorAxis: 7000,
+                    // Scaled up ~5.7× to reduce parallax. At current zoom, far bodies
+                    // should barely shift against the background as camera pans.
+                    semiMajorAxis: 40000,
                     eccentricity: 0.11,
                     periodSec: 1800,
                     phaseDeg: 115,
@@ -177,7 +179,9 @@ export const physical = {
                 },
 
                 orbit: {
-                    semiMajorAxis: 4500,
+                    // Scaled up ~5× to reduce parallax. Close companion should show
+                    // noticeable but not excessive parallax when camera moves.
+                    semiMajorAxis: 22500,
                     eccentricity: 0.05,
                     periodSec: 1200,
                     phaseDeg: 25,
@@ -228,7 +232,9 @@ export const physical = {
                 },
 
                 orbit: {
-                    semiMajorAxis: 9000,
+                    // Scaled up 5× to reduce parallax. Very distant body should have
+                    // minimal apparent motion against the background.
+                    semiMajorAxis: 45000,
                     eccentricity: 0.32,
                     periodSec: 3000,
                     phaseDeg: 210,
