@@ -78,7 +78,7 @@ export class LayerModel
         return out;
     }
 
-    // Fraction of the way from the core (0) to the surface (1) for each layer
+     // Fraction of the way from the core (0) to the surface (1) for each layer
     // boundary. On a displaced (irregular) body the crust column is scaled
     // between the FIXED core and the displaced surface using these fractions,
     // so the crust always spans core→surface with no layer inversion and layer

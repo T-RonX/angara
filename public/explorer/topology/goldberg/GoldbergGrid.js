@@ -56,19 +56,19 @@ export class GoldbergGrid
 
     #buildCrustCells(layerModel)
     {
-        const { maxDepth, layerFrac } = layerModel;
+        const { maxDepth, layerThicknesses } = layerModel;
 
         for (let d = 0; d < maxDepth; d++)
         {
             this.cellsByDepth[d] = [];
 
-            const fracOuter = layerFrac[d];
-            const fracInner = layerFrac[d + 1];
+            const cumulativeThicknessOuter = layerThicknesses.slice(0, d).reduce((sum, t) => sum + t, 0);
+            const cumulativeThicknessInner = cumulativeThicknessOuter + layerThicknesses[d];
 
-            // Scale the crust column between the FIXED core and the (possibly
-            // displaced) surface radius in each corner's direction.
-            const outerR = u => this.#layerRadius(u, fracOuter);
-            const innerR = u => this.#layerRadius(u, fracInner);
+            // Surface follows displacement, but layers maintain uniform absolute thickness.
+            // Each layer is offset downward from the (displaced) surface by cumulative thickness.
+            const outerR = u => this.#layerRadius(u, cumulativeThicknessOuter);
+            const innerR = u => this.#layerRadius(u, cumulativeThicknessInner);
 
             for (const face of this.#faces)
             {
@@ -80,12 +80,13 @@ export class GoldbergGrid
         }
     }
 
-    // Radius of a crust layer boundary in direction `u`: core + frac·(surface − core).
-    #layerRadius(u, frac)
+    // Radius of a crust layer boundary in direction `u`: displaced surface minus
+    // cumulative thickness. Layers maintain uniform absolute thickness.
+    #layerRadius(u, cumulativeThickness)
     {
         const surface = Math.max(this.#shapeField.surfaceRadius(u), this.#minSurface);
 
-        return this.#coreRadius + frac * (surface - this.#coreRadius);
+        return surface - cumulativeThickness;
     }
 
     #buildAtmosphereCells(planetRadius, atmosphereRadius)

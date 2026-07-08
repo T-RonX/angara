@@ -3,7 +3,7 @@
 // generation off the main thread. It owns NO rendering state; it is a pure
 // function of its request message:
 //
-//   in : { id, frequency, layerFrac, coreRadius, minSurface, shape, size }
+//   in : { id, frequency, layerThicknesses, coreRadius, minSurface, shape, size }
 //   out: { id, faces, surface }  (all payload buffers Transferred, not copied)
 //
 // A module worker has no importmap, so it can only import dependency-free code
@@ -23,7 +23,7 @@ self.onmessage = (e) =>
         const faces = buildGoldbergFaces(req.frequency);
         const surface = buildSurfaceGeometry(
             faces,
-            req.layerFrac,
+            req.layerThicknesses,
             req.coreRadius,
             req.minSurface,
             shapeSampler,

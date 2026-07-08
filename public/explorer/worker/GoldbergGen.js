@@ -450,24 +450,24 @@ function appendPrismCell(outer, inner, positions, normals, indices)
     }
 }
 
-// Radius of a layer boundary (frac 1 = surface, 0 = core) in unit direction u,
-// with the same anti-inversion clamp GoldbergGrid applies.
-function layerRadius(ux, uy, uz, frac, coreRadius, minSurface, shapeSampler)
+// Radius of a crust layer boundary in direction u: displaced surface minus
+// cumulative thickness. Layers maintain uniform absolute thickness.
+function layerRadius(ux, uy, uz, cumulativeThickness, shapeSampler, minSurface)
 {
     const surface = Math.max(shapeSampler.surfaceRadius(ux, uy, uz), minSurface);
 
-    return coreRadius + frac * (surface - coreRadius);
+    return surface - cumulativeThickness;
 }
 
 // Build the depth-0 SURFACE render geometry (full N-gon prisms, identical to
 // what BodyMesh builds for depth 0) as transferable typed arrays, plus a
 // per-triangle cell-index table for picking. `faces` is the buildGoldbergFaces
 // output.
-function buildSurfaceGeometry(faces, layerFrac, coreRadius, minSurface, shapeSampler)
+function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, shapeSampler)
 {
     const { count, cornerOffset, cornerXYZ } = faces;
-    const fracOuter = layerFrac[0];
-    const fracInner = layerFrac[1];
+    const cumulativeThicknessOuter = 0;
+    const cumulativeThicknessInner = layerThicknesses[0];
 
     const positions = [];
     const normals = [];
@@ -484,8 +484,8 @@ function buildSurfaceGeometry(faces, layerFrac, coreRadius, minSurface, shapeSam
         for (let c = start; c < end; c++)
         {
             const ux = cornerXYZ[c * 3], uy = cornerXYZ[c * 3 + 1], uz = cornerXYZ[c * 3 + 2];
-            const ro = layerRadius(ux, uy, uz, fracOuter, coreRadius, minSurface, shapeSampler);
-            const ri = layerRadius(ux, uy, uz, fracInner, coreRadius, minSurface, shapeSampler);
+            const ro = layerRadius(ux, uy, uz, cumulativeThicknessOuter, shapeSampler, minSurface);
+            const ri = layerRadius(ux, uy, uz, cumulativeThicknessInner, shapeSampler, minSurface);
             outer.push([ux * ro, uy * ro, uz * ro]);
             inner.push([ux * ri, uy * ri, uz * ri]);
         }

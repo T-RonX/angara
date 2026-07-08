@@ -161,8 +161,7 @@ export class CelestialBody
     }
 
     // Serialisable worker request describing this body's geometry. Mirrors the
-    // radii maths in GoldbergGrid (core-relative layer fractions + the
-    // anti-inversion minimum surface clamp).
+    // radii maths in GoldbergGrid (surface-relative layer thicknesses).
     static #specFor(planet)
     {
         const layerModel = new LayerModel(planet);
@@ -171,7 +170,7 @@ export class CelestialBody
 
         return {
             frequency: planet.hexFrequency ?? 16,
-            layerFrac: layerModel.layerFrac,
+            layerThicknesses: layerModel.layerThicknesses,
             coreRadius,
             minSurface: coreRadius + 0.2 * nominalCrust,
             shape: planet.shape ?? { type: 'sphere' },
