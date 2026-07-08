@@ -5,7 +5,7 @@ import { GoldbergTopology } from './GoldbergTopology.js';
 // config flag into the active CellTopology. The app currently runs the
 // hexsphere only.
 // ----------------------------------------------------------------------
-export function createTopology(physical, layerModel, behaviour, atmosphereRadius)
+export function createTopology(physical, layerModel, behaviour, atmosphereRadius, faceData = null)
 {
     const kind = physical.planet.cellTopology ?? 'hexsphere';
 
@@ -14,5 +14,5 @@ export function createTopology(physical, layerModel, behaviour, atmosphereRadius
         throw new Error(`Unsupported cellTopology '${kind}'`);
     }
 
-    return new GoldbergTopology(physical, layerModel, behaviour, atmosphereRadius);
+    return new GoldbergTopology(physical, layerModel, behaviour, atmosphereRadius, faceData);
 }

@@ -34,19 +34,35 @@ export class LayerModel
     {
         const explicit = planet.layerThicknesses;
 
-        if (Array.isArray(explicit) && explicit.length >= this.maxDepth)
+        const raw = (Array.isArray(explicit) && explicit.length >= this.maxDepth)
+            ? explicit.slice(0, this.maxDepth)
+            : Array.from({ length: this.maxDepth }, (_, d) =>
+                planet.layerThicknessBase + d * planet.layerThicknessGrowth);
+
+        return this.#fitToRadius(raw, planet.radius);
+    }
+
+    // The configured (absolute) thicknesses are tuned for a large body; on a
+    // SMALL body their sum can meet or exceed the radius, which would drive the
+    // core radius to zero or negative and produce a degenerate hexsphere. Clamp
+    // the crust to a fraction of the radius so a positive core always remains,
+    // scaling every layer proportionally (so the strata keep their relative
+    // thickness). Large bodies are unaffected (their sum is already well under
+    // the cap), so existing bodies are pixel-identical.
+    #fitToRadius(thicknesses, radius)
+    {
+        const maxCrustFraction = 0.85; // keep >= 15% of the radius as core
+        const total = thicknesses.reduce((s, t) => s + t, 0);
+        const cap = radius * maxCrustFraction;
+
+        if (total <= cap || total <= 0)
         {
-            return explicit.slice(0, this.maxDepth);
+            return thicknesses;
         }
 
-        const out = new Array(this.maxDepth);
+        const scale = cap / total;
 
-        for (let d = 0; d < this.maxDepth; d++)
-        {
-            out[d] = planet.layerThicknessBase + d * planet.layerThicknessGrowth;
-        }
-
-        return out;
+        return thicknesses.map(t => t * scale);
     }
 
     #deriveRadii(planetRadius)

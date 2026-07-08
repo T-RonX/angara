@@ -28,6 +28,16 @@ export class FocusController
         this.#hud = hud;
     }
 
+    retarget(traversal, clipController, crustCamera, highlightManager, hud)
+    {
+        this.#traversal = traversal;
+        this.#clip = clipController;
+        this.#crustCamera = crustCamera;
+        this.#highlights = highlightManager;
+        this.#hud = hud;
+        this.#wasMoving = false;
+    }
+
     // Glide focus.{lon,lat} toward their targets; rebuild the cut/camera when
     // anything moved. Longitude eases along the shortest arc across 0/360.
     easeFocusToTarget()

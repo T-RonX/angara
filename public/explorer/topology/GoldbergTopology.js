@@ -30,8 +30,9 @@ export class GoldbergTopology extends CellTopology
     #shapeField;
     #fadeMs;
     #horizonCull;
+    #wallBandCells;
 
-    constructor(physical, layerModel, behaviour, atmosphereRadius)
+    constructor(physical, layerModel, behaviour, atmosphereRadius, faceData = null)
     {
         super();
 
@@ -42,7 +43,7 @@ export class GoldbergTopology extends CellTopology
         this.#shapeField = new ShapeField(physical.planet.shape, physical.planet.radius);
 
         this.#grid = new GoldbergGrid(
-            this.#planet, layerModel, physical.atmosphere, atmosphereRadius, frequency, this.#shapeField,
+            this.#planet, layerModel, physical.atmosphere, atmosphereRadius, frequency, this.#shapeField, faceData,
         );
 
         this.#index = new CentroidIndex(this.#grid.surfaceCells);
@@ -50,6 +51,7 @@ export class GoldbergTopology extends CellTopology
         this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex, behaviour.input);
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
         this.#horizonCull = behaviour?.slice?.horizonCull ?? { enabled: false, marginDeg: 6 };
+        this.#wallBandCells = behaviour?.slice?.wallBandCells ?? 4;
     }
 
     get grid()        { return this.#grid; }
@@ -74,6 +76,7 @@ export class GoldbergTopology extends CellTopology
             fadeMs: this.#fadeMs,
             planetRadius: this.#planet.radius,
             horizonCull: this.#horizonCull,
+            wallBandCells: this.#wallBandCells,
         });
     }
 

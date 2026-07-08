@@ -31,6 +31,14 @@ export class CrustCamera
         this.#shapeField = shapeField ?? null;
     }
 
+    retarget(clipController, layerModel, planet, shapeField)
+    {
+        this.#clip = clipController;
+        this.#layerModel = layerModel;
+        this.#planet = planet;
+        this.#shapeField = shapeField ?? null;
+    }
+
     // Local surface radius at the focus direction (the displaced body's radius
     // where the camera is looking). Falls back to the base radius for a sphere.
     #focusSurfaceRadius(radialUp)

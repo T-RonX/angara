@@ -8,5 +8,6 @@ import { BodyExplorer } from './BodyExplorer.js';
 // ----------------------------------------------------------------------
 const root = document.getElementById('scene-root');
 const explorer = new BodyExplorer(physical, behaviour, root);
+await explorer.init();
 explorer.start();
 

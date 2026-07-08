@@ -22,6 +22,7 @@ export class AtmosphereShell
     #target;
     #quadScene;
     #quadCamera;
+    #depthOnly;
 
     constructor(planet, atmosphere, numSuns)
     {
@@ -99,12 +100,19 @@ export class AtmosphereShell
         // Sized on the first resize(); linear/no-decode so compositing the
         // shader's raw output is pixel-identical to drawing it straight to the
         // canvas. MSAA keeps the sphere silhouette as smooth as the AA canvas.
+        // A depth buffer + a colourless depth-only override let an occluder
+        // scene (opaque body proxies) be depth pre-passed into the target before
+        // the haze, so a body IN FRONT of the shell (e.g. a moon crossing the
+        // primary) correctly hides the haze behind it instead of the additive
+        // composite bleeding over it.
         this.#target = new THREE.WebGLRenderTarget(1, 1, {
-            depthBuffer: false,
+            depthBuffer: true,
             stencilBuffer: false,
             samples: 4,
         });
         this.#target.texture.colorSpace = THREE.NoColorSpace;
+
+        this.#depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
 
         // Fullscreen additive composite. A raw passthrough shader (no colour
         // conversion) so the cached texel is added exactly as the mesh would
@@ -165,11 +173,20 @@ export class AtmosphereShell
         }
     }
 
+    // Position the shell at a body's world location (companions orbit away from
+    // the origin). The scattering shader clips the ray at uPlanetCenter, so the
+    // mesh and the uniform must track the same point.
+    setCenter(center)
+    {
+        this.mesh.position.copy(center);
+        this.#uniforms.uPlanetCenter.value.copy(center);
+    }
+
     // Render the near faces from orbit but the inner faces once the camera
     // dives inside the shell (resource mode), so the haze is visible in both.
     updateForCamera(camera)
     {
-        const inside = camera.position.length() < this.radius;
+        const inside = camera.position.distanceTo(this.mesh.position) < this.radius;
         const side = inside ? THREE.BackSide : THREE.FrontSide;
 
         if (this.mesh.material.side !== side)
@@ -179,21 +196,36 @@ export class AtmosphereShell
     }
 
     // Recompute the scattering into the cached render target (call at the
-    // throttled cadence). No-op while the haze is hidden.
-    renderPass(renderer, camera)
+    // throttled cadence). No-op while the haze is hidden. When an `occluders`
+    // scene is supplied it is depth pre-passed first (colourless), so opaque
+    // bodies in front of the shell hide the haze behind them.
+    renderPass(renderer, camera, occluders = null)
     {
         if (!this.mesh.visible) return;
 
         const prevTarget = renderer.getRenderTarget();
         const prevColor = renderer.getClearColor(new THREE.Color());
         const prevAlpha = renderer.getClearAlpha();
+        const prevAutoClear = renderer.autoClear;
 
         renderer.setRenderTarget(this.#target);
         renderer.setClearColor(0x000000, 0); // transparent so empty sky adds nothing
+        renderer.autoClear = false;
+        renderer.clear(true, true, false);
+
+        if (occluders)
+        {
+            const prevOverride = occluders.overrideMaterial;
+            occluders.overrideMaterial = this.#depthOnly;
+            renderer.render(occluders, camera);
+            occluders.overrideMaterial = prevOverride;
+        }
+
         renderer.render(this.#scene, camera);
 
         renderer.setRenderTarget(prevTarget);
         renderer.setClearColor(prevColor, prevAlpha);
+        renderer.autoClear = prevAutoClear;
     }
 
     // Additively blend the cached haze over the already-rendered main frame.

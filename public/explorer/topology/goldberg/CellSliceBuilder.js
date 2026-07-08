@@ -61,6 +61,14 @@ export class CellSliceBuilder
     #horizonMarginRad;
     #horizonCulling = false;
 
+    // Interior-cull band: deeper crust layers (depth >= 1) are only visible AT
+    // the cut face (the cliff wall). Their interior cells are occluded by the
+    // wall, the surface skin and their neighbours, so only cells whose centroid
+    // lies within this signed distance of the cut plane are kept. Depth 0 (the
+    // surface skin) and the atmosphere are always kept over the whole hemisphere
+    // so the visible surface is never holed. See #included.
+    #wallBandDist = Infinity;
+
     // Persistent opaque slice: key `${depth}:${bucket}` → { mesh, sig }.
     #opaqueBuckets = new Map();
     // Transient meshes rebuilt each change: atmosphere pick shell + cross-section.
@@ -122,6 +130,18 @@ export class CellSliceBuilder
         const hc = ctx.horizonCull ?? {};
         this.#horizonCullEnabled = hc.enabled ?? false;
         this.#horizonMarginRad = (hc.marginDeg ?? 6) * Math.PI / 180;
+
+        // Interior-cull band width, expressed in "surface cell diameters" so it
+        // scales automatically with hexFrequency. A surface cell's approximate
+        // diameter is 4R/sqrt(N) (N surface cells spread over the sphere). A
+        // generous default (several cells) keeps the cliff wall comfortably
+        // opaque with no peek-through while still dropping the vast occluded
+        // interior. Set wallBandCells <= 0 to disable the cull (keep the whole
+        // hemisphere at every depth, the original behaviour).
+        const bandCells = ctx.wallBandCells ?? 4;
+        const surfaceCount = this.#cellGrid.cellsByDepth[0]?.length ?? 1;
+        const cellDiameter = 4 * this.#planetRadius / Math.sqrt(Math.max(1, surfaceCount));
+        this.#wallBandDist = bandCells > 0 ? bandCells * cellDiameter : Infinity;
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -591,14 +611,23 @@ export class CellSliceBuilder
         this.#staticTransient.push(mesh);
     }
 
-    // Keep a cell iff its centroid is on the kept (+normal) half of the cut, so
-    // the whole near hemisphere (full surface + full-depth crust) is included
-    // and the cliff wall + surface rim are a staircase of complete cells.
+    // Membership test. A cell is on the kept (+normal) half of the cut iff its
+    // signed distance to the plane s = n·centroid + k >= -eps. Depth 0 (the
+    // surface skin) and the atmosphere are kept across the WHOLE kept hemisphere
+    // so the visible surface is never holed. Deeper crust layers form only the
+    // cliff wall (they are occluded everywhere else), so they are kept only
+    // within #wallBandDist of the cut plane — this is what stops the slice from
+    // materialising the huge occluded interior at high hexFrequency.
     #included(cell, n, k)
     {
         const c = this.#centroid(cell);
+        const s = n.x * c.x + n.y * c.y + n.z * c.z + k;
 
-        return n.x * c.x + n.y * c.y + n.z * c.z + k >= -this.#eps;
+        if (s < -this.#eps) return false;
+
+        if (cell.depth === 0) return true;
+
+        return s <= this.#wallBandDist;
     }
 
     #centroid(cell)

@@ -8,50 +8,6 @@
 // ----------------------------------------------------------------------
 export const physical = {
     // ------------------------------------------------------------------
-    // The planet itself: its size, how finely it is gridded, and how its
-    // crust is layered from the surface down to the core.
-    // ------------------------------------------------------------------
-    // ------------------------------------------------------------------
-    // ORIGINAL perfect-sphere planet config. Kept here (commented out) so it
-    // can be re-enabled later — set `shape.type: 'sphere'` on the active config
-    // below for the identical look, or restore this block wholesale.
-    // ------------------------------------------------------------------
-    // planet: {
-    //     radius:   500,            // radius of the body
-    //     cellTopology: 'hexsphere',
-    //     // Hexsphere subdivision frequency (icosahedron edge divisions). The
-    //     // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
-    //     hexFrequency: 16,
-    //     maxDepth: 5,              // number of crust layers (any reasonable number)
-    //
-    //     // Per-layer thickness (length must be >= maxDepth; entries past
-    //     // maxDepth are ignored). Set to null to auto-generate a sensible
-    //     // monotonically-thickening default.
-    //     layerThicknesses: null,
-    //     // Auto-thickness knobs (only used when `layerThicknesses === null`):
-    //     //   thickness(d) = layerThicknessBase + d * layerThicknessGrowth
-    //     layerThicknessBase:   10,
-    //     layerThicknessGrowth: 2,
-    //
-    //     // The "core" sphere shown beneath the deepest crust layer.
-    //     coreColor: 0xc9743a,
-    //     // One colour per depth layer (ex ind0 = surface … deeper). Padded
-    //     // toward `coreColor` automatically when shorter than maxDepth.
-    //     depthColors: [0x6f8b57, 0x8a6d3b, 0x2a2f3a],
-    //
-    //     // RESERVED for future texturing of the VISIBLE layer faces. When
-    //     // these become arrays (one entry per visible layer) the material
-    //     // factory will skin the crust faces with them. Null = the flat
-    //     // `depthColors` look used today.
-    //     layerTextures:    null,   // future: [url | null, …] per visible layer
-    //     layerNormalMaps:  null,   // future: [url | null, …] per visible layer
-    //
-    //     gridColor:  0x0a0e16,
-    //     background: 0x05070d,
-    //     cellGap:    0.0,          // gap between cells (fraction); 0 = touching
-    // },
-
-    // ------------------------------------------------------------------
     // ACTIVE planet config: an irregular, star-shaped (asteroid-like) body.
     // The shape is generated DETERMINISTICALLY from `radius` (overall size)
     // and `shape.seed` — the same size + seed ALWAYS produces the exact same
@@ -59,11 +15,13 @@ export const physical = {
     // backend, so it is plain serialisable data.
     // ------------------------------------------------------------------
     planet: {
+        id:       'primary',      // stable identifier (UI + future backend)
+        name:     'Angara',       // display name in the body-picker UI
         radius:   500,            // overall size / base radius of the body
         cellTopology: 'hexsphere',
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
         // surface has 10·f²+2 cells; keep modest (e.g. 12–24).
-        hexFrequency: 16,
+        hexFrequency: 128,
         maxDepth: 5,              // number of crust layers (any reasonable number)
 
         // --------------------------------------------------------------
@@ -110,6 +68,73 @@ export const physical = {
         gridColor:  0x0a0e16,
         background: 0x05070d,
         cellGap:    0.0,          // gap between cells (fraction); 0 = touching
+
+        // ------------------------------------------------------------------
+        // COMPANIONS — moons / asteroids orbiting this body. Each entry is a
+        // FULL body spec (the same fields as `planet` above) PLUS an `orbit`
+        // block, and may itself carry `companions[]` (moons-of-moons), so the
+        // hierarchy is arbitrarily deep. Every companion is selectable in the
+        // UI and can become the active body (turning on its own resource mode).
+        // Empty by default → single-body behaviour is unchanged. Eventually
+        // this whole tree is delivered by the backend, so keep it plain data.
+        //
+        // orbit: {
+        //   semiMajorAxis:   1400,   // scene units from the parent centre
+        //   eccentricity:    0.1,    // 0 = circle … <0.9
+        //   periodSec:       40,     // seconds per full revolution
+        //   phaseDeg:        0,      // starting angle
+        //   inclinationDeg:  12,     // tilt of the orbit plane
+        //   ascendingNodeDeg: 30,    // spin of the orbit plane about Y
+        // }
+        //
+        // Each companion may also carry its OWN `atmosphere: { … }` block (same
+        // fields as the primary's `atmosphere` below) to give it its own haze;
+        // omit it and the companion has NO atmosphere (moons/asteroids usually
+        // don't). Only the primary inherits the shared `atmosphere` block by
+        // default, so a companion never shows the main body's sky.
+        // ------------------------------------------------------------------
+        companions: [
+            // A ready-to-use example moon. Uncomment to see it orbit the
+            // primary and appear in te top-right body-picker. The orbit is
+            //             // sized to sit clearly OUTShIDE the primary and `phaseDeg: 90` starts
+            // it on the camera side so it is visible immediately; if it drifts
+            // behind the primary as it orbits, just orbit/zoom the view. Every
+            // field here is the same serialisable data the backend will send.
+            {
+                id: 'moon-1',
+                name: 'Moon',
+                radius: 24,
+                cellTopology: 'hexsphere',
+                hexFrequency: 16,
+                maxDepth: 4,
+                shape: {
+                    type: 'sphere',
+                    seed: 4242,
+                    octaves: 2,
+                    baseFrequency: 1.6,
+                    lacunarity: 2.0,
+                    gain: 0.55,
+                    amplitude: 0.35,
+                    maxDisplacement: 0.14
+                },
+                layerThicknesses: null,
+                layerThicknessBase: 8,
+                layerThicknessGrowth: 2,
+                coreColor: 0x8a8f98,
+                depthColors: [0x9aa3ad, 0x6b7178],
+                gridColor: 0x0a0e16,
+                background: 0x05070d,
+                cellGap: 0.0,
+                orbit: {
+                    semiMajorAxis: 800,
+                    eccentricity: 0.05,
+                    periodSec: 999,
+                    phaseDeg: 90,
+                    inclinationDeg: 6,
+                    ascendingNodeDeg: 20
+                },
+            },
+        ],
     },
 
     // ------------------------------------------------------------------

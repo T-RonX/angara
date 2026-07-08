@@ -38,6 +38,17 @@ export class ModeTransition
         this.#sliceStartRadius = sliceStartRadius ?? planet.radius;
     }
 
+    retarget(clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, sliceStartRadius)
+    {
+        this.#clip = clipController;
+        this.#crustCamera = crustCamera;
+        this.#sliceBuilder = sliceBuilder;
+        this.#highlights = highlightManager;
+        this.#hud = hud;
+        this.#planet = planet;
+        this.#sliceStartRadius = sliceStartRadius ?? planet.radius;
+    }
+
     step(dt)
     {
         const tr = this.#state.transition;

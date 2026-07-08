@@ -103,6 +103,24 @@ export class HighlightManager
 
     // --- Hover overlay -------------------------------------------------
 
+    // Re-point at a newly-activated body: swap the resource-highlight strategy
+    // and geometry factory, and clear any overlay left from the old body.
+    retarget(resourceHighlight, geometryFactory)
+    {
+        if (this.highlight.userData.ownsGeom && !this.#resourceHighlight.isStatic)
+        {
+            this.highlight.geometry.dispose();
+            this.highlightEdges.geometry.dispose();
+        }
+
+        this.highlight.userData.ownsGeom = false;
+        this.#resourceHighlight = resourceHighlight;
+        this.#geometryFactory = geometryFactory;
+        this.hideHover();
+        this.setSurfaceSelectionVisible(false);
+        this.clearResourceSelection();
+    }
+
     showHover(cell, mode)
     {
         if (this.highlight.userData.ownsGeom)

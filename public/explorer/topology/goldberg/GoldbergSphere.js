@@ -37,6 +37,33 @@ export class GoldbergSphere
         this.#buildDual(points, triangles);
     }
 
+    // Rehydrate a GoldbergSphere from the worker's transferable face bundle
+    // (see worker/GoldbergGen.js buildGoldbergFaces) WITHOUT re-running the
+    // expensive geodesic + dual + ordering compute — that already happened off
+    // the main thread. The produced `faces` are shape-identical to the
+    // synchronous path: { index, dir, corners, neighbors, sides }. The heavy
+    // corner Vector3 rings are exposed LAZILY (materialised on first read from
+    // the packed cornerXYZ buffer) so cells nothing ever touches cost nothing.
+    static fromFaceData(data)
+    {
+        const sphere = Object.create(GoldbergSphere.prototype);
+        sphere.faces = [];
+
+        const { count, dirs, sides, cornerOffset, cornerXYZ, neighborOffset, neighborIndex } = data;
+
+        for (let p = 0; p < count; p++)
+        {
+            const dir = new THREE.Vector3(dirs[p * 3], dirs[p * 3 + 1], dirs[p * 3 + 2]);
+            const neighbors = [];
+
+            for (let o = neighborOffset[p]; o < neighborOffset[p + 1]; o++) neighbors.push(neighborIndex[o]);
+
+            sphere.faces.push(new RehydratedFace(p, dir, neighbors, sides[p], cornerXYZ, cornerOffset[p], cornerOffset[p + 1]));
+        }
+
+        return sphere;
+    }
+
     // Subdivide the icosahedron to frequency `f`; return deduplicated unit
     // points and the small triangles (triples of point indices).
     #geodesic(f)
@@ -59,10 +86,27 @@ export class GoldbergSphere
         const points = [];
         const keyToIndex = new Map();
 
+        // Deduplicate coincident subdivided points by a COLLISION-FREE numeric
+        // packed-integer key instead of a `${x},${y},${z}` string built with
+        // toFixed — the string path dominated generation time at high frequency
+        // (measured ~3× slower). Unit-sphere coords lie in [-1, 1]; quantising
+        // each to a 16-bit bucket (step ≈ 3e-5, far finer than the smallest
+        // inter-point spacing even at f=256) and packing x,y,z into one 48-bit
+        // number (< 2^53, so exact) yields the same dedup with no string work.
+        const Q = 32767;
+        const quantKey = (x, y, z) =>
+        {
+            const qx = Math.round((x + 1) * Q);
+            const qy = Math.round((y + 1) * Q);
+            const qz = Math.round((z + 1) * Q);
+
+            return qx * 4294967296 + qy * 65536 + qz;
+        };
+
         const addPoint = v =>
         {
             const u = v.clone().normalize();
-            const key = `${u.x.toFixed(6)},${u.y.toFixed(6)},${u.z.toFixed(6)}`;
+            const key = quantKey(u.x, u.y, u.z);
             const hit = keyToIndex.get(key);
 
             if (hit !== undefined) return hit;
@@ -175,5 +219,39 @@ export class GoldbergSphere
             })
             .sort((p, q) => p.angle - q.angle)
             .map(entry => entry.c);
+    }
+}
+
+// A face rehydrated from the worker's typed-array bundle. Like GoldbergCell it
+// keeps its heavy corner Vector3 ring LAZY behind a PROTOTYPE getter (not a
+// per-instance defineProperty), so building the 163k faces is plain field
+// assignment; the unit corners materialise from the packed cornerXYZ buffer
+// only on first access (grid lines / cell ring builds) and are cached.
+class RehydratedFace
+{
+    constructor(index, dir, neighbors, sides, cornerXYZ, start, end)
+    {
+        this.index = index;
+        this.dir = dir;
+        this.neighbors = neighbors;
+        this.sides = sides;
+        this._buf = cornerXYZ;
+        this._start = start;
+        this._end = end;
+        this._corners = null;
+    }
+
+    get corners()
+    {
+        if (this._corners) return this._corners;
+
+        this._corners = [];
+
+        for (let c = this._start; c < this._end; c++)
+        {
+            this._corners.push(new THREE.Vector3(this._buf[c * 3], this._buf[c * 3 + 1], this._buf[c * 3 + 2]));
+        }
+
+        return this._corners;
     }
 }

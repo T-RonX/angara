@@ -5,20 +5,40 @@ import * as THREE from 'three';
 // surface. Like the lon/lat GridLines it is hidden by default (the per-cell
 // hover highlight reveals structure on demand) but handy for debugging. Each
 // surface cell contributes its closed outer ring as line segments.
+//
+// The outline geometry is ~2M vertices at high hexFrequency and, being hidden
+// by default, was a pure load-time cost for nothing. It is therefore built
+// LAZILY: the LineSegments starts with empty geometry and materialises the
+// outlines the first time it is actually rendered while visible (via
+// onBeforeRender). Turning it on later pays the one-off build; never turning it
+// on costs nothing. The feature is unchanged.
 // ----------------------------------------------------------------------
 export class GoldbergGridLines
 {
     lines;
 
+    #built = false;
+
     constructor(planet, faces, shapeField)
     {
-        this.lines = this.#build(planet, faces, shapeField);
+        const mat = new THREE.LineBasicMaterial({ color: planet.gridColor, transparent: true, opacity: 0.55 });
+
+        this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
         this.lines.visible = false;
+
+        this.lines.onBeforeRender = () =>
+        {
+            if (this.#built) return;
+
+            this.#built = true;
+            this.lines.geometry.dispose();
+            this.lines.geometry = this.#buildGeometry(planet, faces, shapeField);
+        };
     }
 
-    #build(planet, faces, shapeField)
+    #buildGeometry(planet, faces, shapeField)
     {
-        const { radius, gridColor } = planet;
+        const { radius } = planet;
         const lift = (radius + 0.05) / radius; // nudge just above the surface
         const pts = [];
 
@@ -39,9 +59,6 @@ export class GoldbergGridLines
             }
         }
 
-        const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color: gridColor, transparent: true, opacity: 0.55 });
-
-        return new THREE.LineSegments(geo, mat);
+        return new THREE.BufferGeometry().setFromPoints(pts);
     }
 }

@@ -1,17 +1,15 @@
 import * as THREE from 'three';
 
 import { SceneContext } from './core/SceneContext.js';
-import { LayerModel } from './model/LayerModel.js';
-import { LayerMaterialFactory } from './material/LayerMaterialFactory.js';
 import { LightingRig } from './lighting/LightingRig.js';
 import { SkyAnchor } from './sky/SkyAnchor.js';
 import { StarField } from './sky/StarField.js';
 import { StarSystem } from './star/StarSystem.js';
-import { AtmosphereShell } from './atmosphere/AtmosphereShell.js';
-import { CellGeometryFactory } from './geometry/CellGeometryFactory.js';
-import { CrossSectionFactory } from './geometry/CrossSectionFactory.js';
-import { BodyMesh } from './world/BodyMesh.js';
-import { ClipController } from './slicing/ClipController.js';
+import { AtmosphereSystem } from './atmosphere/AtmosphereSystem.js';
+import { CelestialBody } from './model/CelestialBody.js';
+import { BodyRegistry } from './world/BodyRegistry.js';
+import { OrbitSystem } from './world/OrbitSystem.js';
+import { LodController } from './world/LodController.js';
 import { CliffPicker } from './picking/CliffPicker.js';
 import { HighlightManager } from './picking/HighlightManager.js';
 import { HoverController } from './picking/HoverController.js';
@@ -21,7 +19,9 @@ import { InputController } from './navigation/InputController.js';
 import { ModeTransition } from './transition/ModeTransition.js';
 import { HudView } from './hud/HudView.js';
 import { SliderPanel } from './hud/SliderPanel.js';
-import { createTopology } from './topology/createTopology.js';
+import { BodyPicker } from './hud/BodyPicker.js';
+import { OrbitPanel } from './hud/OrbitPanel.js';
+import { LoadingOverlay } from './hud/LoadingOverlay.js';
 
 // ----------------------------------------------------------------------
 // BodyExplorer — the application root. It assembles every subsystem from
@@ -34,16 +34,25 @@ export class BodyExplorer
     #physical;
     #behaviour;
     #planet;
+    #root;
+    #overlay;
 
     #scene;
     #state;
+
+    #registry;
+    #activeBody;
+    #orbits;
+    #bodyPicker;
+    #orbitPanel;
+    #lod;
 
     #topology;
 
     #lightingRig;
     #skyAnchor;
     #starSystem;
-    #atmosphere;
+    #atmosphereSystem;
 
     #materials;
     #cellGeometry;
@@ -55,39 +64,59 @@ export class BodyExplorer
 
     #highlights;
     #hover;
+    #input;
     #crustCamera;
     #focus;
     #transition;
     #hud;
 
     #lastFrameT = performance.now();
-    #atmosLastRender = 0;
 
     constructor(physical, behaviour, rootElement)
     {
         this.#physical = physical;
         this.#behaviour = behaviour;
         this.#planet = physical.planet;
+        this.#root = rootElement;
 
-        this.#buildModels();
         this.#buildScene(rootElement);
         this.#buildSkyAndLights();
-        this.#buildTopology();
-        this.#buildBody();
-        this.#buildSlicing();
-        this.#buildInteraction();
-        this.#buildHudControls();
 
-        // Initial lighting floor + resize.
+        this.#overlay = new LoadingOverlay(rootElement);
+
+        // Initial lighting floor + resize (body-independent).
         this.#lightingRig.applyNight(this.#physical.lighting.nightDarkness);
         window.addEventListener('resize', () => this.#resize());
         this.#resize();
     }
 
+    // Async initialisation: the body may be generated off the main thread, so
+    // building it (and everything that wires to it) is awaited behind a loading
+    // overlay. Call `await explorer.init()` before `start()`.
+    async init()
+    {
+        this.#overlay.show('Generating body…');
+
+        try
+        {
+            await this.#buildBodies();
+            this.#buildInteraction();
+            this.#buildHudControls();
+            this.#buildBodyControls();
+            this.#resize();
+        }
+        finally
+        {
+            this.#overlay.hide();
+        }
+
+        return this;
+    }
+
     #resize()
     {
         this.#scene.resize();
-        this.#atmosphere.resize(this.#scene.renderer);
+        this.#atmosphereSystem?.resize(this.#scene.renderer);
     }
 
     start()
@@ -97,20 +126,61 @@ export class BodyExplorer
 
     // --- Construction --------------------------------------------------
 
-    #buildModels()
+    // Build the active body plus every companion (recursively) from the config,
+    // registering each with the OrbitSystem under its parent. The shared
+    // subsystems only ever talk to the ACTIVE body's handles (cached via
+    // #adoptActiveBody); selecting a companion re-points them.
+    async #buildBodies()
     {
-        this.layerModel = new LayerModel(this.#planet);
+        this.#registry = new BodyRegistry();
+        this.#orbits = new OrbitSystem(this.#registry);
+
+        await this.#buildBodyTree(this.#planet, null);
+
+        this.#atmosphereSystem = new AtmosphereSystem(this.#registry, this.#starSystem);
+
+        this.#adoptActiveBody(this.#registry.active);
+
+        this.#state.camDist =
+            (this.#planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom;
     }
 
-    // Build the active topology and expose its grid. The atmosphere shell
-    // radius is needed up-front for the selectable atmosphere cells, so this
-    // runs after #buildSkyAndLights().
-    #buildTopology()
+    // Depth-first build of one body and its `companions[]` subtree. Each body is
+    // generated (off-thread when possible) then linked to its parent's orbit.
+    // Each body derives its OWN atmosphere from its config; the star count is
+    // shared so every shell compiles for the same number of suns.
+    async #buildBodyTree(config, parentBody)
     {
-        this.#topology = createTopology(
-            this.#physical, this.layerModel, this.#behaviour, this.#atmosphere.radius,
-        );
-        this.cellGrid = this.#topology.grid;
+        const body = this.#registry.add(await CelestialBody.create(
+            this.#scene.scene, this.#physical, config, this.#behaviour,
+            this.#state.focus, this.#starSystem.count, parentBody === null,
+        ));
+
+        this.#orbits.add(body, parentBody);
+
+        for (const companion of config.companions ?? [])
+        {
+            await this.#buildBodyTree(companion, body);
+        }
+
+        return body;
+    }
+
+    // Cache the active body's handles under the field names the shared
+    // subsystems already use, so switching the active body is a single
+    // re-point rather than a rewire.
+    #adoptActiveBody(body)
+    {
+        this.#activeBody   = body;
+        this.layerModel    = body.layerModel;
+        this.cellGrid      = body.cellGrid;
+        this.#topology     = body.topology;
+        this.#materials    = body.materials;
+        this.#cellGeometry = body.cellGeometry;
+        this.#crossSection = body.crossSection;
+        this.#bodyMesh     = body.bodyMesh;
+        this.#clip         = body.clip;
+        this.#sliceBuilder = body.sliceBuilder;
     }
 
     #buildScene(rootElement)
@@ -131,7 +201,7 @@ export class BodyExplorer
                 nCut: new THREE.Vector3(0, 0, -1),
                 nCutTarget: new THREE.Vector3(0, 0, -1),
             },
-            camDist: (this.#planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom,
+            camDist: 0, // set in #buildBodies once the active body exists
             viewSnapshot: null,
             transition: { active: false, dir: 0, s: 0, orbit: null },
             resourceMoving: false,
@@ -153,46 +223,6 @@ export class BodyExplorer
 
         const starField = new StarField(this.#physical.starfield, skyDistance);
         this.#skyAnchor.add(starField.points);
-
-        this.#atmosphere = new AtmosphereShell(this.#planet, this.#physical.atmosphere, this.#starSystem.count);
-        this.#updateAtmosphereIntensity();
-    }
-
-    #buildBody()
-    {
-        const scene = this.#scene.scene;
-
-        this.#materials = new LayerMaterialFactory(this.#planet, this.layerModel);
-        this.#cellGeometry = new CellGeometryFactory(this.#planet.polarCapRings);
-
-        this.#bodyMesh = new BodyMesh(scene, this.cellGrid, this.#cellGeometry, this.#materials, this.layerModel);
-
-        this.#bodyMesh.add(this.#topology.buildGridLines());
-    }
-
-    #buildSlicing()
-    {
-        const scene = this.#scene.scene;
-
-        this.#clip = new ClipController(this.#state.focus, this.#topology.cutStrategy);
-
-        this.#crossSection = new CrossSectionFactory(
-            this.#clip.plane, this.#state.focus, this.#planet.radius, this.#planet.polarCapRings,
-        );
-
-        this.#sliceBuilder = this.#topology.createSliceBuilder({
-            scene,
-            clip: this.#clip,
-            cellGrid: this.cellGrid,
-            crossSection: this.#crossSection,
-            materials: this.#materials,
-            layerModel: this.layerModel,
-            focus: this.#state.focus,
-            geometryFactory: this.#cellGeometry,
-            bodyMesh: this.#bodyMesh,
-        });
-
-        this.#clip.setSliceBuilder(this.#sliceBuilder);
     }
 
     #buildInteraction()
@@ -223,7 +253,7 @@ export class BodyExplorer
         this.#clip.onCutChanged = () => this.#hover.invalidate();
 
         this.#crustCamera = new CrustCamera(
-            this.#scene, this.#clip, this.layerModel, this.#planet,
+            this.#scene, this.#clip, this.layerModel, this.#activeBody.planet,
             this.#behaviour.camera, this.#behaviour.input, this.#state, this.#topology.shapeField,
         );
 
@@ -234,12 +264,12 @@ export class BodyExplorer
 
         this.#transition = new ModeTransition(
             this.#state, this.#scene, this.#clip, this.#crustCamera,
-            this.#sliceBuilder, this.#highlights, this.#hud, this.#planet, this.#behaviour,
+            this.#sliceBuilder, this.#highlights, this.#hud, this.#activeBody.planet, this.#behaviour,
             this.#topology.shapeField.maxRadius,
         );
 
-        new InputController(
-            this.#scene, this.#state, this.#behaviour, this.#planet,
+        this.#input = new InputController(
+            this.#scene, this.#state, this.#behaviour, this.#activeBody.planet,
             this.layerModel, this.#topology.traversal, this.#crustCamera, this.#highlights,
             {
                 toggleMode: () => this.toggleMode(),
@@ -247,6 +277,67 @@ export class BodyExplorer
                 selectResourceCell: cell => this.#selectResourceCell(cell),
             },
         );
+    }
+
+    // Re-point every per-body subsystem at the newly-activated body without
+    // rebuilding (and thus without re-binding DOM listeners or duplicating
+    // overlay meshes). This is the "single re-point" the body abstraction was
+    // designed for: selecting a companion swaps handles, never wiring.
+    #retargetInteraction()
+    {
+        const planet = this.#activeBody.planet;
+
+        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
+
+        this.#hover.retarget(surfacePicker, cliffPicker);
+        this.#clip.onCutChanged = () => this.#hover.invalidate();
+
+        this.#highlights.retarget(
+            this.#topology.createResourceHighlight({
+                crossSection: this.#crossSection,
+                geometryFactory: this.#cellGeometry,
+                clip: this.#clip,
+            }),
+            this.#cellGeometry,
+        );
+
+        this.#crustCamera.retarget(this.#clip, this.layerModel, planet, this.#topology.shapeField);
+        this.#focus.retarget(this.#topology.traversal, this.#clip, this.#crustCamera, this.#highlights, this.#hud);
+        this.#transition.retarget(
+            this.#clip, this.#crustCamera, this.#sliceBuilder, this.#highlights, this.#hud,
+            planet, this.#topology.shapeField.maxRadius,
+        );
+        this.#input.retarget(this.layerModel, this.#topology.traversal, planet, this.#crustCamera, this.#highlights);
+        this.#hud.retarget(this.layerModel, this.cellGrid.atmosphereCells.length > 0, this.#topology);
+
+        this.#state.camDist =
+            (planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom;
+    }
+
+    // Make a different body the active one (companion selection). Only allowed
+    // from view mode when no transition is in flight.
+    #selectBody(index)
+    {
+        if (this.#state.mode !== 'view' || this.#state.transition.active) return;
+
+        const target = this.#registry.bodies[index];
+
+        if (!target || target === this.#registry.active) return;
+
+        this.#state.selected = null;
+        this.#state.resourceSelected = null;
+        this.#highlights.setSurfaceSelectionVisible(false);
+        this.#highlights.hideHover();
+
+        this.#registry.setActive(index);
+        this.#adoptActiveBody(target);
+        this.#retargetInteraction();
+
+        this.#hud.updateSelectionReadout(this.#state);
+        this.#hud.refreshModeButton(false);
+        this.#bodyPicker?.setActive(index);
+        this.#orbitPanel?.retarget(target, this.#orbits.modelFor(target));
     }
 
     #buildHudControls()
@@ -260,9 +351,22 @@ export class BodyExplorer
         );
     }
 
-    #updateAtmosphereIntensity()
+    // The companion selection UI + the distance LOD. Both are no-ops for a
+    // single-body system (the picker hides itself, the LOD only ever sees the
+    // active body), so they cost nothing until companions exist in the config.
+    #buildBodyControls()
     {
-        this.#atmosphere.setSunIntensity(this.#physical.atmosphere.sunIntensity);
+        this.#bodyPicker = new BodyPicker(
+            this.#root, this.#registry.bodies, this.#registry.activeIndex,
+            index => this.#selectBody(index),
+        );
+
+        this.#orbitPanel = new OrbitPanel(this.#root);
+        this.#orbitPanel.retarget(this.#activeBody, this.#orbits.modelFor(this.#activeBody));
+
+        this.#lod = new LodController(
+            this.#registry, this.#scene.camera, this.#behaviour.lod,
+        );
     }
 
     // --- Mode switching ------------------------------------------------
@@ -292,10 +396,7 @@ export class BodyExplorer
         this.#hud.setMode(mode);
         this.#hud.updateSelectionReadout(state);
 
-        const atmosphereVisible = this.#physical.atmosphere.show && (
-            !resource || this.#physical.atmosphere.showInResourceMode
-        );
-        this.#atmosphere.mesh.visible = atmosphereVisible;
+        this.#atmosphereSystem.setMode(mode);
 
         // Mid-flight toggle: just reverse direction.
         if (state.transition.active)
@@ -407,6 +508,10 @@ export class BodyExplorer
         else if (this.#state.mode === 'view')     this.#scene.controls.update();
         else                                      this.#focus.easeFocusToTarget();
 
+        // Advance orbits and apply distance LOD (both no-ops for a single body).
+        this.#orbits.update(now / 1000);
+        this.#lod.update();
+
         // Advance the hexsphere cell-reveal fade (no-op for lon/lat / when idle).
         if (this.#state.mode === 'resource' && this.#sliceBuilder.tick)
         {
@@ -429,29 +534,13 @@ export class BodyExplorer
 
         // Suns: update each sun's disc / flare / occlusion.
         this.#starSystem.update(now, this.#scene.camera);
-        this.#updateAtmosphereIntensity();
 
-        // Scattering is throttled to atmosphere.updateHz: re-run the raymarch
-        // into the cached target only when the interval has elapsed, then
-        // composite the cache over the frame every frame (see below).
-        if (this.#atmosphere.mesh.visible)
-        {
-            const hz = this.#physical.atmosphere.updateHz | 0;
-            const interval = hz > 0 ? 1000 / hz : 0;
-
-            if (now - this.#atmosLastRender >= interval)
-            {
-                this.#atmosphere.setSunDirections(this.#starSystem.directions);
-                this.#atmosphere.setSunColors(this.#starSystem.colors);
-                this.#atmosphere.setSunEnergies(this.#starSystem.energies());
-                this.#atmosphere.updateForCamera(this.#scene.camera);
-                this.#atmosphere.renderPass(this.#scene.renderer, this.#scene.camera);
-                this.#atmosLastRender = now;
-            }
-        }
+        // Per-body scattering: position + (throttled) render each visible haze
+        // into its cache before the scene, then composite them over the frame.
+        this.#atmosphereSystem.update(now, this.#scene.camera, this.#scene.renderer);
 
         this.#scene.render();
-        this.#atmosphere.composite(this.#scene.renderer);
+        this.#atmosphereSystem.composite(this.#scene.renderer);
         this.#hud.updateRenderInfo(this.#scene.renderer.info);
     }
 }

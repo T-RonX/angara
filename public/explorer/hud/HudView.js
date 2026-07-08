@@ -43,6 +43,13 @@ export class HudView
         this.#compassRose = id('compassRose');
     }
 
+    retarget(layerModel, hasAtmosphere, topology)
+    {
+        this.#maxDepth = layerModel.maxDepth;
+        this.#hasAtmosphere = hasAtmosphere;
+        this.#topology = topology;
+    }
+
     bindModeButton(onToggle)
     {
         this.#modeBtn.addEventListener('click', onToggle);

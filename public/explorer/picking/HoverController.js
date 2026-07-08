@@ -59,6 +59,17 @@ export class HoverController
         el.addEventListener('pointerleave', () => { this.#pointerInside = false; });
     }
 
+    // Re-point at a newly-activated body (companion selection). The DOM
+    // listeners stay bound; only the body-specific pickers are swapped.
+    retarget(surfacePicker, cliffPicker)
+    {
+        this.#surfacePicker = surfacePicker;
+        this.#cliffPicker = cliffPicker;
+        this.#lastHoverCell = null;
+        this.#lastHoverMode = null;
+        this.invalidate();
+    }
+
     // Force a re-pick next frame (e.g. after the cut plane moved).
     invalidate()
     {

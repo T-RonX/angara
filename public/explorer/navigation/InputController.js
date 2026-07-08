@@ -43,6 +43,15 @@ export class InputController
         this.#bind();
     }
 
+    retarget(layerModel, traversal, planet, crustCamera, highlightManager)
+    {
+        this.#layerModel = layerModel;
+        this.#traversal = traversal;
+        this.#planet = planet;
+        this.#crustCamera = crustCamera;
+        this.#highlights = highlightManager;
+    }
+
     #bind()
     {
         const el = this.#sceneContext.domElement;
