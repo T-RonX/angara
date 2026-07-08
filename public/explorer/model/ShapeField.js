@@ -55,6 +55,15 @@ export class ShapeField
         return this.#type !== 'noise';
     }
 
+    // Lower bound on the surface radius in any direction (deepest valley).
+    // Used with maxRadius to compute the effective crust thickness for camera framing.
+    get minRadius()
+    {
+        return this.isSphere
+            ? this.#size
+            : this.#size * (1 - this.#cfg.maxDisplacement);
+    }
+
     // Upper bound on the surface radius in any direction. Used as the "whole
     // body" start of the resource-mode clip sweep so no displaced peak is
     // clipped at the start of the fly-in.

@@ -15,8 +15,8 @@ export const behaviour = {
         // crust thickness) so the cliff sits lower on screen.
         crustHeightBias: 0.2,
         // Default zoom as a multiple of the crust thickness, clamped.
-        crustZoom:    1.2,
-        crustZoomMin: 1.2,
+        crustZoom:    1.0,
+        crustZoomMin: 1.0,
         crustZoomMax: 2.0,
     },
 

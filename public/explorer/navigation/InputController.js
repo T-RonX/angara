@@ -122,9 +122,10 @@ export class InputController
 
         e.preventDefault();
 
-        const thickness = this.#planet.radius - this.#layerModel.coreRadius;
-        const min = thickness * this.#cameraCfg.crustZoomMin;
-        const max = thickness * this.#cameraCfg.crustZoomMax;
+        // Fixed baseline framing distance for all bodies
+        const baseDistance = 50;
+        const min = baseDistance * this.#cameraCfg.crustZoomMin;
+        const max = baseDistance * this.#cameraCfg.crustZoomMax;
         const zoomFactor = e.deltaY > 0
             ? this.#inputCfg.wheelZoomOutFactor
             : this.#inputCfg.wheelZoomInFactor;

@@ -70,15 +70,17 @@ export class CrustCamera
         );
 
         const surfaceRadius = this.#focusSurfaceRadius(radialUp);
-        const midR = (surfaceRadius + coreRadius) / 2;
+        // Center vertically at the midpoint between core and peak surface (entire stack)
+        const maxRadius = this.#shapeField?.maxRadius ?? surfaceRadius;
+        const midStackR = (maxRadius + coreRadius) / 2;
 
         // Face the cut edge-on: the clip-plane normal is the cut's facing
         // direction, so offset the camera along its negation. Keeping `up` on
         // the radial keeps depth pointing straight down on screen.
         const m = this.#clip.plane.normal.clone().multiplyScalar(-1);
 
-        const crustThickness = surfaceRadius - coreRadius;
-        const target = radialUp.clone().multiplyScalar(midR + crustThickness * this.#cameraCfg.crustHeightBias);
+        // Target at the midpoint of entire crust stack (core to peak)
+        const target = radialUp.clone().multiplyScalar(midStackR);
 
         const tilt = this.#cameraCfg.crustTilt;
         const position = target.clone()
@@ -104,7 +106,10 @@ export class CrustCamera
     {
         const camera = this.#sceneContext.camera;
         const h = this.#sceneContext.domElement.clientHeight || 1;
-        const midR = (this.#focusSurfaceRadius() + this.#layerModel.coreRadius) / 2;
+        
+        const surfaceRadius = this.#focusSurfaceRadius();
+        const maxRadius = this.#shapeField?.maxRadius ?? surfaceRadius;
+        const midR = (maxRadius + this.#layerModel.coreRadius) / 2;
 
         const worldPerPx = (2 * this.#state.camDist * Math.tan(deg2rad(camera.fov) / 2)) / h;
         const degLatPerPx = worldPerPx * 180 / Math.PI / midR;

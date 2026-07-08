@@ -158,8 +158,8 @@ export class BodyExplorer
 
         this.#adoptActiveBody(this.#registry.active);
 
-        this.#state.camDist =
-            (this.#planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom;
+        // Fixed baseline framing distance for all bodies, scaled by zoom level
+        this.#state.camDist = 50 * this.#behaviour.camera.crustZoom;
     }
 
     // Depth-first build of one body and its `companions[]` subtree. Each body is
@@ -333,8 +333,8 @@ export class BodyExplorer
         this.#input.retarget(this.layerModel, this.#topology.traversal, planet, this.#crustCamera, this.#highlights);
         this.#hud.retarget(this.layerModel, this.cellGrid.atmosphereCells.length > 0, this.#topology);
 
-        this.#state.camDist =
-            (planet.radius - this.layerModel.coreRadius) * this.#behaviour.camera.crustZoom;
+        // Fixed baseline framing distance for all bodies, scaled by zoom level
+        this.#state.camDist = 50 * this.#behaviour.camera.crustZoom;
     }
 
     // Make a different body the active one (companion selection). Only allowed
