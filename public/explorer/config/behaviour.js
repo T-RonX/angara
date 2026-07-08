@@ -10,14 +10,14 @@ export const behaviour = {
     camera: {
         // Angle (radians) above the meridian plane — higher looks down at
         // the surface more, revealing terrain above the cut.
-        crustTilt:       0.40,
+        crustTilt:       0.50,
         // Lifts the look-at target along the surface normal (fraction of the
         // crust thickness) so the cliff sits lower on screen.
         crustHeightBias: 0.2,
         // Default zoom as a multiple of the crust thickness, clamped.
-        crustZoom:    2.6,
+        crustZoom:    1.2,
         crustZoomMin: 1.2,
-        crustZoomMax: 7.0,
+        crustZoomMax: 2.0,
     },
 
     // Pointer / scroll response.

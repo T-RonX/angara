@@ -11,7 +11,7 @@ export const physical = {
     // Every body derives its `radius = hexFrequency × cellSize`, so all bodies
     // share the same physical cell dimensions regardless of size. Anchored to
     // the primary's historical 500 / 128 so it keeps radius 500 at f = 128.
-    cellSize: 3.90625,
+    cellSize: 4,
 
     planet: {
         id:       'primary',      // stable identifier (UI + future backend)
@@ -40,8 +40,8 @@ export const physical = {
         layerThicknesses: null,
         // Auto-thickness knobs (only used when `layerThicknesses === null`):
         //   thickness(d) = layerThicknessBase + d * layerThicknessGrowth
-        layerThicknessBase:   10,
-        layerThicknessGrowth: 2,
+        layerThicknessBase:   1,
+        layerThicknessGrowth: 1.5,
 
         // The "core" sphere shown beneath the deepest crust layer.
         coreColor: 0xc9743a,
@@ -111,30 +111,30 @@ export const physical = {
                     maxDisplacement: 0.14
                 },
                 layerThicknesses: null,
-                layerThicknessBase: 8,
-                layerThicknessGrowth: 2,
+                layerThicknessBase: 1,
+                layerThicknessGrowth: 1.5,
                 coreColor: 0x8a8f98,
                 depthColors: [0x9aa3ad, 0x6b7178],
                 gridColor: 0x0a0e16,
                 background: 0x05070d,
                 cellGap: 0.0,
 
-                // The moon's OWN atmosphere — a thin, cooler haze, distinct from
-                // the primary's to demonstrate that every body renders its own.
+                // The moon's OWN atmosphere — a thin, cool haze that stays visible
+                // without looking like a thick Earth-like blanket.
                 atmosphere: {
                     show:        true,
                     showInResourceMode: true,
                     selectable:  true,
-                    thickness:   0.02,
-                    sunIntensity: 0.7,
-                    opacity:     0.8,
-                    baseColor:      [0.34, 0.77, 1.89],
-                    rayleighCoeff:  [0.222, 0.222, 0.222],
+                    thickness:   0.028,
+                    sunIntensity: 0.55,
+                    opacity:     0.72,
+                    baseColor:      [0.70, 0.74, 0.84],
+                    rayleighCoeff:  [0.16, 0.17, 0.20],
                     // Scale heights as a FRACTION of the shell thickness.
-                    rayleighScaleFrac: 0.30,
-                    mieScaleFrac:      0.12,
-                    mieCoeff:    0.21,
-                    mieG:        0.76,
+                    rayleighScaleFrac: 0.36,
+                    mieScaleFrac:      0.16,
+                    mieCoeff:    0.15,
+                    mieG:        0.60,
                     viewSteps:   12,
                     lightSteps:  6,
                 },

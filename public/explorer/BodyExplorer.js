@@ -306,6 +306,12 @@ export class BodyExplorer
     {
         const planet = this.#activeBody.planet;
 
+        // Re-scale the view-mode zoom range to the newly active body's own
+        // radius (it was previously pinned to whichever body it was set for
+        // in the constructor), so a much smaller/larger companion is always
+        // reachable at its own scale.
+        this.#scene.setDistanceRange(planet);
+
         const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
         const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
 

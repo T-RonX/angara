@@ -37,6 +37,15 @@ export class SceneContext
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.08;
         this.controls.enablePan = false; // always orbit around the body centre
+        this.setDistanceRange(planet);
+    }
+
+    // Re-scale the orbit zoom range to a body's own radius. Called once for
+    // the primary in the constructor, and again whenever the active body
+    // changes (companion selection), so the zoom limits never stay pinned to
+    // a differently-sized body and every body's haze/surface stays reachable.
+    setDistanceRange(planet)
+    {
         this.controls.minDistance = planet.radius * 1.15;
         this.controls.maxDistance = planet.radius * 20;
     }
