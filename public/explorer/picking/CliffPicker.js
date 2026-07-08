@@ -32,6 +32,8 @@ export class CliffPicker
 
     pick(raycaster)
     {
+        this.#ensureBoundsTrees();
+
         const hit = raycaster.intersectObjects(this.#sliceBuilder.capMeshes, false)[0];
 
         if (!hit || !hit.object.userData.faceToCell)
@@ -51,5 +53,24 @@ export class CliffPicker
         }
 
         return hit.object.userData.faceToCell[hit.faceIndex] ?? null;
+    }
+
+    // Build a BVH on each cap mesh the FIRST time it is about to be raycast.
+    // Deferring the build to pick time (rather than mesh-creation time) keeps a
+    // cut-advance cheap: picking is skipped while the view moves, so meshes that
+    // are created and thrown away mid-advance never pay for a tree. Persistent
+    // buckets keep their tree across pans; only freshly rebuilt meshes build.
+    // `indirect: true` keeps the geometry index (and faceIndex) in original
+    // order so the faceToCell mapping stays correct.
+    #ensureBoundsTrees()
+    {
+        const meshes = this.#sliceBuilder.capMeshes;
+
+        for (let i = 0; i < meshes.length; i++)
+        {
+            const geo = meshes[i].geometry;
+
+            if (geo && geo.computeBoundsTree && !geo.boundsTree) geo.computeBoundsTree({ indirect: true });
+        }
     }
 }

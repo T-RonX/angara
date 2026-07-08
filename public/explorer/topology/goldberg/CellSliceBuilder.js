@@ -650,17 +650,15 @@ export class CellSliceBuilder
         geo.setIndex(indices);
         geo.computeBoundingSphere();
 
-        // Accelerate resource-mode picking: every merged pick mesh (opaque
-        // buckets, atmosphere shell, fade batches) is raycast every frame the
-        // pointer moves. A BVH turns that from a brute-force triangle scan into
-        // an O(log n) traversal. `indirect: true` is REQUIRED here: the default
-        // build reorders the geometry index in place and reports the reordered
-        // faceIndex, which would break the `faceToCell[hit.faceIndex]` mapping
-        // (picks a consistently-wrong cell). Indirect mode keeps the index
-        // untouched and maps faceIndex back to the original triangle order. The
-        // tree is owned by the geometry, so it is dropped together with it on
-        // dispose (no separate teardown needed).
-        if (geo.computeBoundsTree) geo.computeBoundsTree({ indirect: true });
+        // Accelerate resource-mode picking. NOTE: the BVH is built LAZILY at
+        // pick time (see CliffPicker#ensureBoundsTrees), NOT here. Building it
+        // eagerly in the rebuild path tanked FPS while advancing the cut: every
+        // throttled rebuild re-created changed buckets + the whole-hemisphere
+        // atmosphere pick shell, and picking is SKIPPED while the view is moving
+        // (HoverController bails on state.resourceMoving), so those eager trees
+        // were pure waste. Lazy building defers the cost to the first pick after
+        // motion settles, and persistent bucket meshes keep their tree across
+        // pans.
 
         const mesh = new THREE.Mesh(geo, material);
         mesh.matrixAutoUpdate = false;
@@ -691,7 +689,6 @@ export class CellSliceBuilder
 
         const discR = Math.sqrt(v);
         const discGeo = new THREE.CircleGeometry(discR, 96);
-        if (discGeo.computeBoundsTree) discGeo.computeBoundsTree({ indirect: true });
         const disc = new THREE.Mesh(
             discGeo,
             this.#materials.coreCapMaterial,
