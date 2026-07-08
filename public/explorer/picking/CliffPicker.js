@@ -32,6 +32,8 @@ export class CliffPicker
 
     pick(raycaster)
     {
+        if (this.#sliceBuilder.ensureAtmosphere) this.#sliceBuilder.ensureAtmosphere();
+
         this.#ensureBoundsTrees();
 
         const hit = raycaster.intersectObjects(this.#sliceBuilder.capMeshes, false)[0];

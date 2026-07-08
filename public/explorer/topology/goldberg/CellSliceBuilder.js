@@ -71,10 +71,26 @@ export class CellSliceBuilder
 
     // Persistent opaque slice: key `${depth}:${bucket}` → { mesh, sig }.
     #opaqueBuckets = new Map();
-    // Transient meshes rebuilt each change: atmosphere pick shell + cross-section.
+    // Transient meshes rebuilt each change: the core cut-face disc (the
+    // atmosphere pick shell is handled separately/lazily — see #atmosphereMesh).
     #staticTransient = [];
     // Transient reveal-fade meshes for all in-flight batches (see #fadeBatches).
     #fadeMeshList = [];
+
+    // Numeric-key stride so membership keys are `depth * #cellStride + cellIndex`
+    // (allocation-free numbers) instead of `${depth}:${cellIndex}` strings, which
+    // churned the GC hard when rebuilt for thousands of cells every advance step.
+    #cellStride = 1;
+
+    // The atmosphere pick shell is INVISIBLE (colorWrite:false) and only used for
+    // picking, which is skipped while the view moves. Rebuilding the whole
+    // hemisphere every advance step was pure waste, so it is built LAZILY: each
+    // build() just flags it dirty and records the cut; ensureAtmosphere() (called
+    // by the picker before it raycasts) rebuilds it once, on demand.
+    #atmosphereMesh = null;
+    #atmosphereDirty = false;
+    #lastN = new THREE.Vector3();
+    #lastK = 0;
 
     // In-flight fade batches — a NEW list entry per membership change, each:
     // { t0, entries: [{ dir (+1 in / -1 out), material, mesh }] }. Concurrent
@@ -90,9 +106,9 @@ export class CellSliceBuilder
     #lastByDepth = null;   // membership cells (per depth) from the previous build
     #clock = 0;            // monotonic seconds, drives the fade
     #fadeDur = 0.26;
-    // Cells (by `${depth}:${cellIndex}` key) currently fading in across ALL
-    // active batches — excluded from the opaque set until their own batch
-    // finishes.
+    // Cells (by numeric `depth * #cellStride + cellIndex` key) currently fading
+    // in across ALL active batches — excluded from the opaque set until their
+    // own batch finishes.
     #fadingInKeys = new Set();
 
     constructor(ctx)
@@ -142,6 +158,10 @@ export class CellSliceBuilder
         const surfaceCount = this.#cellGrid.cellsByDepth[0]?.length ?? 1;
         const cellDiameter = 4 * this.#planetRadius / Math.sqrt(Math.max(1, surfaceCount));
         this.#wallBandDist = bandCells > 0 ? bandCells * cellDiameter : Infinity;
+
+        // Stride larger than any cellIndex (cellIndex is a 0-based surface face
+        // index, identical across depths for a stacked column).
+        this.#cellStride = surfaceCount + 1;
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -208,13 +228,21 @@ export class CellSliceBuilder
 
         this.#lastSig = inc.sig;
 
+        // Record the cut and flag the (invisible) atmosphere pick shell dirty —
+        // it is rebuilt lazily on the next pick, not here (see ensureAtmosphere).
+        this.#lastN.copy(n);
+        this.#lastK = k;
+        this.#atmosphereDirty = true;
+
+        const stride = this.#cellStride;
+
         // Hard (non-fade) rebuild during the transition sweep or when the fade
         // is disabled; otherwise the whole revealed set would fade at once.
         if (slab || this.#fadeDur <= 0.001)
         {
             this.#retireAllBatches();
             this.#syncOpaque(inc.byDepth);
-            this.#rebuildStaticTransient(inc.atmo, n, k);
+            this.#rebuildCoreDisc(n, k);
             this.#lastKeys = inc.keys;
             this.#lastByDepth = inc.byDepth;
             this.#refreshCapMeshes();
@@ -235,7 +263,7 @@ export class CellSliceBuilder
 
             for (const cell of inc.byDepth[d])
             {
-                if (!prevKeys.has(`${d}:${cell.cellIndex}`))
+                if (!prevKeys.has(d * stride + cell.cellIndex))
                 {
                     arr.push(cell);
                     hasAdded = true;
@@ -253,7 +281,7 @@ export class CellSliceBuilder
 
                 for (const cell of this.#lastByDepth[d])
                 {
-                    if (!inc.keys.has(`${d}:${cell.cellIndex}`))
+                    if (!inc.keys.has(d * stride + cell.cellIndex))
                     {
                         arr.push(cell);
                         hasRemoved = true;
@@ -271,14 +299,14 @@ export class CellSliceBuilder
         {
             for (const cell of addedByDepth[d])
             {
-                const key = `${d}:${cell.cellIndex}`;
+                const key = d * stride + cell.cellIndex;
                 this.#fadingInKeys.add(key);
                 newAddedKeys.push(key);
             }
         }
 
         this.#syncOpaque(this.#opaqueExcludingFadingIn(inc.byDepth));
-        this.#rebuildStaticTransient(inc.atmo, n, k);
+        this.#rebuildCoreDisc(n, k);
         this.#lastKeys = inc.keys;
         this.#lastByDepth = inc.byDepth;
 
@@ -299,7 +327,7 @@ export class CellSliceBuilder
 
         for (let d = 0; d < byDepth.length; d++)
         {
-            out[d] = byDepth[d].filter(cell => !this.#fadingInKeys.has(`${d}:${cell.cellIndex}`));
+            out[d] = byDepth[d].filter(cell => !this.#fadingInKeys.has(d * this.#cellStride + cell.cellIndex));
         }
 
         return out;
@@ -366,11 +394,14 @@ export class CellSliceBuilder
         this.#fadingInKeys.clear();
     }
 
-    // Gather the included cells (per depth + atmosphere) and a cheap membership
-    // signature in one pass.
+    // Gather the included crust cells (per depth) and a cheap membership
+    // signature in one pass. The atmosphere is NOT scanned here — it is built
+    // lazily on the next pick (see ensureAtmosphere), so it costs nothing while
+    // the cut advances. Membership keys are allocation-free numbers.
     #collect(n, k)
     {
         const maxDepth = this.#layerModel.maxDepth;
+        const stride = this.#cellStride;
         const byDepth = [];
         const keys = new Set();
         let hash = 0;
@@ -385,7 +416,7 @@ export class CellSliceBuilder
                 if (!this.#included(cell, n, k)) continue;
 
                 arr.push(cell);
-                keys.add(`${d}:${cell.cellIndex}`);
+                keys.add(d * stride + cell.cellIndex);
                 count++;
                 hash = (Math.imul(hash, 31) + cell.cellIndex * (d + 1)) >>> 0;
             }
@@ -393,14 +424,7 @@ export class CellSliceBuilder
             byDepth[d] = arr;
         }
 
-        const atmo = [];
-
-        for (const cell of this.#cellGrid.atmosphereCells)
-        {
-            if (this.#included(cell, n, k)) atmo.push(cell);
-        }
-
-        return { byDepth, atmo, keys, sig: `${count}:${hash}` };
+        return { byDepth, keys, sig: `${count}:${hash}` };
     }
 
     // Incrementally reconcile the persistent opaque buckets to `byDepth`: only
@@ -417,7 +441,7 @@ export class CellSliceBuilder
         {
             for (const cell of byDepth[d])
             {
-                const key = `${d}:${this.#bucketKey(cell)}`;
+                const key = d * 1024 + this.#bucketKey(cell);
                 let e = desired.get(key);
 
                 if (!e)
@@ -500,11 +524,41 @@ export class CellSliceBuilder
         return latSector * AZ + lonSector;
     }
 
-    #rebuildStaticTransient(atmo, n, k)
+    // The core cut-face disc is the only per-step static transient now — it is
+    // VISIBLE (fills the clipped core's opening) so it must track the plane every
+    // step. The atmosphere pick shell is deferred to ensureAtmosphere().
+    #rebuildCoreDisc(n, k)
     {
         this.#clearStaticTransient();
-        this.#emitAtmosphere(atmo);
         this.#emitCoreDisc(n, k);
+    }
+
+    // Rebuild the invisible atmosphere pick shell if the cut moved since it was
+    // last built. Called by the picker right before it raycasts, so the whole-
+    // hemisphere shell is only ever regenerated when a pick actually needs it
+    // (once, after motion settles) instead of on every throttled advance step.
+    ensureAtmosphere()
+    {
+        if (!this.#atmosphereDirty) return;
+
+        this.#atmosphereDirty = false;
+
+        if (this.#atmosphereMesh)
+        {
+            this.sliceGroup.remove(this.#atmosphereMesh);
+            this.#atmosphereMesh.geometry.dispose();
+            this.#atmosphereMesh = null;
+        }
+
+        const included = [];
+
+        for (const cell of this.#cellGrid.atmosphereCells)
+        {
+            if (this.#included(cell, this.#lastN, this.#lastK)) included.push(cell);
+        }
+
+        this.#emitAtmosphere(included);
+        this.#refreshCapMeshes();
     }
 
     // Build the (few) transient meshes for the current fade batch: one merged
@@ -608,7 +662,7 @@ export class CellSliceBuilder
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         this.sliceGroup.add(mesh);
-        this.#staticTransient.push(mesh);
+        this.#atmosphereMesh = mesh;
     }
 
     // Membership test. A cell is on the kept (+normal) half of the cut iff its
@@ -762,6 +816,8 @@ export class CellSliceBuilder
 
         for (const m of this.#staticTransient) this.capMeshes.push(m);
 
+        if (this.#atmosphereMesh) this.capMeshes.push(this.#atmosphereMesh);
+
         for (const m of this.#fadeMeshList)
         {
             if (m.userData.faceToCell) this.capMeshes.push(m);
@@ -786,6 +842,15 @@ export class CellSliceBuilder
         this.#opaqueBuckets.clear();
         this.#retireAllBatches();
         this.#clearStaticTransient();
+
+        if (this.#atmosphereMesh)
+        {
+            this.sliceGroup.remove(this.#atmosphereMesh);
+            this.#atmosphereMesh.geometry.dispose();
+            this.#atmosphereMesh = null;
+        }
+
+        this.#atmosphereDirty = false;
 
         // Safety: drop any stray children (should be none).
         for (const m of this.sliceGroup.children.slice())
