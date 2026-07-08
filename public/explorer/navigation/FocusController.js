@@ -5,7 +5,8 @@
 // the cut live in the injected traversal strategy; this class is just the
 // generic easing + the "when the focus moves, drive the cut / camera /
 // read-out" glue.
-// ----------------------------------------------------------------------
+// For displaced bodies, the plane offset (-maxRadius) is maintained across
+// focus moves so geometry is never clipped.
 export class FocusController
 {
     #state;

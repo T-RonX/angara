@@ -86,12 +86,18 @@ export class CellGeometryFactory
         const inner = cell.innerRing;
         const n = outer.length;
 
-        // Cell centroid — used to orient every face's winding / normal
-        // outward regardless of how the ring happens to be wound.
-        const cen = new THREE.Vector3();
-        for (const p of outer) cen.add(p);
-        for (const p of inner) cen.add(p);
-        cen.multiplyScalar(1 / (2 * n));
+        // Use the stable directional centroid (from face topology) scaled to the
+        // average radius of the cell's corners. For displaced bodies, this avoids
+        // averaging across corners with different displacement levels (outer heavily
+        // displaced vs inner at layer depth), which can produce incorrect winding
+        // direction and cause back-face culling to remove front faces.
+        let sumRadius = 0;
+        for (const p of outer) sumRadius += Math.hypot(p.x, p.y, p.z);
+        for (const p of inner) sumRadius += Math.hypot(p.x, p.y, p.z);
+        const avgRadius = sumRadius / (2 * n);
+
+        const dir = cell.centroidDir;
+        const cen = new THREE.Vector3(dir.x * avgRadius, dir.y * avgRadius, dir.z * avgRadius);
 
         // Outer skin (radial-outward normals) and inner skin (inward).
         this.#appendFan(outer, +1, positions, normals, indices);

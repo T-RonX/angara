@@ -464,11 +464,20 @@ export class CellSliceBuilder
         for (let i = 0; i < surface.length; i++)
         {
             const surfCell = surface[i];
-            const c = this.#centroid(surfCell);
-            const s0 = nx * c.x + ny * c.y + nz * c.z + k;
-
+            
+            // For displaced bodies, include the cell if ANY of its corners are on the kept
+            // side. Check the furthest corner from the plane to be more permissive.
+            const nx = n.x, ny = n.y, nz = n.z;
+            let maxDist = -Infinity;
+            
+            for (const corner of surfCell.corners)
+            {
+                const dist = nx * corner.x + ny * corner.y + nz * corner.z + k;
+                maxDist = Math.max(maxDist, dist);
+            }
+            
             // Whole column off the kept (+normal) hemisphere.
-            if (s0 < -this.#eps) continue;
+            if (maxDist < -this.#eps) continue;
 
             // Depth 0 (the surface skin) is kept across the whole hemisphere so
             // the visible surface is never holed.
@@ -478,6 +487,9 @@ export class CellSliceBuilder
             hash = (Math.imul(hash, 31) + surfCell.cellIndex) >>> 0;
 
             // Non-wall column: surface only (its deep cells are occluded).
+            // Use centroid for wall-band distance test.
+            const c = this.#centroid(surfCell);
+            const s0 = nx * c.x + ny * c.y + nz * c.z + k;
             if (s0 > this.#wallBandDist) continue;
 
             // Wall column at the cliff: emit the ENTIRE deep stack together so
@@ -752,13 +764,24 @@ export class CellSliceBuilder
     // branch is retained for completeness / any non-depth-0 caller.
     #included(cell, n, k)
     {
-        const c = this.#centroid(cell);
-        const s = n.x * c.x + n.y * c.y + n.z * c.z + k;
+        // For displaced bodies, include the cell if ANY of its corners are on the kept
+        // side. Check the furthest corner from the plane to be more permissive.
+        const nx = n.x, ny = n.y, nz = n.z;
+        let maxDist = -Infinity;
 
-        if (s < -this.#eps) return false;
+        for (const corner of cell.corners)
+        {
+            const dist = nx * corner.x + ny * corner.y + nz * corner.z + k;
+            maxDist = Math.max(maxDist, dist);
+        }
+
+        if (maxDist < -this.#eps) return false;
 
         if (cell.depth === 0) return true;
 
+        // For wall-band culling, use the centroid to determine if it's at the cliff
+        const c = this.#centroid(cell);
+        const s = nx * c.x + ny * c.y + nz * c.z + k;
         return s <= this.#wallBandDist;
     }
 
@@ -771,8 +794,9 @@ export class CellSliceBuilder
         c.multiplyScalar(1 / cell.corners.length);
         cell.sliceCentroid = c;
 
-        return c;
+        return cell.sliceCentroid;
     }
+
 
     // The solid cross-section that backs the slice wall and blocks see-through.
     // The cut plane passes near the body centre, so its intersection with the
