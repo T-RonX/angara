@@ -30,11 +30,11 @@ export class OrbitPanel
         this.#root = document.createElement('div');
         this.#root.className = 'orbit-panel';
         this.#root.style.cssText = [
-            'position:absolute', 'top:64px', 'right:16px', 'z-index:30',
-            'display:flex', 'flex-direction:column', 'gap:4px', 'width:180px',
+            'display:flex', 'flex-direction:column', 'gap:4px', 'width:100%', 'max-width:180px',
             'padding:8px 10px', 'border-radius:8px',
             'background:rgba(10,16,26,0.7)', 'border:1px solid rgba(255,255,255,0.14)',
             'color:#cfe0f5', 'font:11px/1.4 system-ui,sans-serif', 'user-select:none',
+            'box-sizing:border-box',
         ].join(';');
         this.#root.hidden = true;
 

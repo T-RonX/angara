@@ -17,10 +17,10 @@ export class BodyPicker
         this.#root = document.createElement('div');
         this.#root.className = 'body-picker';
         this.#root.style.cssText = [
-            'position:absolute', 'top:16px', 'right:16px', 'z-index:30',
             'display:flex', 'flex-direction:column', 'gap:4px',
-            'align-items:flex-end',
+            'align-items:stretch', 'width:100%', 'max-width:100%',
             'font:12px/1.4 system-ui,sans-serif', 'user-select:none',
+            'box-sizing:border-box',
         ].join(';');
 
         if (bodies.length < 2)
@@ -32,9 +32,10 @@ export class BodyPicker
             const btn = document.createElement('button');
             btn.textContent = body.name;
             btn.style.cssText = [
-                'padding:5px 10px', 'border-radius:6px', 'cursor:pointer',
+                'width:100%', 'max-width:100%', 'padding:5px 10px', 'border-radius:6px', 'cursor:pointer',
                 'border:1px solid rgba(255,255,255,0.18)', 'text-align:left',
                 'background:rgba(10,16,26,0.7)', 'color:#cfe0f5',
+                'white-space:nowrap', 'overflow:hidden', 'text-overflow:ellipsis',
             ].join(';');
             btn.addEventListener('click', () => onSelect(i));
             this.#buttons.push(btn);

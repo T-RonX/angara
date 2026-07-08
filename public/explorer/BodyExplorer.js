@@ -380,12 +380,22 @@ export class BodyExplorer
     // active body), so they cost nothing until companions exist in the config.
     #buildBodyControls()
     {
+        const hudStack = document.createElement('div');
+        hudStack.style.cssText = [
+            'position:absolute', 'top:16px', 'right:16px', 'z-index:30',
+            'display:flex', 'flex-direction:column', 'align-items:flex-end', 'gap:8px',
+            'width:min(220px, calc(100vw - 32px))', 'max-height:calc(100vh - 32px)',
+            'overflow-y:auto', 'overflow-x:hidden', 'padding-right:2px',
+            'box-sizing:border-box',
+        ].join(';');
+        this.#root.appendChild(hudStack);
+
         this.#bodyPicker = new BodyPicker(
-            this.#root, this.#registry.bodies, this.#registry.activeIndex,
+            hudStack, this.#registry.bodies, this.#registry.activeIndex,
             index => this.#selectBody(index),
         );
 
-        this.#orbitPanel = new OrbitPanel(this.#root);
+        this.#orbitPanel = new OrbitPanel(hudStack);
         this.#orbitPanel.retarget(this.#activeBody, this.#orbits.modelFor(this.#activeBody));
 
         this.#lod = new LodController(
