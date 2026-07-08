@@ -16,8 +16,8 @@ export const behaviour = {
         crustHeightBias: 0.2,
         // Default zoom as a multiple of the crust thickness, clamped.
         crustZoom:    1.0,
-        crustZoomMin: 1.0,
-        crustZoomMax: 2.0,
+        crustZoomMin: 0.5,  // Zoom out limit
+        crustZoomMax: 2.5,  // Zoom in limit
     },
 
     // Pointer / scroll response.
