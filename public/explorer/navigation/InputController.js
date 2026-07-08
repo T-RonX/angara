@@ -21,6 +21,8 @@ export class InputController
     #crustCamera;
     #highlights;
     #callbacks;
+    #adaptiveZoom = 1;
+    #shapeField;
 
     #drag = { active: false, x: 0, y: 0, button: 0 };
     #pressOrigin = { x: 0, y: 0, valid: false };
@@ -43,13 +45,23 @@ export class InputController
         this.#bind();
     }
 
-    retarget(layerModel, traversal, planet, crustCamera, highlightManager)
+    retarget(layerModel, traversal, planet, crustCamera, highlightManager, shapeField)
     {
         this.#layerModel = layerModel;
         this.#traversal = traversal;
         this.#planet = planet;
         this.#crustCamera = crustCamera;
         this.#highlights = highlightManager;
+        this.#shapeField = shapeField;
+        
+        // Calculate adaptive zoom scaling based on crust stack thickness.
+        // Uses a power function to account for non-linear layer growth and displacement.
+        const maxRadius = shapeField.maxRadius;
+        const coreRadius = layerModel.coreRadius;
+        const effectiveThickness = maxRadius - coreRadius;
+        const referenceThickness = 42; // Tune to balance all body types
+        const zoomExponent = 0.5; // Lower = more spread (thin zoom out more, thick zoom in more)
+        this.#adaptiveZoom = Math.pow(effectiveThickness / referenceThickness, zoomExponent);
     }
 
     #bind()
@@ -122,10 +134,10 @@ export class InputController
 
         e.preventDefault();
 
-        // Fixed baseline framing distance for all bodies
+        // Fixed baseline framing distance for all bodies, scaled by adaptive zoom
         const baseDistance = 50;
-        const min = baseDistance * this.#cameraCfg.crustZoomMin;
-        const max = baseDistance * this.#cameraCfg.crustZoomMax;
+        const min = baseDistance * this.#adaptiveZoom * this.#cameraCfg.crustZoomMin;
+        const max = baseDistance * this.#adaptiveZoom * this.#cameraCfg.crustZoomMax;
         const zoomFactor = e.deltaY > 0
             ? this.#inputCfg.wheelZoomOutFactor
             : this.#inputCfg.wheelZoomInFactor;

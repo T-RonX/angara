@@ -330,11 +330,25 @@ export class BodyExplorer
             this.#clip, this.#crustCamera, this.#sliceBuilder, this.#highlights, this.#hud,
             planet, this.#topology.shapeField.maxRadius,
         );
-        this.#input.retarget(this.layerModel, this.#topology.traversal, planet, this.#crustCamera, this.#highlights);
+        this.#input.retarget(this.layerModel, this.#topology.traversal, planet, this.#crustCamera, this.#highlights, this.#topology.shapeField);
         this.#hud.retarget(this.layerModel, this.cellGrid.atmosphereCells.length > 0, this.#topology);
 
-        // Fixed baseline framing distance for all bodies, scaled by zoom level
-        this.#state.camDist = 50 * this.#behaviour.camera.crustZoom;
+        // Compute adaptive default zoom based on crust stack thickness.
+        // Thinner bodies (fewer layers) need to zoom out more to fit the entire
+        // stack on screen at a consistent visual scale across all body types.
+        // Uses a power function to account for non-linear layer growth and displacement.
+        const maxRadius = this.#topology.shapeField.maxRadius;
+        const coreRadius = this.layerModel.coreRadius;
+        const effectiveThickness = maxRadius - coreRadius;
+        
+        // Reference thickness: tuned to balance all body types. Raise this to zoom in
+        // thicker bodies more, lower it to zoom out thinner bodies more.
+        const referenceThickness = 42;
+        const zoomExponent = 0.5; // Lower exponent = more spread (thin zoom out more, thick zoom in more)
+        const adaptiveZoom = Math.pow(effectiveThickness / referenceThickness, zoomExponent);
+        
+        // Fixed baseline framing distance for all bodies, scaled by adaptive zoom and user zoom
+        this.#state.camDist = 50 * adaptiveZoom * this.#behaviour.camera.crustZoom;
     }
 
     // Make a different body the active one (companion selection). Only allowed
