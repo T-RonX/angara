@@ -139,12 +139,12 @@ export const physical = {
                     lightSteps:  6,
                 },
                 orbit: {
-                    semiMajorAxis: 800,
-                    eccentricity: 0.05,
-                    periodSec: 999,
-                    phaseDeg: 90,
-                    inclinationDeg: 6,
-                    ascendingNodeDeg: 20
+                    semiMajorAxis: 1600,
+                    eccentricity: 0.11,
+                    periodSec: 1800,
+                    phaseDeg: 115,
+                    inclinationDeg: 18,
+                    ascendingNodeDeg: 32
                 },
             },
         ],

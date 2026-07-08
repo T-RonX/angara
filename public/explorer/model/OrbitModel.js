@@ -49,7 +49,7 @@ export class OrbitModel
         this.#static = null;
 
         const a = orbit.semiMajorAxis ?? 0;
-        const e = THREE.MathUtils.clamp(orbit.eccentricity ?? 0, 0, 0.9);
+        const e = THREE.MathUtils.clamp(orbit.eccentricity ?? 0, 0, 0.95);
 
         this.#a = a;
         this.#b = a * Math.sqrt(1 - e * e);

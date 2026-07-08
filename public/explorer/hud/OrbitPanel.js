@@ -9,6 +9,15 @@
 // primary). SINGLE RESPONSIBILITY: "let the player tune the selected body's
 // orbit". The selection re-point is driven by BodyExplorer via retarget().
 // ----------------------------------------------------------------------
+export const ORBIT_FIELD_DEFS = [
+    ['Semi-major axis', 'semiMajorAxis',  0,   8000, 20,   v => v.toFixed(0)],
+    ['Eccentricity',    'eccentricity',   0,    0.95, 0.01, v => v.toFixed(2)],
+    ['Period (s)',      'periodSec',      2,   1200, 1,    v => v.toFixed(0)],
+    ['Phase',           'phaseDeg',       0,    720, 1,    v => `${Math.round(v)}°`],
+    ['Inclination',     'inclinationDeg', -180,  180, 1,    v => `${Math.round(v)}°`],
+    ['Ascending node',  'ascendingNodeDeg', 0,   720, 1,    v => `${Math.round(v)}°`],
+];
+
 export class OrbitPanel
 {
     #root;
@@ -16,14 +25,7 @@ export class OrbitPanel
     #model = null;
 
     // Each field: [label, key, min, max, step, formatter].
-    static #FIELDS = [
-        ['Semi-major axis', 'semiMajorAxis',  0,   4000, 10,   v => v.toFixed(0)],
-        ['Eccentricity',    'eccentricity',   0,    0.9, 0.01, v => v.toFixed(2)],
-        ['Period (s)',      'periodSec',      2,    600, 1,    v => v.toFixed(0)],
-        ['Phase',           'phaseDeg',       0,    360, 1,    v => `${Math.round(v)}°`],
-        ['Inclination',     'inclinationDeg', -90,   90, 1,    v => `${Math.round(v)}°`],
-        ['Ascending node',  'ascendingNodeDeg', 0,  360, 1,    v => `${Math.round(v)}°`],
-    ];
+    static #FIELDS = ORBIT_FIELD_DEFS;
 
     constructor(rootElement)
     {

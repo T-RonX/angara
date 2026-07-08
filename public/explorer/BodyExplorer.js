@@ -20,7 +20,6 @@ import { ModeTransition } from './transition/ModeTransition.js';
 import { HudView } from './hud/HudView.js';
 import { SliderPanel } from './hud/SliderPanel.js';
 import { BodyPicker } from './hud/BodyPicker.js';
-import { OrbitPanel } from './hud/OrbitPanel.js';
 import { LoadingOverlay } from './hud/LoadingOverlay.js';
 
 // ----------------------------------------------------------------------
@@ -44,7 +43,6 @@ export class BodyExplorer
     #activeBody;
     #orbits;
     #bodyPicker;
-    #orbitPanel;
     #lod;
 
     #topology;
@@ -361,7 +359,6 @@ export class BodyExplorer
         this.#hud.updateSelectionReadout(this.#state);
         this.#hud.refreshModeButton(false);
         this.#bodyPicker?.setActive(index);
-        this.#orbitPanel?.retarget(target, this.#orbits.modelFor(target));
     }
 
     #buildHudControls()
@@ -392,11 +389,8 @@ export class BodyExplorer
 
         this.#bodyPicker = new BodyPicker(
             hudStack, this.#registry.bodies, this.#registry.activeIndex,
-            index => this.#selectBody(index),
+            index => this.#selectBody(index), this.#orbits,
         );
-
-        this.#orbitPanel = new OrbitPanel(hudStack);
-        this.#orbitPanel.retarget(this.#activeBody, this.#orbits.modelFor(this.#activeBody));
 
         this.#lod = new LodController(
             this.#registry, this.#scene.camera, this.#behaviour.lod,
