@@ -4,21 +4,21 @@ import { discOverlapArea } from '../core/MathUtils.js';
 // SunOcclusion -- answers "how much of this sun is currently hidden behind
 // a body, as seen from the camera?"
 //
-// Sphere bodies use the exact closed-form circle/circle overlap (analytic,
-// O(1)). Displaced (non-sphere) bodies are NOT circular in silhouette, so
-// instead of approximating the surface with any analytic profile (which can
-// only ever be a first-order guess and drifts from the actual mesh), this
+// Whenever a body has a currently-visible mesh representation (the base
+// surface in view mode, or the cliff/core cut in resource mode), this
 // raycasts a spread of sample points across the sun's own angular disc
-// against the body's REAL rendered surface mesh (BVH-accelerated, see
-// ExplorerApplication). A sample is occluded iff the ray actually hits the
-// mesh before reaching the sun -- this always matches exactly what is on
-// screen, with no approximation error.
+// against that REAL rendered geometry (BVH-accelerated, see
+// ExplorerApplication). A sample is occluded iff the ray actually hits
+// before reaching the sun -- this always matches exactly what is on screen,
+// with no approximation error, for any body shape and either mode. The
+// exact closed-form circle/circle overlap is kept as a defensive fallback
+// for the (should-not-happen) case where no mesh is available at all.
 
-// Sun-disc samples used for the numerical integration against a non-sphere
-// body's real surface. Fibonacci-disc distributed for even coverage without
-// grid artefacts. Combined with the EMA smoothing in Star.js, this sample
-// count is enough to avoid visible flicker while staying cheap (a handful of
-// BVH raycasts per occluding body per star per frame).
+// Sun-disc samples used for the numerical integration against a body's real
+// surface. Fibonacci-disc distributed for even coverage without grid
+// artefacts. Combined with the EMA smoothing in Star.js, this sample count
+// is enough to avoid visible flicker while staying cheap (a handful of BVH
+// raycasts per occluding body per star per frame).
 const DISC_SAMPLES = 24;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -33,6 +33,7 @@ export class SunOcclusion
     #sampleDir = new THREE.Vector3();
     #raycaster = new THREE.Raycaster();
     #hits = [];
+    #occluderMeshes = [];
     #disposed = false;
 
     constructor(bodies = [])
@@ -73,15 +74,10 @@ export class SunOcclusion
             // A sun closer than the body can't be occluded by it.
             if (dSun <= dBody) continue;
 
-            // Resource mode hides the base surface mesh (replaced by the
-            // slice/cliff rendering) -- fall back to the radius-based sphere
-            // approximation so an occluding body in resource mode still
-            // occludes, instead of raycasting against a hidden mesh (always
-            // a miss).
-            const useMesh = body.surfaceMesh && body.surfaceMesh.visible;
+            const meshes = this.#collectOccluderMeshes(body);
 
-            const visibility = useMesh
-                ? this.#measureDisplaced(body.surfaceMesh, camera, dSun, sunSize)
+            const visibility = meshes.length > 0
+                ? this.#measureAgainstMeshes(meshes, camera, dSun, sunSize)
                 : this.#measureSphere(radius, dBody, dSun, sunSize);
 
             if (visibility < bestVisibility)
@@ -93,8 +89,53 @@ export class SunOcclusion
         return bestVisibility;
     }
 
-    // Exact analytic circle/circle overlap -- unchanged fast path for
-    // perfectly spherical bodies.
+    // Gathers whichever mesh(es) currently render this body: the base
+    // surface in view mode, or -- once resource mode hides that surface --
+    // the currently-visible cliff/cap buckets plus the core cut disc. Cliff
+    // buckets are rebuilt on cut changes, so their BVH is (re)built lazily
+    // here rather than once up front (mirrors CliffPicker's pattern).
+    #collectOccluderMeshes(body)
+    {
+        this.#occluderMeshes.length = 0;
+
+        if (body.surfaceMesh && body.surfaceMesh.visible)
+        {
+            this.#occluderMeshes.push(body.surfaceMesh);
+
+            return this.#occluderMeshes;
+        }
+
+        if (body.sliceBuilder && body.sliceBuilder.sliceGroup.visible)
+        {
+            for (const mesh of body.sliceBuilder.capMeshes)
+            {
+                if (mesh.visible) this.#occluderMeshes.push(mesh);
+            }
+
+            if (body.coreMesh && body.coreMesh.visible)
+            {
+                this.#occluderMeshes.push(body.coreMesh);
+            }
+
+            for (const mesh of this.#occluderMeshes)
+            {
+                const geo = mesh.geometry;
+
+                // `indirect: true` matches CliffPicker/GoldbergSurfacePicker --
+                // harmless here since we only care about hit/no-hit, not face
+                // indices, but keeps a single shared build convention.
+                if (geo && geo.computeBoundsTree && !geo.boundsTree)
+                {
+                    geo.computeBoundsTree({ indirect: true });
+                }
+            }
+        }
+
+        return this.#occluderMeshes;
+    }
+
+    // Exact analytic circle/circle overlap -- defensive fallback for a body
+    // with no renderable mesh available at all.
     #measureSphere(radius, dBody, dSun, sunSize)
     {
         const aBody = Math.asin(Math.min(1, radius / dBody));
@@ -113,9 +154,10 @@ export class SunOcclusion
     }
 
     // Raycasts a spread of points across the sun's disc against the body's
-    // actual surface mesh. Exact (matches the rendered silhouette exactly,
-    // including displacement), at the cost of a handful of BVH raycasts.
-    #measureDisplaced(surfaceMesh, camera, dSun, sunSize)
+    // actual, currently-visible mesh(es). Exact (matches the rendered
+    // silhouette exactly, whatever mode/shape produced it), at the cost of a
+    // handful of BVH raycasts.
+    #measureAgainstMeshes(meshes, camera, dSun, sunSize)
     {
         this.#sunDirHat.copy(this.#camToSun).divideScalar(dSun);
         this.#limbBasis(this.#sunDirHat, this.#sunU, this.#sunV);
@@ -143,7 +185,7 @@ export class SunOcclusion
 
             this.#raycaster.set(camera.position, this.#sampleDir);
             this.#hits.length = 0;
-            this.#raycaster.intersectObject(surfaceMesh, false, this.#hits);
+            this.#raycaster.intersectObjects(meshes, false, this.#hits);
 
             if (this.#hits.length > 0) occluded++;
         }
@@ -171,5 +213,6 @@ export class SunOcclusion
         this.#disposed = true;
         this.#bodies = [];
         this.#hits.length = 0;
+        this.#occluderMeshes.length = 0;
     }
 }

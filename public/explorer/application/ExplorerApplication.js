@@ -271,26 +271,34 @@ export class ExplorerApplication
         );
 
         // Preallocate star-occlusion records once; updated in place each frame.
-        // `surfaceMesh` is set only for non-sphere (displaced) bodies -- when
-        // present, SunOcclusion raycasts against the REAL rendered surface
-        // (via its BVH) instead of approximating with a single radius, so
-        // occlusion always matches exactly what's on screen. A BVH is built
-        // once per surface geometry (mirrors the lazy-build pattern used by
-        // the surface/cliff pickers).
+        // `surfaceMesh` / `sliceBuilder` / `coreMesh` let SunOcclusion raycast
+        // against whichever representation is CURRENTLY VISIBLE (the base
+        // surface in view mode, or the cliff/core cut in resource mode)
+        // instead of approximating with a single radius, so occlusion always
+        // matches exactly what's on screen -- for any body, sphere or
+        // displaced. The base surface and core BVHs are built once here
+        // (persistent geometry); slice/cliff bucket meshes change over time
+        // and get their BVH built lazily in SunOcclusion (mirrors CliffPicker).
         this.#occlusionRecords = this.#registry.bodies.map((body) => {
-            const isSphere = body.shapeField?.isSphere !== false;
-            const surfaceMesh = isSphere ? null : body.surfaceMesh;
-            const geo = surfaceMesh?.geometry;
+            const surfaceMesh = body.surfaceMesh;
+            const coreMesh = body.bodyMesh.core;
 
-            if (geo && geo.computeBoundsTree && !geo.boundsTree)
+            for (const mesh of [surfaceMesh, coreMesh])
             {
-                geo.computeBoundsTree({ indirect: true });
+                const geo = mesh?.geometry;
+
+                if (geo && geo.computeBoundsTree && !geo.boundsTree)
+                {
+                    geo.computeBoundsTree({ indirect: true });
+                }
             }
 
             return {
                 radius: 0,
                 position: new THREE.Vector3(),
                 surfaceMesh,
+                sliceBuilder: body.sliceBuilder,
+                coreMesh,
             };
         });
     }
