@@ -41,11 +41,21 @@ export class CellGeometryFactory
         const positions = [], normals = [], indices = [];
         this.appendCell(cell, positions, normals, indices);
 
+        // #appendPrismCell always emits, in order: the outer (surface-facing)
+        // fan (n-2 triangles), then the inner (core-facing / "bottom") fan
+        // (n-2 triangles), then the side quads. Record the inner fan's
+        // triangle range so mesh builders can mark it non-pickable.
+        const n = cell.outerRing.length;
+        const innerFaceTriStart = n - 2;
+        const innerFaceTriCount = n - 2;
+
         cell.geoCache = {
             pos: new Float32Array(positions),
             nrm: new Float32Array(normals),
             idx: new Uint32Array(indices),
             triCount: cell.triCount,
+            innerFaceTriStart,
+            innerFaceTriCount,
         };
 
         return cell.geoCache;

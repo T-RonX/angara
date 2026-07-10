@@ -43,7 +43,16 @@ export function buildMergedMesh(cells, material, geometryFactory)
             indices[idxOff + j] = vertBase + g.idx[j];
         }
 
-        for (let t = 0; t < g.triCount; t++) faceToCell.push(cell);
+        // The inner ("bottom", core-facing) fan of each cell is not selectable
+        // in resource mode — record `null` for its triangles so CliffPicker
+        // treats hits on it as no pick.
+        const innerStart = g.innerFaceTriStart;
+        const innerEnd   = innerStart + g.innerFaceTriCount;
+
+        for (let t = 0; t < g.triCount; t++)
+        {
+            faceToCell.push(t >= innerStart && t < innerEnd ? null : cell);
+        }
 
         floatOff += g.pos.length;
         idxOff   += g.idx.length;
