@@ -53,7 +53,7 @@ export const physical = {
         // Flat skirt ring that fills the resource-mode seam between the round
         // core cut-disc and the jagged bottom of the deepest crust cells.
         // `color: null` = auto-derive a very dark tone from this body's colours.
-        coreSkirt: { color: null },
+        coreSkirt: { color: null, stretch: 0.2 },
 
         // RESERVED for future texturing of the VISIBLE layer faces. When
         // these become arrays (one entry per visible layer) the material
@@ -121,7 +121,7 @@ export const physical = {
                 layerThicknessGrowth: 1.5,
                 coreColor: 0x8a8f98,
                 depthColors: [0x9aa3ad, 0x6b7178],
-                coreSkirt: { color: null },
+                coreSkirt: { color: null, stretch: 0.4 },
                 gridColor: 0x0a0e16,
                 cellGap: 0.0,
 
@@ -177,7 +177,7 @@ export const physical = {
                 layerThicknessGrowth: 1.3,
                 coreColor: 0x7a6b4a,
                 depthColors: [0xa0826d, 0x6b5a47, 0x4a3f2f],
-                coreSkirt: { color: null },
+                coreSkirt: { color: null, stretch: 0.4 },
                 gridColor: 0x0a0e16,
                 cellGap: 0.0,
 
@@ -218,7 +218,7 @@ export const physical = {
                 layerThicknessGrowth: 1.4,
                 coreColor: 0x4a5f8a,
                 depthColors: [0xe8f0ff, 0xc5deff, 0x9abeff],
-                coreSkirt: { color: null },
+                coreSkirt: { color: null, stretch: 0.4 },
                 gridColor: 0x0a0e16,
                 cellGap: 0.0,
 

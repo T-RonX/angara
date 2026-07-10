@@ -68,6 +68,7 @@ export class GoldbergTopology
             ...ctx,
             fadeMs: this.#fadeMs,
             bodyRadius: this.#body.radius,
+            skirtStretch: this.#body.coreSkirt?.stretch ?? 0.4,
             horizonCull: this.#horizonCull,
             wallBandCells: this.#wallBandCells,
             profileSlice: this.#profileSlice,

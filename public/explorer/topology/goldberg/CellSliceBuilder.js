@@ -155,6 +155,7 @@ export class CellSliceBuilder
             sliceGroup: this.sliceGroup,
             layerModel,
             materials,
+            stretch: ctx.skirtStretch ?? 0.4,
         });
 
         this.#horizonCuller = new HorizonCuller({

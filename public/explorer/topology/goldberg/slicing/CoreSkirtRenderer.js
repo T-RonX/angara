@@ -22,13 +22,15 @@ export class CoreSkirtRenderer
     #sliceGroup;
     #layerModel;
     #materials;
+    #stretch;
     #meshes = [];
 
-    constructor({ sliceGroup, layerModel, materials })
+    constructor({ sliceGroup, layerModel, materials, stretch = 0.2 })
     {
         this.#sliceGroup = sliceGroup;
         this.#layerModel = layerModel;
         this.#materials  = materials;
+        this.#stretch    = stretch;
     }
 
     // Non-pickable depth blockers (no faceToCell) — included in capMeshes only so
@@ -65,6 +67,12 @@ export class CoreSkirtRenderer
     {
         const coreR = this.#layerModel.coreRadius;
 
+        // Uniform hem depth well BELOW every cell bottom so the band always
+        // descends (never rises over the bottom layer, which happened in valleys
+        // where innerR dips below coreRadius) and reaches a consistent, deeper
+        // bottom line. The core sphere/disc depth-occludes any surplus.
+        const hemR = coreR * (1 - this.#stretch);
+
         // Sum quad counts up front (one quad per inner-ring edge per cell).
         let edgeCount = 0;
 
@@ -93,12 +101,15 @@ export class CoreSkirtRenderer
                 const a = ring[k];
                 const b = ring[(k + 1) % n];
 
-                // Outer edge = cell bottom corners; inner edge = same directions
-                // projected onto the core sphere.
+                // Outer edge = cell bottom corners; inner (hem) edge = same
+                // directions pulled radially inward to a uniform depth, clamped
+                // to stay strictly below each corner so the band never inverts.
                 co.copy(a);
                 ci.copy(b);
-                po.copy(a).normalize().multiplyScalar(coreR);
-                pi.copy(b).normalize().multiplyScalar(coreR);
+                const ra = Math.min(hemR, a.length() * 0.98);
+                const rb = Math.min(hemR, b.length() * 0.98);
+                po.copy(a).normalize().multiplyScalar(ra);
+                pi.copy(b).normalize().multiplyScalar(rb);
 
                 // Flat quad normal (double-sided material, so orientation only
                 // affects lighting): (b-a) × (po-a).
