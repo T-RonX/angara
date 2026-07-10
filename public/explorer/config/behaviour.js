@@ -104,6 +104,13 @@ export const behaviour = {
         // hemisphere at every depth — the original, slower behaviour).
         wallBandCells: 4,
 
+        // Cap on slice rebuild frequency (ms) while actively dragging the cut plane.
+        // The plane orientation updates every frame regardless, but the expensive
+        // geometry rebuild is throttled. 0 = rebuild every frame (unlimited);
+        // 55 = ~18 rebuilds/sec (default). Deferred rebuilds are flushed when
+        // motion stops, so the geometry never gets stuck stale.
+        rebuildIntervalMs: 16.6667,
+
         // Resource-mode horizon (occlusion) culling: hide slice buckets that
         // curve over the body's own horizon relative to the camera. Purely a
         // per-frame visibility toggle — no geometry rebuild.

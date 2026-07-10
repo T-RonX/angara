@@ -76,7 +76,7 @@ export class CelestialBody
         this.#gridLines = this.#topology.buildGridLines();
         this.#bodyMesh.add(this.#gridLines);
 
-        this.#clip = new ClipController(focus, this.#topology.cutStrategy, this.#bodyMesh.group);
+        this.#clip = new ClipController(focus, this.#topology.cutStrategy, this.#bodyMesh.group, behaviour.slice.rebuildIntervalMs);
 
         this.#sliceBuilder = this.#topology.createSliceBuilder({
             clip: this.#clip,

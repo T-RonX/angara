@@ -31,14 +31,15 @@ export class ClipController
     #sliceBuilder = null;
 
     #lastBuildT = -Infinity;
-    #rebuildIntervalMs = 55; // ~18 rebuilds/sec cap while actively dragging
+    #rebuildIntervalMs = 55;
     #pendingRebuild = false;
 
-    constructor(focus, cutStrategy, bodyGroup = null)
+    constructor(focus, cutStrategy, bodyGroup = null, rebuildIntervalMs = 55)
     {
         this.#focus = focus;
         this.#cutStrategy = cutStrategy;
         this.#bodyGroup = bodyGroup ?? null;
+        this.#rebuildIntervalMs = rebuildIntervalMs;
     }
 
     setSliceBuilder(sliceBuilder)
