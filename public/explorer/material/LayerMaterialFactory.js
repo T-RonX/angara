@@ -13,6 +13,7 @@ export class LayerMaterialFactory
     depthMaterials;     // one per crust depth (the lit body shells)
     coreMaterial;       // the inner core sphere
     coreCapMaterial;    // the core's flat cut cap
+    coreSkirtMaterial;  // flat washer filling the core↔crust seam in the cut plane
 
     #textureLoader;
     #textures = [];     // loaded textures to dispose
@@ -42,6 +43,42 @@ export class LayerMaterialFactory
             polygonOffsetFactor: materialConfig.coreCapOffsetFactor,
             polygonOffsetUnits: materialConfig.coreCapOffsetUnits,
         });
+
+        // The seam-filling skirt sits in the cut plane, just BEHIND the cliff
+        // faces (positive polygonOffset) so real cells occlude it and it only
+        // shows through the gaps. Colour is per-body configurable; null derives
+        // a very dark tone from the body's own palette.
+        this.coreSkirtMaterial = new THREE.MeshStandardMaterial({
+            color: this.#resolveSkirtColor(body, layerModel),
+            roughness: materialConfig.coreRoughness,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: materialConfig.coreCapOffsetFactor + 1,
+            polygonOffsetUnits: materialConfig.coreCapOffsetUnits + 1,
+        });
+    }
+
+    // Configured skirt colour, or an auto very-dark tone: the average of the
+    // depth colours and the core colour, scaled hard toward black so the seam
+    // reads as an unobtrusive dark fill compatible with the body's palette.
+    #resolveSkirtColor(body, layerModel)
+    {
+        const configured = body.coreSkirt?.color;
+
+        if (configured !== null && configured !== undefined)
+        {
+            return configured;
+        }
+
+        const acc = new THREE.Color(0, 0, 0);
+        const sources = [...layerModel.depthColors, body.coreColor];
+
+        for (const c of sources) acc.add(new THREE.Color(c));
+
+        acc.multiplyScalar(1 / sources.length);
+        acc.multiplyScalar(0.18);
+
+        return acc;
     }
 
     #buildDepthMaterial(color, depth, map, normalMap, materialConfig)
@@ -94,6 +131,7 @@ export class LayerMaterialFactory
 
         this.coreMaterial.dispose();
         this.coreCapMaterial.dispose();
+        this.coreSkirtMaterial.dispose();
 
         for (const t of this.#textures) t.dispose();
 

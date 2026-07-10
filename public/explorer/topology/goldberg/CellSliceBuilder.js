@@ -4,6 +4,7 @@ import { BucketStore }            from './slicing/BucketStore.js';
 import { FadeBatchManager }       from './slicing/FadeBatchManager.js';
 import { AtmospherePickRenderer } from './slicing/AtmospherePickRenderer.js';
 import { CoreDiscRenderer }       from './slicing/CoreDiscRenderer.js';
+import { CoreSkirtRenderer }      from './slicing/CoreSkirtRenderer.js';
 import { HorizonCuller }          from './slicing/HorizonCuller.js';
 import { SliceProfiler }          from './slicing/SliceProfiler.js';
 
@@ -70,6 +71,7 @@ export class CellSliceBuilder
     #fadeMgr;
     #atmPick;
     #coreDisc;
+    #coreSkirt;
     #horizonCuller;
     #profiler;
 
@@ -144,6 +146,12 @@ export class CellSliceBuilder
         });
 
         this.#coreDisc = new CoreDiscRenderer({
+            sliceGroup: this.sliceGroup,
+            layerModel,
+            materials,
+        });
+
+        this.#coreSkirt = new CoreSkirtRenderer({
             sliceGroup: this.sliceGroup,
             layerModel,
             materials,
@@ -236,6 +244,7 @@ export class CellSliceBuilder
             this.#fadeMgr.retireAll();
             this.#bucketStore.sync(inc.byDepth);
             this.#coreDisc.rebuild(n, k);
+            this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
             // Store new membership so tick() can re-sync after batches complete.
             this.#fadeMgr.commitBatch(inc.keys, inc.byDepth, { hasAdded: false, hasRemoved: false });
             this.#refreshCapMeshes();
@@ -260,6 +269,7 @@ export class CellSliceBuilder
 
         // 3. Rebuild core disc, store new membership, build fade batch.
         this.#coreDisc.rebuild(n, k);
+        this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
         this.#fadeMgr.commitBatch(inc.keys, inc.byDepth, diff);
         this.#refreshCapMeshes();
         this.#profiler.record(t0, tCollect, this.#bucketStore.bucketsRebuilt);
@@ -316,6 +326,8 @@ export class CellSliceBuilder
 
         for (const m of this.#coreDisc.meshes) this.capMeshes.push(m);
 
+        for (const m of this.#coreSkirt.meshes) this.capMeshes.push(m);
+
         const atmMesh = this.#atmPick.mesh;
 
         if (atmMesh) this.capMeshes.push(atmMesh);
@@ -331,6 +343,7 @@ export class CellSliceBuilder
         this.#bucketStore.disposeAll();
         this.#fadeMgr.retireAll();
         this.#coreDisc.clear();
+        this.#coreSkirt.clear();
         this.#atmPick.clearMesh();
 
         // Safety: drop any stray children (should be none).
