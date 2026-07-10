@@ -22,14 +22,14 @@ export class HighlightManager
     resourceSelection;
     resourceSelectionEdges;
 
-    #scene;
+    #bodyGroup;
     #resourceHighlight;
     #geometryFactory;
     #state;
 
-    constructor(scene, resourceHighlight, geometryFactory, state)
+    constructor(bodyGroup, resourceHighlight, geometryFactory, state)
     {
-        this.#scene = scene;
+        this.#bodyGroup = bodyGroup;
         this.#resourceHighlight = resourceHighlight;
         this.#geometryFactory = geometryFactory;
         this.#state = state;
@@ -47,14 +47,14 @@ export class HighlightManager
             }),
         );
         this.highlight.visible = false;
-        this.#scene.add(this.highlight);
+        this.#bodyGroup.add(this.highlight);
 
         this.highlightEdges = new THREE.LineSegments(
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0xffe66b }),
         );
         this.highlightEdges.visible = false;
-        this.#scene.add(this.highlightEdges);
+        this.#bodyGroup.add(this.highlightEdges);
 
         this.selection = new THREE.Mesh(
             new THREE.BufferGeometry(),
@@ -64,14 +64,14 @@ export class HighlightManager
             }),
         );
         this.selection.visible = false;
-        this.#scene.add(this.selection);
+        this.#bodyGroup.add(this.selection);
 
         this.selectionEdges = new THREE.LineSegments(
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0x9fd0ff }),
         );
         this.selectionEdges.visible = false;
-        this.#scene.add(this.selectionEdges);
+        this.#bodyGroup.add(this.selectionEdges);
 
         this.resourceSelection = new THREE.Mesh(
             new THREE.BufferGeometry(),
@@ -81,14 +81,14 @@ export class HighlightManager
             }),
         );
         this.resourceSelection.visible = false;
-        this.#scene.add(this.resourceSelection);
+        this.#bodyGroup.add(this.resourceSelection);
 
         this.resourceSelectionEdges = new THREE.LineSegments(
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0x9fd0ff }),
         );
         this.resourceSelectionEdges.visible = false;
-        this.#scene.add(this.resourceSelectionEdges);
+        this.#bodyGroup.add(this.resourceSelectionEdges);
     }
 
     get hoveredCell()
@@ -105,7 +105,7 @@ export class HighlightManager
 
     // Re-point at a newly-activated body: swap the resource-highlight strategy
     // and geometry factory, and clear any overlay left from the old body.
-    retarget(resourceHighlight, geometryFactory)
+    retarget(resourceHighlight, geometryFactory, bodyGroup)
     {
         if (this.highlight.userData.ownsGeom && !this.#resourceHighlight.isStatic)
         {
@@ -114,6 +114,25 @@ export class HighlightManager
         }
 
         this.highlight.userData.ownsGeom = false;
+
+        // Reparent all overlay meshes from the old body group to the new one.
+        if (bodyGroup && bodyGroup !== this.#bodyGroup)
+        {
+            const meshes = [
+                this.highlight, this.highlightEdges,
+                this.selection, this.selectionEdges,
+                this.resourceSelection, this.resourceSelectionEdges,
+            ];
+
+            for (const m of meshes)
+            {
+                this.#bodyGroup.remove(m);
+                bodyGroup.add(m);
+            }
+
+            this.#bodyGroup = bodyGroup;
+        }
+
         this.#resourceHighlight = resourceHighlight;
         this.#geometryFactory = geometryFactory;
         this.hideHover();

@@ -18,8 +18,10 @@ export class CrustCamera
     #input;
     #state;
     #shapeField;
+    #bodyGroup = null;
+    #bodyQ = new THREE.Quaternion();
 
-    constructor(sceneContext, clipController, layerModel, planet, cameraCfg, input, state, shapeField)
+    constructor(sceneContext, clipController, layerModel, planet, cameraCfg, input, state, shapeField, bodyGroup = null)
     {
         this.#sceneContext = sceneContext;
         this.#clip = clipController;
@@ -29,14 +31,16 @@ export class CrustCamera
         this.#input = input;
         this.#state = state;
         this.#shapeField = shapeField ?? null;
+        this.#bodyGroup = bodyGroup ?? null;
     }
 
-    retarget(clipController, layerModel, planet, shapeField)
+    retarget(clipController, layerModel, planet, shapeField, bodyGroup = null)
     {
         this.#clip = clipController;
         this.#layerModel = layerModel;
         this.#planet = planet;
         this.#shapeField = shapeField ?? null;
+        this.#bodyGroup = bodyGroup ?? null;
     }
 
     // Local surface radius at the focus direction (the displaced body's radius
@@ -54,33 +58,51 @@ export class CrustCamera
     }
 
     // Compute (but don't apply) the crust-cliff pose for the current focus,
-    // as { position, up, target } — so the transition can interpolate it.
+    // as { position, up, target } in world space. Accounts for the body's
+    // current rotation and position so resource mode follows a spinning body.
     computeCrustPose()
     {
         const focus = this.#state.focus;
         const coreRadius = this.#layerModel.coreRadius;
 
+        // focus.dir is in body-local space; derive the local radial from
+        // lon/lat if dir is absent (lon/lat topology fallback).
         const lonR = deg2rad(focus.lon);
         const latR = deg2rad(focus.lat);
+        const radialLocal = focus.dir
+            ? focus.dir.clone()
+            : new THREE.Vector3(
+                Math.cos(latR) * Math.cos(lonR),
+                Math.sin(latR),
+                Math.cos(latR) * Math.sin(lonR),
+            );
 
-        const radialUp = new THREE.Vector3(
-            Math.cos(latR) * Math.cos(lonR),
-            Math.sin(latR),
-            Math.cos(latR) * Math.sin(lonR),
-        );
-
-        const surfaceRadius = this.#focusSurfaceRadius(radialUp);
-        // Center vertically at the midpoint between core and peak surface (entire stack)
+        const surfaceRadius = this.#focusSurfaceRadius(radialLocal);
         const maxRadius = this.#shapeField?.maxRadius ?? surfaceRadius;
         const midStackR = (maxRadius + coreRadius) / 2;
 
-        // Face the cut edge-on: the clip-plane normal is the cut's facing
-        // direction, so offset the camera along its negation. Keeping `up` on
-        // the radial keeps depth pointing straight down on screen.
-        const m = this.#clip.plane.normal.clone().multiplyScalar(-1);
+        // Body world position and quaternion (active body is at origin but be robust).
+        const bodyPos = this.#bodyGroup
+            ? this.#bodyGroup.getWorldPosition(new THREE.Vector3())
+            : new THREE.Vector3();
+        const bodyQ = this.#bodyGroup
+            ? this.#bodyGroup.getWorldQuaternion(this.#bodyQ)
+            : null;
 
-        // Target at the midpoint of entire crust stack (core to peak)
-        const target = radialUp.clone().multiplyScalar(midStackR);
+        // Rotate local radial to world space.
+        const radialUp = bodyQ ? radialLocal.clone().applyQuaternion(bodyQ) : radialLocal.clone();
+
+        // World-space cut normal: use the already-synced worldPlane if available,
+        // otherwise fall back to rotating the local plane normal.
+        const cutNormal = this.#clip.worldPlane
+            ? this.#clip.worldPlane.normal.clone()
+            : (bodyQ
+                ? this.#clip.plane.normal.clone().applyQuaternion(bodyQ)
+                : this.#clip.plane.normal.clone());
+        const m = cutNormal.multiplyScalar(-1);
+
+        // Target at the midpoint of entire crust stack in world space.
+        const target = bodyPos.clone().add(radialUp.clone().multiplyScalar(midStackR));
 
         const tilt = this.#cameraCfg.crustTilt;
         const position = target.clone()
@@ -122,4 +144,3 @@ export class CrustCamera
         };
     }
 }
-

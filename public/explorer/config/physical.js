@@ -33,6 +33,8 @@ export const physical = {
             maxDisplacement: 0.11,// hard clamp on |displacement| (fraction) — keeps it star-shaped
             axisScale: [1.0, 0.82, 1.15], // optional elongation (still star-shaped)
         },
+        axialTiltDeg:      23.4,  // obliquity (degrees); 0 = north pole aligned with world Y
+        rotationPeriodSec: 1360,   // one full prograde spin in real-time seconds; 0 = stationary
 
         // Per-layer thickness (length must be >= maxDepth; entries past
         // maxDepth are ignored). Set to null to auto-generate a sensible
@@ -110,6 +112,8 @@ export const physical = {
                     amplitude: 0.35,
                     maxDisplacement: 0.14
                 },
+                axialTiltDeg:      6.7,  // obliquity (degrees); 0 = north pole aligned with world Y
+                rotationPeriodSec: 1600,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
                 layerThicknessBase: 1,
                 layerThicknessGrowth: 1.5,
@@ -165,6 +169,8 @@ export const physical = {
                     amplitude: 0.40,
                     maxDisplacement: 0.16
                 },
+                axialTiltDeg:      57,  // obliquity (degrees); 0 = north pole aligned with world Y
+                rotationPeriodSec: 145,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
                 layerThicknessBase: 1,
                 layerThicknessGrowth: 1.3,
@@ -205,6 +211,8 @@ export const physical = {
                     amplitude: 0.0,
                     maxDisplacement: 0.0
                 },
+                axialTiltDeg:      28,   // obliquity (degrees); 0 = north pole aligned with world Y
+                rotationPeriodSec: 1240,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
                 layerThicknessBase: 1.2,
                 layerThicknessGrowth: 1.4,

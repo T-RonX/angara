@@ -9,6 +9,7 @@ import { AtmosphereSystem } from './atmosphere/AtmosphereSystem.js';
 import { CelestialBody } from './model/CelestialBody.js';
 import { BodyRegistry } from './world/BodyRegistry.js';
 import { OrbitSystem } from './world/OrbitSystem.js';
+import { RotationSystem } from './world/RotationSystem.js';
 import { LodController } from './world/LodController.js';
 import { CliffPicker } from './picking/CliffPicker.js';
 import { HighlightManager } from './picking/HighlightManager.js';
@@ -42,6 +43,7 @@ export class BodyExplorer
     #registry;
     #activeBody;
     #orbits;
+    #rotations;
     #bodyPicker;
     #lod;
 
@@ -151,6 +153,7 @@ export class BodyExplorer
     {
         this.#registry = new BodyRegistry();
         this.#orbits = new OrbitSystem(this.#registry);
+        this.#rotations = new RotationSystem();
 
         await this.#buildBodyTree(this.#planet, null);
 
@@ -174,6 +177,7 @@ export class BodyExplorer
         ));
 
         this.#orbits.add(body, parentBody);
+        this.#rotations.add(body);
 
         for (const companion of config.companions ?? [])
         {
@@ -243,13 +247,12 @@ export class BodyExplorer
 
     #buildInteraction()
     {
-        const scene = this.#scene.scene;
         const hasAtmosphere = this.cellGrid.atmosphereCells.length > 0;
 
         this.#hud = new HudView(this.layerModel, hasAtmosphere, this.#topology);
 
         this.#highlights = new HighlightManager(
-            scene,
+            this.#activeBody.group,
             this.#topology.createResourceHighlight({
                 crossSection: this.#crossSection,
                 geometryFactory: this.#cellGeometry,
@@ -258,11 +261,12 @@ export class BodyExplorer
             this.#cellGeometry, this.#state,
         );
 
-        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
-        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.plane);
+        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0], this.#activeBody.group);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.worldPlane);
 
         this.#hover = new HoverController(
             this.#scene, this.#state, surfacePicker, cliffPicker, this.#highlights, this.#hud,
+            this.#activeBody.group,
         );
 
         // Moving the cut invalidates the hover pick.
@@ -271,6 +275,7 @@ export class BodyExplorer
         this.#crustCamera = new CrustCamera(
             this.#scene, this.#clip, this.layerModel, this.#activeBody.planet,
             this.#behaviour.camera, this.#behaviour.input, this.#state, this.#topology.shapeField,
+            this.#activeBody.group,
         );
 
         this.#focus = new FocusController(
@@ -309,10 +314,10 @@ export class BodyExplorer
         // reachable at its own scale.
         this.#scene.setDistanceRange(planet);
 
-        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
-        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.plane);
+        const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0], this.#activeBody.group);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.worldPlane);
 
-        this.#hover.retarget(surfacePicker, cliffPicker);
+        this.#hover.retarget(surfacePicker, cliffPicker, this.#activeBody.group);
         this.#clip.onCutChanged = () => this.#hover.invalidate();
 
         this.#highlights.retarget(
@@ -322,9 +327,10 @@ export class BodyExplorer
                 clip: this.#clip,
             }),
             this.#cellGeometry,
+            this.#activeBody.group,
         );
 
-        this.#crustCamera.retarget(this.#clip, this.layerModel, planet, this.#topology.shapeField);
+        this.#crustCamera.retarget(this.#clip, this.layerModel, planet, this.#topology.shapeField, this.#activeBody.group);
         this.#focus.retarget(this.#topology.traversal, this.#clip, this.#crustCamera, this.#highlights, this.#hud);
         this.#transition.retarget(
             this.#clip, this.#crustCamera, this.#sliceBuilder, this.#highlights, this.#hud,
@@ -403,7 +409,7 @@ export class BodyExplorer
 
         this.#bodyPicker = new BodyPicker(
             hudStack, this.#registry.bodies, this.#registry.activeIndex,
-            index => this.#selectBody(index), this.#orbits,
+            index => this.#selectBody(index), this.#orbits, this.#rotations,
         );
 
         this.#lod = new LodController(
@@ -546,12 +552,31 @@ export class BodyExplorer
         const dt = Math.min(0.1, (now - this.#lastFrameT) / 1000); // clamp tab-switch gaps
         this.#lastFrameT = now;
 
-        if (this.#state.transition.active)        this.#transition.step(dt);
-        else if (this.#state.mode === 'view')     this.#scene.controls.update();
-        else                                      this.#focus.easeFocusToTarget();
-
-        // Advance orbits and apply distance LOD (both no-ops for a single body).
+        // Advance orbits (positions) and rotations first, then settle world matrices
+        // so all world-space calculations (crust camera, world clip plane, picking)
+        // see the current frame's body orientations.
         this.#orbits.update(now / 1000);
+        this.#rotations.update(dt);
+        this.#scene.scene.updateMatrixWorld();
+
+        // Sync the active body's world clip plane after transforms are settled.
+        this.#clip.syncWorldPlane();
+
+        // Now advance mode/camera with up-to-date world transforms.
+        if (this.#state.transition.active)
+        {
+            this.#transition.step(dt);
+        }
+        else if (this.#state.mode === 'view')
+        {
+            this.#scene.controls.update();
+        }
+        else
+        {
+            this.#focus.easeFocusToTarget();
+            this.#crustCamera.positionCrustCamera();
+        }
+
         this.#lod.update();
 
         // Advance the hexsphere cell-reveal fade (no-op for lon/lat / when idle).

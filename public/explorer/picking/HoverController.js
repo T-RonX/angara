@@ -17,6 +17,7 @@ export class HoverController
     #cliffPicker;
     #highlights;
     #hud;
+    #bodyGroup = null;
 
     #raycaster = new THREE.Raycaster();
     #pointer = new THREE.Vector2();
@@ -31,9 +32,10 @@ export class HoverController
         camX: NaN, camY: NaN, camZ: NaN,
         camQx: NaN, camQy: NaN, camQz: NaN, camQw: NaN,
         inside: false, mode: null,
+        bodyQx: NaN, bodyQy: NaN, bodyQz: NaN, bodyQw: NaN,
     };
 
-    constructor(sceneContext, state, surfacePicker, cliffPicker, highlightManager, hud)
+    constructor(sceneContext, state, surfacePicker, cliffPicker, highlightManager, hud, bodyGroup = null)
     {
         this.#sceneContext = sceneContext;
         this.#state = state;
@@ -41,6 +43,7 @@ export class HoverController
         this.#cliffPicker = cliffPicker;
         this.#highlights = highlightManager;
         this.#hud = hud;
+        this.#bodyGroup = bodyGroup ?? null;
 
         this.#bindPointer();
     }
@@ -61,10 +64,11 @@ export class HoverController
 
     // Re-point at a newly-activated body (companion selection). The DOM
     // listeners stay bound; only the body-specific pickers are swapped.
-    retarget(surfacePicker, cliffPicker)
+    retarget(surfacePicker, cliffPicker, bodyGroup = null)
     {
         this.#surfacePicker = surfacePicker;
         this.#cliffPicker = cliffPicker;
+        this.#bodyGroup = bodyGroup ?? null;
         this.#lastHoverCell = null;
         this.#lastHoverMode = null;
         this.invalidate();
@@ -141,6 +145,7 @@ export class HoverController
     #cacheStillValid(camPos, camQ)
     {
         const c = this.#cache;
+        const bodyQ = this.#bodyGroup?.quaternion;
 
         return c.inside === this.#pointerInside &&
             c.mode === this.#state.mode &&
@@ -148,7 +153,9 @@ export class HoverController
             c.pointerY === this.#pointer.y &&
             c.camX === camPos.x && c.camY === camPos.y && c.camZ === camPos.z &&
             c.camQx === camQ.x && c.camQy === camQ.y &&
-            c.camQz === camQ.z && c.camQw === camQ.w;
+            c.camQz === camQ.z && c.camQw === camQ.w &&
+            (!bodyQ || (c.bodyQx === bodyQ.x && c.bodyQy === bodyQ.y &&
+                c.bodyQz === bodyQ.z && c.bodyQw === bodyQ.w));
     }
 
     #refreshCache(camPos, camQ)
@@ -160,5 +167,11 @@ export class HoverController
         c.pointerY = this.#pointer.y;
         c.camX = camPos.x; c.camY = camPos.y; c.camZ = camPos.z;
         c.camQx = camQ.x; c.camQy = camQ.y; c.camQz = camQ.z; c.camQw = camQ.w;
+
+        if (this.#bodyGroup)
+        {
+            const bq = this.#bodyGroup.quaternion;
+            c.bodyQx = bq.x; c.bodyQy = bq.y; c.bodyQz = bq.z; c.bodyQw = bq.w;
+        }
     }
 }

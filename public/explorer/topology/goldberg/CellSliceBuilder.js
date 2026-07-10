@@ -52,6 +52,7 @@ export class CellSliceBuilder
     #layerModel;
     #geometryFactory;
     #bodyMesh;
+    #bodyGroup;
     #eps;
     #lastSig = null;
     #atmospherePickMaterial;
@@ -125,6 +126,7 @@ export class CellSliceBuilder
         this.#layerModel = ctx.layerModel;
         this.#geometryFactory = ctx.geometryFactory;
         this.#bodyMesh = ctx.bodyMesh;
+        this.#bodyGroup = ctx.bodyMesh.group;
 
         // Inclusion tolerance: the focus cell straddles the meridian cut
         // (centroid distance ~0), so a small positive slack keeps it on the
@@ -135,7 +137,7 @@ export class CellSliceBuilder
         this.sliceGroup.visible = false;
         this.sliceGroup.matrixAutoUpdate = false;
         this.sliceGroup.updateMatrix();
-        ctx.scene.add(this.sliceGroup);
+        ctx.bodyMesh.add(this.sliceGroup);
 
         // The selectable atmosphere shell must be pickable (its cells stay in
         // capMeshes) but must NOT draw a persistent blue box — only the hover
@@ -180,7 +182,7 @@ export class CellSliceBuilder
         this.#bodyMesh.hideAll();
         this.sliceGroup.visible = true;
 
-        this.#bodyMesh.core.material.clippingPlanes = [this.#clip.plane];
+        this.#bodyMesh.core.material.clippingPlanes = [this.#clip.worldPlane];
         this.#bodyMesh.core.material.needsUpdate = true;
 
         this.#lastKeys = null;
@@ -845,7 +847,14 @@ export class CellSliceBuilder
         if (!this.#horizonCullEnabled) return;
 
         const R = this.#planetRadius;
-        const d = camera.position.length();
+
+        // Transform the camera position to body-local space so the horizon angle
+        // and the bucket directions are in the same coordinate frame.
+        const localCamPos = this.#bodyGroup
+            ? this.#bodyGroup.worldToLocal(camera.position.clone())
+            : camera.position.clone();
+
+        const d = localCamPos.length();
 
         // Degenerate: camera at/under the outer surface → no defined horizon.
         // Restore all buckets and bail (so a previous cull can't leave one hidden).
@@ -863,7 +872,7 @@ export class CellSliceBuilder
         this.#horizonCulling = true;
 
         const horizonAngle = Math.acos(R / d);
-        const v = camera.position.clone().multiplyScalar(1 / d);
+        const v = localCamPos.clone().multiplyScalar(1 / d);
 
         for (const { mesh } of this.#opaqueBuckets.values())
         {

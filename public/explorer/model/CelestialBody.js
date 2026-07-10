@@ -90,14 +90,13 @@ export class CelestialBody
         );
         this.#bodyMesh.add(this.#topology.buildGridLines());
 
-        this.#clip = new ClipController(focus, this.#topology.cutStrategy);
+        this.#clip = new ClipController(focus, this.#topology.cutStrategy, this.#bodyMesh.group);
 
         this.#crossSection = new CrossSectionFactory(
             this.#clip.plane, focus, this.#planet.radius, this.#planet.polarCapRings,
         );
 
         this.#sliceBuilder = this.#topology.createSliceBuilder({
-            scene,
             clip: this.#clip,
             cellGrid: this.#cellGrid,
             crossSection: this.#crossSection,

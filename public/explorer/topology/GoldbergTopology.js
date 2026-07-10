@@ -63,9 +63,9 @@ export class GoldbergTopology extends CellTopology
     get traversal()   { return this.#traversal; }
     get shapeField()  { return this.#shapeField; }
 
-    createSurfacePicker(surfaceMesh)
+    createSurfacePicker(surfaceMesh, bodyGroup = null)
     {
-        return new GoldbergSurfacePicker(this.#planet, this.#index, this.#shapeField, surfaceMesh);
+        return new GoldbergSurfacePicker(this.#planet, this.#index, this.#shapeField, surfaceMesh, bodyGroup);
     }
 
     createBroadPhase()

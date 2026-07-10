@@ -20,27 +20,45 @@ import * as THREE from 'three';
 export class ClipController
 {
     plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    worldPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     cutKey = null; // signature of the last applied cut (null = never built)
 
     onCutChanged = null; // called after the plane / caps update (hover invalidation)
 
     #focus;
     #cutStrategy;
+    #bodyGroup = null;
     #sliceBuilder = null;
 
     #lastBuildT = -Infinity;
     #rebuildIntervalMs = 55; // ~18 rebuilds/sec cap while actively dragging
     #pendingRebuild = false;
 
-    constructor(focus, cutStrategy)
+    constructor(focus, cutStrategy, bodyGroup = null)
     {
         this.#focus = focus;
         this.#cutStrategy = cutStrategy;
+        this.#bodyGroup = bodyGroup ?? null;
     }
 
     setSliceBuilder(sliceBuilder)
     {
         this.#sliceBuilder = sliceBuilder;
+    }
+
+    setBodyGroup(group)
+    {
+        this.#bodyGroup = group;
+    }
+
+    // Re-derive `worldPlane` from `plane` and the body's current world matrix.
+    // Call every frame after body transforms are updated (and after updateCut
+    // when the local plane changes mid-frame).
+    syncWorldPlane()
+    {
+        if (!this.#bodyGroup) return;
+
+        this.worldPlane.copy(this.plane).applyMatrix4(this.#bodyGroup.matrixWorld);
     }
 
     resetCut()
@@ -59,6 +77,7 @@ export class ClipController
     {
         this.#cutStrategy.orient(this.plane, this.#focus);
         this.plane.constant = constant;
+        this.syncWorldPlane();
 
         const now = performance.now();
         const forced = this.cutKey === null || slab || !throttle;

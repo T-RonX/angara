@@ -17,13 +17,18 @@ export class GoldbergSurfacePicker
     #shapeField;
     #surfaceMesh;
     #hit = new THREE.Vector3();
+    #bodyGroup = null;
+    #localO = new THREE.Vector3();
+    #localD = new THREE.Vector3();
+    #invBodyMatrix = new THREE.Matrix4();
 
-    constructor(planet, centroidIndex, shapeField, surfaceMesh)
+    constructor(planet, centroidIndex, shapeField, surfaceMesh, bodyGroup = null)
     {
         this.#planetRadius = planet.radius;
         this.#index = centroidIndex;
         this.#shapeField = shapeField;
         this.#surfaceMesh = surfaceMesh ?? null;
+        this.#bodyGroup = bodyGroup ?? null;
 
         // Displaced bodies fall back to raycasting the merged surface mesh; a
         // BVH keeps that O(log n) instead of scanning every surface triangle.
@@ -45,13 +50,26 @@ export class GoldbergSurfacePicker
     }
 
     // Analytical ray-vs-sphere (perfect-sphere fast path).
+    // Transforms the ray into body-local space when a body group is available,
+    // so the sphere test and CentroidIndex lookup stay in body-local coordinates
+    // regardless of body position or rotation.
     #pickSphere(raycaster)
     {
-        const o = raycaster.ray.origin;
-        const d = raycaster.ray.direction;
+        let o = raycaster.ray.origin;
+        let d = raycaster.ray.direction;
         const R = this.#planetRadius;
 
-        // Solve |o + t·d|² = R²  (d is unit length).
+        // Transform the world-space ray to body-local space.
+        if (this.#bodyGroup)
+        {
+            this.#invBodyMatrix.copy(this.#bodyGroup.matrixWorld).invert();
+            this.#localO.copy(o).applyMatrix4(this.#invBodyMatrix);
+            this.#localD.copy(d).transformDirection(this.#invBodyMatrix);
+            o = this.#localO;
+            d = this.#localD;
+        }
+
+        // Solve |o + t·d|² = R²  (d is unit length in local space).
         const b = o.dot(d);
         const c = o.dot(o) - R * R;
         const disc = b * b - c;
@@ -63,6 +81,7 @@ export class GoldbergSurfacePicker
         if (t < 0) t = -b + sq;
         if (t < 0) return null;
 
+        // Hit direction is in body-local space — correct for CentroidIndex.
         this.#hit.copy(d).multiplyScalar(t).add(o).normalize();
 
         return this.#index.nearestToDirection(this.#hit);
