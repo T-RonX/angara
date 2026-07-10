@@ -6,6 +6,17 @@ This directory is a plain-JavaScript Three.js application served directly from `
 
 Hexsphere is the permanent and only cell topology. Do not add topology switches, fake abstract bases, lon/lat fallbacks, polar-cap branches, or type-condition dispatch for unsupported shapes.
 
+## Architecture principles
+
+The architecture must strictly follow the SOLID principles. Dependency injection and single responsibility are mandatory design requirements. Every module should have one clear responsibility, depend on explicit collaborators, and avoid hidden global state or cross-cutting coupling.
+
+The main config files are the key runtime drivers and should remain the authoritative input surface for behavior:
+
+- `config/physical.js` owns body, shape, layers, materials, atmosphere, orbit, rotation, and star definitions.
+- `config/behaviour.js` owns camera, input, traversal, transitions, slicing, HUD, lighting fill, atmosphere rendering, and debug behavior.
+
+New behavior should usually be introduced first in these config files, then consumed through injected collaborators and validated before runtime use.
+
 ## Configuration contract
 
 There are exactly two runtime data files:
