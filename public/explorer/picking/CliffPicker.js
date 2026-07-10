@@ -14,11 +14,16 @@ export class CliffPicker
 {
     #sliceBuilder;
     #coreMesh;
+    #clipPlane;
+    #visibleCapMeshes = [];
+    #capHits = [];
+    #coreHits = [];
 
-    constructor(sliceBuilder, coreMesh)
+    constructor(sliceBuilder, coreMesh, clipPlane)
     {
         this.#sliceBuilder = sliceBuilder;
         this.#coreMesh = coreMesh;
+        this.#clipPlane = clipPlane;
 
         // The core sphere is raycast every pointer-move frame for occlusion
         // rejection; give it a BVH too so that test is O(log n) rather than a
@@ -34,9 +39,14 @@ export class CliffPicker
     {
         if (this.#sliceBuilder.ensureAtmosphere) this.#sliceBuilder.ensureAtmosphere();
 
+        this.#collectVisibleCapMeshes();
         this.#ensureBoundsTrees();
 
-        const hit = raycaster.intersectObjects(this.#sliceBuilder.capMeshes, false)[0];
+        this.#capHits.length = 0;
+        raycaster.intersectObjects(this.#visibleCapMeshes, false, this.#capHits);
+        const hit = this.#capHits[0];
+        this.#capHits.length = 0;
+        this.#visibleCapMeshes.length = 0;
 
         if (!hit || !hit.object.userData.faceToCell)
         {
@@ -46,7 +56,7 @@ export class CliffPicker
         // Reject cap hits that are occluded by the (always-opaque) core.
         if (this.#coreMesh && this.#coreMesh.visible)
         {
-            const coreHit = raycaster.intersectObject(this.#coreMesh, false)[0];
+            const coreHit = this.#nearestVisibleCoreHit(raycaster);
 
             if (coreHit && coreHit.distance < hit.distance)
             {
@@ -55,6 +65,42 @@ export class CliffPicker
         }
 
         return hit.object.userData.faceToCell[hit.faceIndex] ?? null;
+    }
+
+    #collectVisibleCapMeshes()
+    {
+        this.#visibleCapMeshes.length = 0;
+
+        for (const mesh of this.#sliceBuilder.capMeshes)
+        {
+            if (mesh.visible) this.#visibleCapMeshes.push(mesh);
+        }
+    }
+
+    #nearestVisibleCoreHit(raycaster)
+    {
+        this.#coreHits.length = 0;
+        raycaster.intersectObject(this.#coreMesh, false, this.#coreHits);
+
+        let visibleHit = this.#clipPlane ? null : this.#coreHits[0];
+
+        if (this.#clipPlane)
+        {
+            for (const hit of this.#coreHits)
+            {
+                // Three.js clips the negative half-space. Raycasting ignores material
+                // clipping, so discard intersections the renderer does not draw.
+                if (this.#clipPlane.distanceToPoint(hit.point) < -1e-6) continue;
+
+                visibleHit = hit;
+
+                break;
+            }
+        }
+
+        this.#coreHits.length = 0;
+
+        return visibleHit;
     }
 
     // Build a BVH on each cap mesh the FIRST time it is about to be raycast.
@@ -66,7 +112,7 @@ export class CliffPicker
     // order so the faceToCell mapping stays correct.
     #ensureBoundsTrees()
     {
-        const meshes = this.#sliceBuilder.capMeshes;
+        const meshes = this.#visibleCapMeshes;
 
         for (let i = 0; i < meshes.length; i++)
         {

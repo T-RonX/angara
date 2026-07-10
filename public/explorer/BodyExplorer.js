@@ -259,7 +259,7 @@ export class BodyExplorer
         );
 
         const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
-        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.plane);
 
         this.#hover = new HoverController(
             this.#scene, this.#state, surfacePicker, cliffPicker, this.#highlights, this.#hud,
@@ -310,7 +310,7 @@ export class BodyExplorer
         this.#scene.setDistanceRange(planet);
 
         const surfacePicker = this.#topology.createSurfacePicker(this.#bodyMesh.surfaceMeshes[0]);
-        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core);
+        const cliffPicker = new CliffPicker(this.#sliceBuilder, this.#bodyMesh.core, this.#clip.plane);
 
         this.#hover.retarget(surfacePicker, cliffPicker);
         this.#clip.onCutChanged = () => this.#hover.invalidate();
