@@ -1,10 +1,10 @@
 // ----------------------------------------------------------------------
-// PHYSICAL configuration — "what the body and its sky ARE".
+// PHYSICAL configuration — "what the solar system IS".
 //
-// This is pure DATA: the planet, its crust layers, the atmosphere, the
-// light sources (suns) and the background star field. No behaviour lives
-// here. Eventually this exact shape will be delivered by the backend, so
-// keep it serialisable (plain numbers / strings / arrays only).
+// Pure DATA: bodies (geometry, materials, atmosphere), and the light sources
+// (stars). No behaviour or scene/rendering knobs live here — those belong
+// in behaviour.js. Eventually this exact shape will be delivered by the
+// backend, so keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
 export const physical = {
     // Global cell size: world units of body radius per unit of `hexFrequency`.
@@ -13,10 +13,9 @@ export const physical = {
     // the primary's historical 500 / 128 so it keeps radius 500 at f = 128.
     cellSize: 4,
 
-    planet: {
+    body: {
         id:       'primary',      // stable identifier (UI + future backend)
         name:     'Angara',       // display name in the body-picker UI
-        cellTopology: 'hexsphere',
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
         // surface has 10·f²+2 cells; keep modest (e.g. 12–24). The body's
         // `radius` is derived from this via the global `cellSize`.
@@ -59,7 +58,6 @@ export const physical = {
         layerNormalMaps:  null,   // future: [url | null, …] per visible layer
 
         gridColor:  0x0a0e16,
-        background: 0x05070d,
         cellGap:    0.0,          // gap between cells (fraction); 0 = touching
 
         // ------------------------------------------------------------------
@@ -99,7 +97,6 @@ export const physical = {
             {
                 id: 'moon-1',
                 name: 'Moon',
-                cellTopology: 'hexsphere',
                 hexFrequency: 16,
                 maxDepth: 4,
                 shape: {
@@ -120,7 +117,6 @@ export const physical = {
                 coreColor: 0x8a8f98,
                 depthColors: [0x9aa3ad, 0x6b7178],
                 gridColor: 0x0a0e16,
-                background: 0x05070d,
                 cellGap: 0.0,
 
                 // The moon's OWN atmosphere — a thin, cool haze that stays visible
@@ -156,7 +152,6 @@ export const physical = {
             {
                 id: 'satellite-1',
                 name: 'Ferros',
-                cellTopology: 'hexsphere',
                 hexFrequency: 20,
                 maxDepth: 3,
                 shape: {
@@ -177,7 +172,6 @@ export const physical = {
                 coreColor: 0x7a6b4a,
                 depthColors: [0xa0826d, 0x6b5a47, 0x4a3f2f],
                 gridColor: 0x0a0e16,
-                background: 0x05070d,
                 cellGap: 0.0,
 
                 atmosphere: {
@@ -198,7 +192,6 @@ export const physical = {
             {
                 id: 'satellite-2',
                 name: 'Glacios',
-                cellTopology: 'hexsphere',
                 hexFrequency: 24,
                 maxDepth: 3,
                 shape: {
@@ -219,7 +212,6 @@ export const physical = {
                 coreColor: 0x4a5f8a,
                 depthColors: [0xe8f0ff, 0xc5deff, 0x9abeff],
                 gridColor: 0x0a0e16,
-                background: 0x05070d,
                 cellGap: 0.0,
 
                 atmosphere: {
@@ -253,23 +245,8 @@ export const physical = {
         ],
     },
 
-    // ------------------------------------------------------------------
-    // Sky-wide constants and the fill lights that keep the night side
-    // legible. The `nightDarkness` floor is decoupled from the suns.
-    // ------------------------------------------------------------------
-    lighting: {
-        skyDistance: 80000,       // radius the sun/stars sit at (≈ infinity)
-        // Fill lights (the unlit-side floor). Held at a constant level
-        // scaled by `nightDarkness`: 0 = pitch-black night side, 1 = full.
-        ambientIntensity:    0.12,
-        rimIntensity:        0.4,
-        nightDarkness:       0.1,
-        hemiSkyColor:        0xa8c0e8,
-        hemiGroundColor:     0xa37a52,
-        hemiIntensity:       0.85,
-        bottomFillIntensity: 0.18,
-    },
-
+    // Stars remain physical: they are actual light sources with positions,
+    // intensities and visual properties — not rendering behaviour.
     stars: [
         {
             name:      'Sun',
@@ -338,19 +315,4 @@ export const physical = {
             lensFlareOpacity: 0.18,
         },
     ],
-
-    starfield: {
-        show:  true,
-        count: 2500,
-        // Per-star pixel size (power-law biased toward the small end).
-        sizeMin:  0.6,
-        sizeMax:  3.5,
-        sizeBias: 4,
-        // Per-star blackbody colour temperature range (Kelvin).
-        tempMin:  3000,
-        tempMax:  12000,
-        tempBias: 2,
-        brightnessMin: 0.45,
-        brightnessMax: 1.0,
-    },
 };

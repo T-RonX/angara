@@ -2,18 +2,18 @@ import * as THREE from 'three';
 import { deg2rad } from '../core/MathUtils.js';
 
 // ----------------------------------------------------------------------
-// CrustCamera — frames the crust cliff in resource mode. It looks at the
-// cut edge-on so the surface→max-depth layers run top→bottom, following the
-// body's curvature from the focus point. It also reports how many degrees
-// of lat/lon one screen pixel of drag is worth at the current zoom, so the
-// cursor stays glued to the surface.
+// CrustCamera -- frames the crust cliff in resource mode. It looks at the
+// cut edge-on so the surface-to-max-depth layers run top-to-bottom,
+// following the body's curvature from the focus point. It also reports how
+// many degrees of lat/lon one screen pixel of drag is worth at the current
+// zoom, so the cursor stays glued to the surface.
 // ----------------------------------------------------------------------
 export class CrustCamera
 {
     #sceneContext;
     #clip;
     #layerModel;
-    #planet;
+    #body;
     #cameraCfg;
     #input;
     #state;
@@ -21,24 +21,15 @@ export class CrustCamera
     #bodyGroup = null;
     #bodyQ = new THREE.Quaternion();
 
-    constructor(sceneContext, clipController, layerModel, planet, cameraCfg, input, state, shapeField, bodyGroup = null)
+    constructor(sceneContext, clipController, layerModel, body, cameraCfg, input, state, shapeField, bodyGroup = null)
     {
         this.#sceneContext = sceneContext;
         this.#clip = clipController;
         this.#layerModel = layerModel;
-        this.#planet = planet;
+        this.#body = body;
         this.#cameraCfg = cameraCfg;
         this.#input = input;
         this.#state = state;
-        this.#shapeField = shapeField ?? null;
-        this.#bodyGroup = bodyGroup ?? null;
-    }
-
-    retarget(clipController, layerModel, planet, shapeField, bodyGroup = null)
-    {
-        this.#clip = clipController;
-        this.#layerModel = layerModel;
-        this.#planet = planet;
         this.#shapeField = shapeField ?? null;
         this.#bodyGroup = bodyGroup ?? null;
     }
@@ -54,7 +45,7 @@ export class CrustCamera
             if (dir) return this.#shapeField.surfaceRadius(dir);
         }
 
-        return this.#planet.radius;
+        return this.#body.radius;
     }
 
     // Compute (but don't apply) the crust-cliff pose for the current focus,
@@ -65,23 +56,14 @@ export class CrustCamera
         const focus = this.#state.focus;
         const coreRadius = this.#layerModel.coreRadius;
 
-        // focus.dir is in body-local space; derive the local radial from
-        // lon/lat if dir is absent (lon/lat topology fallback).
-        const lonR = deg2rad(focus.lon);
-        const latR = deg2rad(focus.lat);
-        const radialLocal = focus.dir
-            ? focus.dir.clone()
-            : new THREE.Vector3(
-                Math.cos(latR) * Math.cos(lonR),
-                Math.sin(latR),
-                Math.cos(latR) * Math.sin(lonR),
-            );
+        // The hexsphere always provides focus.dir; use it directly.
+        const radialLocal = focus.dir.clone();
 
         const surfaceRadius = this.#focusSurfaceRadius(radialLocal);
         const maxRadius = this.#shapeField?.maxRadius ?? surfaceRadius;
         const midStackR = (maxRadius + coreRadius) / 2;
 
-        // Body world position and quaternion (active body is at origin but be robust).
+        // Body world position and quaternion.
         const bodyPos = this.#bodyGroup
             ? this.#bodyGroup.getWorldPosition(new THREE.Vector3())
             : new THREE.Vector3();

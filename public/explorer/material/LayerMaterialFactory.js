@@ -4,66 +4,57 @@ import * as THREE from 'three';
 // LayerMaterialFactory — the single place that decides what the VISIBLE
 // faces of the body look like. Today it returns flat-shaded colours, but
 // it already reads the (reserved) `layerTextures` / `layerNormalMaps`
-// slots from the planet config, so skinning the crust later is a
+// slots from the body config, so skinning the crust later is a
 // data-only change: drop URLs into the config and the faces get textured
 // with no call-site edits.
 // ----------------------------------------------------------------------
 export class LayerMaterialFactory
 {
     depthMaterials;     // one per crust depth (the lit body shells)
-    capMaterials;       // one per depth for the sliced cross-section caps
     coreMaterial;       // the inner core sphere
     coreCapMaterial;    // the core's flat cut cap
-    atmosphereCapMaterial; // near-invisible atmosphere cross-section strip
 
     #textureLoader;
+    #textures = [];     // loaded textures to dispose
+    #disposed = false;
 
-    constructor(planet, layerModel)
+    constructor(body, layerModel, materialConfig)
     {
         this.#textureLoader = new THREE.TextureLoader();
 
-        const maps = this.#loadOptional(planet.layerTextures);
-        const normals = this.#loadOptional(planet.layerNormalMaps);
+        const maps = this.#loadOptional(body.layerTextures);
+        const normals = this.#loadOptional(body.layerNormalMaps);
 
         this.depthMaterials = layerModel.depthColors.map((c, d) =>
-            this.#buildDepthMaterial(c, d, maps[d], normals[d]));
-
-        this.capMaterials = layerModel.depthColors.map(c => new THREE.MeshStandardMaterial({
-            color: new THREE.Color(c).multiplyScalar(0.85),
-            roughness: 1,
-            metalness: 0,
-            side: THREE.DoubleSide,
-            // Win the depth test against the clipped surface at the cut seam
-            // with a depth-only bias (no geometric lift).
-            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-        }));
+            this.#buildDepthMaterial(c, d, maps[d], normals[d], materialConfig));
 
         this.coreMaterial = new THREE.MeshStandardMaterial({
-            color: planet.coreColor, roughness: 1, side: THREE.DoubleSide,
+            color: body.coreColor,
+            roughness: materialConfig.coreRoughness,
+            side: THREE.DoubleSide,
         });
 
         this.coreCapMaterial = new THREE.MeshStandardMaterial({
-            color: planet.coreColor, roughness: 1, side: THREE.DoubleSide,
-            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-        });
-
-        this.atmosphereCapMaterial = new THREE.MeshBasicMaterial({
-            color: 0x9fd0ff, transparent: true, opacity: 0.07, side: THREE.DoubleSide,
-            depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+            color: body.coreColor,
+            roughness: materialConfig.coreRoughness,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: materialConfig.coreCapOffsetFactor,
+            polygonOffsetUnits: materialConfig.coreCapOffsetUnits,
         });
     }
 
-    #buildDepthMaterial(color, depth, map, normalMap)
+    #buildDepthMaterial(color, depth, map, normalMap, materialConfig)
     {
         const mat = new THREE.MeshStandardMaterial({
             color,
-            roughness: 0.95,
-            metalness: 0.0,
+            roughness: materialConfig.roughness,
+            metalness: materialConfig.metalness,
             // Single-sided: coincident walls of touching cells have opposite
             // normals, so back-face culling leaves only one — no z-fighting.
             side: THREE.FrontSide,
             // Deeper layers are slightly emissive so the cross-section reads.
-            emissive: new THREE.Color(color).multiplyScalar(0.06 * depth),
+            emissive: new THREE.Color(color).multiplyScalar(materialConfig.emissiveScale * depth),
         });
 
         // Reserved texturing seam — only takes effect once the config slots
@@ -82,7 +73,30 @@ export class LayerMaterialFactory
             return [];
         }
 
-        return urls.map(url => (url ? this.#textureLoader.load(url) : null));
+        return urls.map(url =>
+        {
+            if (!url) return null;
+
+            const tex = this.#textureLoader.load(url);
+            this.#textures.push(tex);
+
+            return tex;
+        });
+    }
+
+    // Dispose all owned materials and loaded textures. Idempotent.
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        for (const m of this.depthMaterials) m.dispose();
+
+        this.coreMaterial.dispose();
+        this.coreCapMaterial.dispose();
+
+        for (const t of this.#textures) t.dispose();
+
+        this.#textures.length = 0;
     }
 }
-

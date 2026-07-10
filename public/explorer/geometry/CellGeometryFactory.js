@@ -1,14 +1,10 @@
 import * as THREE from 'three';
-import { sphere } from '../core/MathUtils.js';
 
 // ----------------------------------------------------------------------
 // CellGeometryFactory — turns a cell record into raw vertex / normal /
-// index data. A cell is either:
-//   * a general N-gon PRISM (quad = 4, pentagon = 5, hexagon = 6, …),
-//     described by an ordered `outerRing` of N corners and a matching
-//     `innerRing` at the deeper radius, or
-//   * a lon/lat polar `cap` dome (a smooth fan — only the lon/lat topology
-//     produces these).
+// index data. A cell is a general N-gon PRISM (quad = 4, pentagon = 5,
+// hexagon = 6, …), described by an ordered `outerRing` of N corners and a
+// matching `innerRing` at the deeper radius.
 //
 // The same code feeds either a standalone single-cell geometry (hover
 // overlay) or a merged depth-layer mesh. Prism outer/inner faces carry
@@ -18,11 +14,8 @@ import { sphere } from '../core/MathUtils.js';
 // ----------------------------------------------------------------------
 export class CellGeometryFactory
 {
-    #rings;
-
-    constructor(polarCapRings)
+    constructor()
     {
-        this.#rings = Math.max(2, polarCapRings ?? 4);
     }
 
     // Append one cell's geometry, recording its triangle count on the cell.
@@ -30,14 +23,7 @@ export class CellGeometryFactory
     {
         const triStart = indices.length / 3;
 
-        if (cell.kind === 'cap')
-        {
-            this.#appendCapCell(cell, positions, normals, indices);
-        }
-        else
-        {
-            this.#appendPrismCell(cell, positions, normals, indices);
-        }
+        this.#appendPrismCell(cell, positions, normals, indices);
 
         cell.triCount = indices.length / 3 - triStart;
     }
@@ -170,122 +156,4 @@ export class CellGeometryFactory
 
         indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
     }
-
-    #appendCapCell(cell, positions, normals, indices)
-    {
-        const { boundaryLat, rOuter, rInner, sign, fan } = cell;
-        const rings = this.#rings;
-        const poleLat = sign * 90;
-
-        // Pre-sample concentric rings between the pole and the cap boundary
-        // at both crust radii — sampling on the real sphere rounds the
-        // silhouette (a single pole→ring fan would draw a cone).
-        const outerRings = [];
-        const innerRings = [];
-
-        for (let i = 0; i <= rings; i++)
-        {
-            const t = i / rings;
-            const lat = poleLat + (boundaryLat - poleLat) * t;
-            const ringO = new Array(fan);
-            const ringI = new Array(fan);
-
-            for (let k = 0; k < fan; k++)
-            {
-                const lon = (k / fan) * 360;
-                ringO[k] = sphere(lon, lat, rOuter);
-                ringI[k] = sphere(lon, lat, rInner);
-            }
-
-            outerRings.push(ringO);
-            innerRings.push(ringI);
-        }
-
-        // Outer skin: quad strips between rings, radial-outward normals.
-        for (let i = 0; i < rings; i++)
-        {
-            const r0 = outerRings[i];
-            const r1 = outerRings[i + 1];
-
-            for (let k = 0; k < fan; k++)
-            {
-                const k2 = (k + 1) % fan;
-                const a = r0[k], b = r0[k2], c = r1[k2], d = r1[k];
-                const verts = sign > 0 ? [a, b, c, a, c, d] : [a, d, c, a, c, b];
-                const base = positions.length / 3;
-
-                for (const p of verts) this.#pushRadial(positions, normals, p, 1);
-
-                indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
-            }
-        }
-
-        // Inner skin: same strips, inward normals, reversed winding.
-        for (let i = 0; i < rings; i++)
-        {
-            const r0 = innerRings[i];
-            const r1 = innerRings[i + 1];
-
-            for (let k = 0; k < fan; k++)
-            {
-                const k2 = (k + 1) % fan;
-                const a = r0[k], b = r0[k2], c = r1[k2], d = r1[k];
-                const verts = sign > 0 ? [a, d, c, a, c, b] : [a, b, c, a, c, d];
-                const base = positions.length / 3;
-
-                for (const p of verts) this.#pushRadial(positions, normals, p, -1);
-
-                indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
-            }
-        }
-
-        // Boundary cone wall: quad strip between outer / inner boundary rings.
-        const ringOuter = outerRings[rings];
-        const ringInner = innerRings[rings];
-
-        for (let k = 0; k < fan; k++)
-        {
-            const k2 = (k + 1) % fan;
-            const a = ringOuter[k];
-            const b = ringOuter[k2];
-            const c = ringInner[k2];
-            const d = ringInner[k];
-
-            const mx = (a.x + b.x + c.x + d.x) / 4;
-            const mz = (a.z + b.z + c.z + d.z) / 4;
-            const ml = Math.hypot(mx, mz) || 1;
-            const outX = mx / ml, outZ = mz / ml;
-
-            let e1x = b.x - a.x, e1y = b.y - a.y, e1z = b.z - a.z;
-            let e2x = d.x - a.x, e2y = d.y - a.y, e2z = d.z - a.z;
-            let nx = e1y * e2z - e1z * e2y;
-            let ny = e1z * e2x - e1x * e2z;
-            let nz = e1x * e2y - e1y * e2x;
-            const nl = Math.hypot(nx, ny, nz) || 1;
-            nx /= nl; ny /= nl; nz /= nl;
-            const flip = (nx * outX + nz * outZ) < 0;
-
-            if (flip) { nx = -nx; ny = -ny; nz = -nz; }
-
-            const winding = flip ? [a, c, b, a, d, c] : [a, b, c, a, c, d];
-            const base = positions.length / 3;
-
-            for (const p of winding)
-            {
-                positions.push(p.x, p.y, p.z);
-                normals.push(nx, ny, nz);
-            }
-
-            indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
-        }
-    }
-
-    // Push a vertex with a radial normal scaled by `dir` (+1 out, -1 in).
-    #pushRadial(positions, normals, p, dir)
-    {
-        positions.push(p.x, p.y, p.z);
-        const len = Math.hypot(p.x, p.y, p.z) || 1;
-        normals.push(dir * p.x / len, dir * p.y / len, dir * p.z / len);
-    }
 }
-

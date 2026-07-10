@@ -7,15 +7,13 @@ import {
 } from '../texture/TextureFactory.js';
 import { deg2rad } from '../core/MathUtils.js';
 
-// ----------------------------------------------------------------------
-// SunVisual — the on-screen disc for ONE sun: a hot core, a soft corona,
+// SunVisual ? the on-screen disc for ONE sun: a hot core, a soft corona,
 // a chromatic halo ring and an anamorphic starburst, all additive sprites
 // painted from this sun's own tints. They live under the SkyAnchor so they
 // sit at infinity.
 //
 // Each sun owns its own SunVisual, which is what lets several suns glow
 // with independent colours and sizes at once.
-// ----------------------------------------------------------------------
 export class SunVisual
 {
     #core;
@@ -23,6 +21,7 @@ export class SunVisual
     #chromaRing;
     #starburst;
     #star;
+    #disposed = false;
 
     constructor(skyAnchor, star)
     {
@@ -76,7 +75,6 @@ export class SunVisual
         this.#starburst.material.opacity = star.starburstOpacity;
     }
 
-    // Slowly rotate the chroma ring and starburst so they read as detail.
     animate(t)
     {
         this.#chromaRing.material.rotation = t * deg2rad(this.#star.chromaRingSpeed);
@@ -98,5 +96,19 @@ export class SunVisual
     {
         return [this.#core, this.#halo, this.#chromaRing, this.#starburst];
     }
-}
 
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        for (const s of this.#sprites())
+        {
+            s.removeFromParent();
+
+            if (s.material.map) s.material.map.dispose();
+
+            s.material.dispose();
+        }
+    }
+}

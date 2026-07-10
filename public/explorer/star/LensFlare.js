@@ -2,15 +2,13 @@ import * as THREE from 'three';
 import { additiveSprite, softGhostTexture, hexGhostTexture } from '../texture/TextureFactory.js';
 import { deg2rad } from '../core/MathUtils.js';
 
-// ----------------------------------------------------------------------
-// LensFlare — the chain of subtle additive "ghosts" running from ONE sun
+// LensFlare ? the chain of subtle additive "ghosts" running from ONE sun
 // through screen centre. Each sun casts its own flare along its own
-// sun→centre line, so several suns produce several independent flares.
+// sun?centre line, so several suns produce several independent flares.
 //
 // The ghosts are NOT depth-tested (a post-process look), so they're kept
 // small and never sit dead-centre (which would read as a blob over the
 // planet). The on-sun chromatic halo handles the "halo near the sun" job.
-// ----------------------------------------------------------------------
 export class LensFlare
 {
     #star;
@@ -21,6 +19,7 @@ export class LensFlare
     #sunNdc = new THREE.Vector3();
     #tmpPos = new THREE.Vector3();
     #sunCamSpace = new THREE.Vector3();
+    #disposed = false;
 
     constructor(scene, star)
     {
@@ -77,13 +76,13 @@ export class LensFlare
         // Fade as the sun nears the viewport edge.
         const edgeDist = Math.max(Math.abs(ndc.x), Math.abs(ndc.y));
         const edgeFade = THREE.MathUtils.clamp(1 - (edgeDist - 0.7) / 0.5, 0, 1);
-        // A "punch up" near screen centre — real lenses flare hardest on-axis.
+        // A "punch up" near screen centre ? real lenses flare hardest on-axis.
         const centreBoost = THREE.MathUtils.clamp(1 - ndc.length() * 0.5, 0.5, 1.1);
         // The chain dies faster than the disc when the sun is partly covered.
         const chainVis = vis * vis;
         const globalAlpha = this.#star.lensFlareOpacity * edgeFade * centreBoost * chainVis;
 
-        // Viewport height in world units at the overlay depth — scales each
+        // Viewport height in world units at the overlay depth ? scales each
         // ghost so `size` is a fraction of screen height.
         const overlayDepthNdc = 0.92;
         this.#tmpPos.set(0, 0, overlayDepthNdc).unproject(camera);
@@ -109,5 +108,22 @@ export class LensFlare
             f.sprite.material.rotation = (i % 2 === 0 ? 1 : -1) * t * 0.04 + i * 0.4;
             f.sprite.visible = globalAlpha > 0.01;
         }
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        for (const f of this.#elements)
+        {
+            f.sprite.removeFromParent();
+
+            if (f.sprite.material.map) f.sprite.material.map.dispose();
+
+            f.sprite.material.dispose();
+        }
+
+        this.#elements = [];
     }
 }

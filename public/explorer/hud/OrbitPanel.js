@@ -1,13 +1,8 @@
 // ----------------------------------------------------------------------
-// OrbitPanel — a HUD panel that exposes the ORBIT parameters of the currently
-// selected body as live sliders (semi-major axis, eccentricity, period, phase,
-// inclination, ascending node). Editing a slider mutates the body's orbit
-// config in place and reconfigures its live OrbitModel, so the motion updates
-// immediately with no rebuild.
-//
-// It owns only its own DOM and stays hidden for bodies that do not orbit (the
-// primary). SINGLE RESPONSIBILITY: "let the player tune the selected body's
-// orbit". The selection re-point is driven by BodyExplorer via retarget().
+// OrbitPanel -- a HUD panel that exposes the ORBIT parameters of the
+// selected body as live sliders. Editing a slider mutates the body's orbit
+// config in place and reconfigures its live OrbitModel, so the motion
+// updates immediately. Hidden for bodies that do not orbit (the primary).
 // ----------------------------------------------------------------------
 export const ORBIT_FIELD_DEFS = [
     ['Semi-major axis', 'semiMajorAxis',  0,   8000, 20,   v => v.toFixed(0)],
@@ -59,7 +54,7 @@ export class OrbitPanel
 
     // Point the panel at a body + its live OrbitModel. Bodies with no orbit
     // (the primary) hide the panel entirely.
-    retarget(body, model)
+    setContext(body, model)
     {
         this.#body = body ?? null;
         this.#model = model ?? null;

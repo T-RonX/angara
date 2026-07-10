@@ -1,36 +1,39 @@
+import { OccluderOwner } from './OccluderOwner.js';
+import { AtmosphereScheduler } from './AtmosphereScheduler.js';
+import { VisibilityPolicy } from './VisibilityPolicy.js';
 import * as THREE from 'three';
 
-// ----------------------------------------------------------------------
-// AtmosphereSystem — owns the haze of EVERY body. Each CelestialBody builds its
-// own (optional) AtmosphereShell from its own config, and this system:
-//   - positions each shell at its body's current world location every frame
-//     (companions orbit away from the origin),
-//   - decides which shells are visible (all in view mode; only the active
-//     body's in resource mode, and only if it opts in),
+// AtmosphereSystem ? owns the haze of EVERY body. Each CelestialBody builds
+// its own (optional) AtmosphereShell from its own config, and this system:
+//   - positions each shell at its body's current world location every frame,
+//   - decides which shells are visible (VisibilityPolicy),
 //   - drives the throttled scattering render pass + the per-frame composite,
 //     feeding each shell the shared sun state.
-//
-// Splitting this out of BodyExplorer keeps the orchestrator thin and makes the
-// haze genuinely per-body (fixes a companion inheriting the primary's sky).
 // SINGLE RESPONSIBILITY: "render every body's atmosphere for this frame".
-// ----------------------------------------------------------------------
 export class AtmosphereSystem
 {
     #registry;
     #starSystem;
     #behaviour;
-    #lastRender = new Map();    // shell → last render timestamp (throttle)
-    #occluders;                 // scene of depth-only body proxies
-    #proxies = new Map();       // body → proxy mesh
+    #occluderOwner;
+    #scheduler;
+    #visibilityPolicy;
     #mode = 'view';
     #tmp = new THREE.Vector3();
+    #disposed = false;
 
-    constructor(registry, starSystem, behaviour)
+    constructor(registry, starSystem, behaviour, {
+        occluderOwner,
+        scheduler,
+        visibilityPolicy,
+    } = {})
     {
         this.#registry = registry;
         this.#starSystem = starSystem;
         this.#behaviour = behaviour;
-        this.#occluders = new THREE.Scene();
+        this.#occluderOwner = occluderOwner ?? new OccluderOwner();
+        this.#scheduler = scheduler ?? new AtmosphereScheduler();
+        this.#visibilityPolicy = visibilityPolicy ?? new VisibilityPolicy();
     }
 
     #shells()
@@ -38,28 +41,6 @@ export class AtmosphereSystem
         return this.#registry.bodies
             .map(body => body.atmosphere)
             .filter(shell => shell !== null && shell !== undefined);
-    }
-
-    // A cheap opaque sphere per body, sized to its nominal radius, used ONLY as
-    // a depth occluder in the haze pre-pass (its material is overridden to
-    // colourless depth-only). Nominal radius is deliberately below any displaced
-    // peak so a body never eats its OWN limb halo, while still hiding the haze of
-    // OTHER bodies it passes in front of.
-    #proxyFor(body)
-    {
-        let mesh = this.#proxies.get(body);
-
-        if (mesh) return mesh;
-
-        mesh = new THREE.Mesh(
-            new THREE.SphereGeometry(body.planet.radius, 24, 16),
-            new THREE.MeshBasicMaterial(),
-        );
-        mesh.frustumCulled = false;
-        this.#proxies.set(body, mesh);
-        this.#occluders.add(mesh);
-
-        return mesh;
     }
 
     resize(renderer)
@@ -70,29 +51,10 @@ export class AtmosphereSystem
         }
     }
 
-    // Recompute each shell's visibility for the current mode. In resource mode
-    // only the active body's shell may show (the camera is inside it); every
-    // other body's haze is hidden so it can't bleed over the sliced view.
     setMode(mode)
     {
         this.#mode = mode;
-
-        const resource = mode === 'resource';
-        const active = this.#registry.active;
-
-        for (const body of this.#registry.bodies)
-        {
-            const shell = body.atmosphere;
-
-            if (!shell) continue;
-
-            const cfg = body.atmosphereConfig;
-            const allowed = resource
-                ? (body === active && cfg.showInResourceMode)
-                : true;
-
-            shell.mesh.visible = cfg.show && allowed;
-        }
+        this.#visibilityPolicy.apply(mode, this.#registry.bodies, this.#registry.active);
     }
 
     // Called every frame BEFORE the main scene render: position each visible
@@ -103,18 +65,15 @@ export class AtmosphereSystem
         const colors = this.#starSystem.colors;
         const energies = this.#starSystem.energies();
 
-        // Keep the depth-occluder proxies aligned with the bodies (view mode
-        // only — in resource mode the near geometry is the sliced cliff and only
-        // the active shell shows, so no cross-body occlusion is needed).
+        // Keep depth-occluder proxies aligned with the bodies (view mode only).
         const useOccluders = this.#mode !== 'resource';
 
         if (useOccluders)
         {
-            for (const body of this.#registry.bodies)
-            {
-                this.#proxyFor(body).position.copy(body.group.getWorldPosition(this.#tmp));
-            }
+            this.#occluderOwner.syncPositions(this.#registry.bodies);
         }
+
+        const hz = (this.#behaviour.atmosphere?.updateHz ?? 0) | 0;
 
         for (const body of this.#registry.bodies)
         {
@@ -126,17 +85,12 @@ export class AtmosphereSystem
             shell.setSunIntensity(body.atmosphereConfig.sunIntensity);
             shell.updateForCamera(camera);
 
-            const hz = (this.#behaviour.atmosphere?.updateHz ?? 0) | 0;
-            const interval = hz > 0 ? 1000 / hz : 0;
-            const last = this.#lastRender.get(shell) ?? -Infinity;
-
-            if (now - last >= interval)
+            if (this.#scheduler.isDue(shell, now, hz))
             {
                 shell.setSunDirections(dirs);
                 shell.setSunColors(colors);
                 shell.setSunEnergies(energies);
-                shell.renderPass(renderer, camera, useOccluders ? this.#occluders : null);
-                this.#lastRender.set(shell, now);
+                shell.renderPass(renderer, camera, useOccluders ? this.#occluderOwner.scene : null);
             }
         }
     }
@@ -154,5 +108,15 @@ export class AtmosphereSystem
                 shell.composite(renderer);
             }
         }
+    }
+
+    // Dispose shared infrastructure only. Individual AtmosphereShell instances
+    // are owned by their CelestialBody and disposed there.
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.#occluderOwner.dispose();
+        this.#scheduler.dispose();
     }
 }

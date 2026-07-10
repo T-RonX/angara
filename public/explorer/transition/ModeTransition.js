@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { easeInOut } from '../core/MathUtils.js';
 
 // ----------------------------------------------------------------------
-// ModeTransition — the smooth fly-in / fly-out between view and resource
+// ModeTransition -- the smooth fly-in / fly-out between view and resource
 // mode. It eases the camera between the orbit pose and the crust-cliff pose
 // while sweeping the clip plane from fully off-centre (whole body) to
 // through the centre (the open slice). A mid-flight mode toggle just flips
@@ -16,37 +16,29 @@ export class ModeTransition
     #clip;
     #crustCamera;
     #sliceBuilder;
-    #highlights;
-    #hud;
-    #planet;
     #durationMs;
     #sliceStartRadius;
 
+    // Injected completion callbacks; invoked when the transition settles
+    // into 'resource' or 'view'. Allows the caller (BodyInteractionSession)
+    // to own the HUD/highlight updates without ModeTransition depending on
+    // their exact shape.
+    #onCompleteResource;
+    #onCompleteView;
+
     #target = new THREE.Vector3();
 
-    constructor(state, sceneContext, clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, behaviour, sliceStartRadius)
+    constructor(state, sceneContext, clipController, crustCamera, sliceBuilder, transitionConfig, sliceStartRadius, { onCompleteResource, onCompleteView })
     {
         this.#state = state;
         this.#sceneContext = sceneContext;
         this.#clip = clipController;
         this.#crustCamera = crustCamera;
         this.#sliceBuilder = sliceBuilder;
-        this.#highlights = highlightManager;
-        this.#hud = hud;
-        this.#planet = planet;
-        this.#durationMs = behaviour.transition.modeTransitionMs;
-        this.#sliceStartRadius = sliceStartRadius ?? planet.radius;
-    }
-
-    retarget(clipController, crustCamera, sliceBuilder, highlightManager, hud, planet, sliceStartRadius)
-    {
-        this.#clip = clipController;
-        this.#crustCamera = crustCamera;
-        this.#sliceBuilder = sliceBuilder;
-        this.#highlights = highlightManager;
-        this.#hud = hud;
-        this.#planet = planet;
-        this.#sliceStartRadius = sliceStartRadius ?? planet.radius;
+        this.#durationMs = transitionConfig.modeTransitionMs;
+        this.#sliceStartRadius = sliceStartRadius;
+        this.#onCompleteResource = onCompleteResource;
+        this.#onCompleteView = onCompleteView;
     }
 
     step(dt)
@@ -65,7 +57,7 @@ export class ModeTransition
         this.#target.lerpVectors(tr.orbit.target, crust.target, e);
         camera.lookAt(this.#target);
 
-        // Sweep the cut open: constant maxRadius (whole body) → 0 (centre).
+        // Sweep the cut open: constant maxRadius (whole body) -> 0 (centre).
         this.#clip.updateCut(this.#sliceStartRadius * (1 - e), true);
 
         if (tr.dir > 0 && tr.s >= 1)      this.#finish('resource');
@@ -79,34 +71,16 @@ export class ModeTransition
 
         if (mode === 'resource')
         {
-            // Settle on the exact through-centre cut (the precise broad-phase
-            // includes polar caps, which the sweep skipped).
+            // Settle on the exact through-centre cut.
             this.#clip.updateCut(0, false);
-            this.#highlights.rebuildResourceSelection();
-            this.#crustCamera.positionCrustCamera();
-            this.#hud.updateFocusReadout(this.#state.focus);
+
+            this.#onCompleteResource();
         }
         else
         {
             this.#sliceBuilder.exit();
 
-            const controls = this.#sceneContext.controls;
-            const camera = this.#sceneContext.camera;
-
-            if (this.#state.viewSnapshot)
-            {
-                camera.position.copy(this.#state.viewSnapshot.position);
-                camera.up.copy(this.#state.viewSnapshot.up);
-                controls.target.copy(this.#state.viewSnapshot.target);
-            }
-            else
-            {
-                controls.target.set(0, 0, 0);
-            }
-
-            controls.enabled = true;
-            controls.update();
+            this.#onCompleteView();
         }
     }
 }
-

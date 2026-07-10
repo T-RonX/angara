@@ -1,20 +1,19 @@
 import { ORBIT_FIELD_DEFS } from './OrbitPanel.js';
 
-// ----------------------------------------------------------------------
-// BodyPicker — a minimal HUD panel that lists every body in the system (the
+// BodyPicker -- a minimal HUD panel that lists every body in the system (the
 // primary and its companions / moons) and lets the player make one the ACTIVE
 // body with a click. Each row also exposes a compact body-properties drawer so
 // rotation and orbit values can be edited without switching the active body first.
 //
 // It owns only its own DOM and nothing about the scene, so it stays a pure,
 // swappable view. When the system has a single body it stays hidden.
-// ----------------------------------------------------------------------
 export class BodyPicker
 {
     #root;
     #buttons = [];
     #rows = [];
     #expandedIndex = -1;
+    #disposed = false;
 
     constructor(rootElement, bodies, activeIndex, onSelect, orbitSystem, rotationSystem)
     {
@@ -56,7 +55,7 @@ export class BodyPicker
 
             const toggle = document.createElement('button');
             toggle.type = 'button';
-            toggle.textContent = '▸';
+            toggle.textContent = '...';
             toggle.title = 'Edit body properties';
             toggle.style.cssText = [
                 'width:24px', 'height:24px', 'padding:0', 'border-radius:6px', 'cursor:pointer',
@@ -84,14 +83,13 @@ export class BodyPicker
             const orbitModel = orbitSystem?.modelFor(body) ?? null;
             const rotModel = rotationSystem?.modelFor(body) ?? null;
 
-            // ---- Rotation section (always present) -------------------------
             const rotTitle = document.createElement('div');
             rotTitle.textContent = 'Rotation';
             rotTitle.style.cssText = 'font-size:10px; font-weight:600; color:#a8c4e8; letter-spacing:0.04em; padding-top:2px;';
             panel.appendChild(rotTitle);
 
             const ROTATION_FIELD_DEFS = [
-                ['Axial tilt', 'axialTiltDeg', 0, 180, 1, v => `${Math.round(v)}°`],
+                ['Axial tilt', 'axialTiltDeg', 0, 180, 1, v => `${Math.round(v)} deg`],
                 ['Rotation period', 'rotationPeriodSec', 0, 1200, 1, v => v === 0 ? 'stationary' : `${v.toFixed(0)}s`],
             ];
 
@@ -143,7 +141,6 @@ export class BodyPicker
                 panel.appendChild(wrap);
             }
 
-            // ---- Orbit section (only for orbiting bodies) ------------------
             if (!orbit || !orbitModel)
             {
                 const note = document.createElement('div');
@@ -228,7 +225,7 @@ export class BodyPicker
         {
             const open = item.index === this.#expandedIndex;
             item.panel.style.display = open ? 'flex' : 'none';
-            item.toggle.textContent = open ? '▾' : '▸';
+            item.toggle.textContent = open ? 'v' : '>';
             item.toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         });
     }
@@ -242,5 +239,12 @@ export class BodyPicker
             btn.style.background = active ? 'rgba(38,74,120,0.85)' : 'rgba(10,16,26,0.7)';
             btn.style.color = active ? '#eaf3ff' : '#cfe0f5';
         });
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.#root.remove();
     }
 }

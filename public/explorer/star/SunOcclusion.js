@@ -1,20 +1,18 @@
 import * as THREE from 'three';
 import { discOverlapArea } from '../core/MathUtils.js';
 
-// ----------------------------------------------------------------------
-// SunOcclusion — answers "how much of this sun is currently hidden behind
-// the body, as seen from the camera?" entirely analytically (no raycasts).
+// SunOcclusion -- answers "how much of this sun is currently hidden behind
+// a body, as seen from the camera?" entirely analytically (no raycasts).
 //
-// The body is treated as a sphere of `planetRadius` at the origin and the
-// sun as a sphere of `sunSize` along its direction. Both project to circles
-// in the camera's field of view; the visible fraction is
-// `1 - overlap / sunArea`. O(1), so it's free to call every frame.
-// ----------------------------------------------------------------------
+// Each body is treated as a sphere at its world position and the sun as a
+// sphere along its direction. Both project to circles in the camera's field
+// of view; the visible fraction is 1 - overlap / sunArea. O(1) per body.
 export class SunOcclusion
 {
     #bodies = [];
     #camToBody = new THREE.Vector3();
     #camToSun  = new THREE.Vector3();
+    #disposed = false;
 
     constructor(bodies = [])
     {
@@ -37,7 +35,7 @@ export class SunOcclusion
 
         for (const body of this.#bodies)
         {
-            const radius = body?.radius ?? body?.planet?.radius ?? 0;
+            const radius = body?.radius ?? 0;
             const position = body?.position ?? body?.worldPosition ?? null;
 
             if (radius <= 0 || !position) continue;
@@ -47,7 +45,7 @@ export class SunOcclusion
 
             if (dBody <= radius)
             {
-                // Camera inside this body — pathological; treat as fully covered.
+                // Camera inside this body ? pathological; treat as fully covered.
                 return 0;
             }
 
@@ -75,5 +73,11 @@ export class SunOcclusion
 
         return bestVisibility;
     }
-}
 
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.#bodies = [];
+    }
+}

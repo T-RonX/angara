@@ -18,6 +18,7 @@ export class BodyMesh
     core;
 
     #materialFactory;
+    #disposed = false;
 
     constructor(scene, cellGrid, geometryFactory, materialFactory, layerModel, surfaceData = null)
     {
@@ -128,6 +129,28 @@ export class BodyMesh
     add(object)
     {
         this.group.add(object);
+    }
+
+    // Release owned geometries and remove the group from the scene.
+    // Does NOT dispose shared materials (LayerMaterialFactory owns those).
+    // Idempotent.
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        // Dispose owned depth-mesh geometries (only depth 0 is materialised).
+        for (const m of this.depthMeshes)
+        {
+            if (m) m.geometry?.dispose();
+        }
+
+        // Dispose core sphere geometry.
+        this.core?.geometry?.dispose();
+
+        // Remove all children added via add() (grid lines, etc.)
+        // and the group itself from the scene.
+        this.group.removeFromParent();
     }
 
     // Enable / disable resource-mode clipping. Sub-surface layers stay hidden

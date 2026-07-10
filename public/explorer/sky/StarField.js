@@ -1,18 +1,17 @@
 import * as THREE from 'three';
 import { blackbodyRgb } from '../texture/ColorUtils.js';
 
-// ----------------------------------------------------------------------
-// StarField — the decorative background stars. A single Points object on a
+// StarField ? the decorative background stars. A single Points object on a
 // far sphere rendered with a tiny custom shader so every star carries its
 // own size and colour:
 //   * colour from a blackbody curve (mostly white/blue with warm sprinkles),
 //   * size power-law distributed (many tiny, a few bright giants),
 //   * a per-star brightness multiplier.
 // These are scenery, not light sources.
-// ----------------------------------------------------------------------
 export class StarField
 {
     points;
+    #disposed = false;
 
     constructor(starfield, skyDistance)
     {
@@ -34,7 +33,7 @@ export class StarField
 
         for (let i = 0; i < n; i++)
         {
-            // Uniform direction on a sphere (z/φ method).
+            // Uniform direction on a sphere (z/? method).
             const u = Math.random() * 2 - 1;
             const phi = Math.random() * Math.PI * 2;
             const s = Math.sqrt(1 - u * u);
@@ -52,7 +51,7 @@ export class StarField
             colors[i * 3 + 1] = g * brightness;
             colors[i * 3 + 2] = b * brightness;
 
-            // Heavy bias toward the small end via a power-law roll. ×DPR so
+            // Heavy bias toward the small end via a power-law roll. ?DPR so
             // the visual size is consistent on high-DPI displays.
             const sizeRoll = Math.pow(Math.random(), starfield.sizeBias);
             sizes[i] = (starfield.sizeMin + sizeRange * sizeRoll) * dpr;
@@ -90,5 +89,12 @@ export class StarField
 
         return new THREE.Points(geo, mat);
     }
-}
 
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.points.geometry.dispose();
+        this.points.material.dispose();
+    }
+}

@@ -1,12 +1,14 @@
-// ----------------------------------------------------------------------
-// SliderPanel — builds the HUD's light controls. Crucially it generates one
+// SliderPanel -- builds the HUD's light controls. Crucially it generates one
 // azimuth / elevation / intensity group PER SUN, straight from the
 // StarSystem, so adding or removing a sun in the config makes the UI grow
-// or shrink automatically — no markup to touch. The night-darkness slider
+// or shrink automatically -- no markup to touch. The night-darkness slider
 // is a single global control.
-// ----------------------------------------------------------------------
 export class SliderPanel
 {
+    #nightInput = null;
+    #nightListener = null;
+    #disposed = false;
+
     constructor(starSystem, lighting, onNightChange)
     {
         this.#buildSunControls(starSystem);
@@ -32,12 +34,12 @@ export class SliderPanel
 
             group.appendChild(this.#slider(
                 'Azimuth', star.azimuth, 0, 360, 1,
-                v => `${Math.round(v)}°`,
+                v => `${Math.round(v)} deg`,
                 v => star.setAzimuth(v),
             ));
             group.appendChild(this.#slider(
                 'Elevation', star.elevation, -90, 90, 1,
-                v => `${Math.round(v)}°`,
+                v => `${Math.round(v)} deg`,
                 v => star.setElevation(v),
             ));
             group.appendChild(this.#slider(
@@ -88,13 +90,26 @@ export class SliderPanel
         if (!input) return;
 
         input.value = lighting.nightDarkness;
-        readout.textContent = lighting.nightDarkness.toFixed(2);
+        if (readout) readout.textContent = lighting.nightDarkness.toFixed(2);
 
-        input.addEventListener('input', () => {
+        this.#nightListener = () => {
             const v = parseFloat(input.value);
-            readout.textContent = v.toFixed(2);
+            if (readout) readout.textContent = v.toFixed(2);
             onNightChange(v);
-        });
+        };
+
+        input.addEventListener('input', this.#nightListener);
+        this.#nightInput = input;
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        if (this.#nightInput && this.#nightListener)
+        {
+            this.#nightInput.removeEventListener('input', this.#nightListener);
+        }
     }
 }
-

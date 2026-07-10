@@ -39,8 +39,8 @@ export class LightingRig
         );
         scene.add(this.#hemiFill);
 
-        // A dim directional from below lifts the polar cap cone walls (whose
-        // near-horizontal normals get almost nothing from the hemisphere).
+        // A dim directional from below lifts faces whose near-horizontal
+        // normals get almost nothing from the hemisphere.
         this.#bottomFill = new THREE.DirectionalLight(0xffe0c0, lighting.bottomFillIntensity);
         this.#bottomFill.position.set(0, -1, 0);
         scene.add(this.#bottomFill);

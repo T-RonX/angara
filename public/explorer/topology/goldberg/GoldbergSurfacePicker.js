@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 
 // ----------------------------------------------------------------------
-// GoldbergSurfacePicker — surface picking for view mode. For a perfect sphere
-// the depth-0 surface is a sphere of `planetRadius`, so a closed-form
+// GoldbergSurfacePicker -- surface picking for view mode. For a perfect
+// sphere the depth-0 surface is a sphere of `bodyRadius`, so a closed-form
 // ray-vs-sphere test gives the hit point and the nearest cell centre (via
-// CentroidIndex) is the picked cell — fast and exact.
+// CentroidIndex) is the picked cell.
 //
 // For an irregular (displaced) body there is no closed-form surface, so it
-// falls back to raycasting the merged surface mesh and mapping the hit triangle
-// back to its cell via the mesh's `faceToCell` table.
+// falls back to raycasting the merged surface mesh and mapping the hit
+// triangle back to its cell via the mesh's `faceToCell` table.
 // ----------------------------------------------------------------------
 export class GoldbergSurfacePicker
 {
-    #planetRadius;
+    #bodyRadius;
     #index;
     #shapeField;
     #surfaceMesh;
@@ -22,9 +22,9 @@ export class GoldbergSurfacePicker
     #localD = new THREE.Vector3();
     #invBodyMatrix = new THREE.Matrix4();
 
-    constructor(planet, centroidIndex, shapeField, surfaceMesh, bodyGroup = null)
+    constructor(body, centroidIndex, shapeField, surfaceMesh, bodyGroup = null)
     {
-        this.#planetRadius = planet.radius;
+        this.#bodyRadius = body.radius;
         this.#index = centroidIndex;
         this.#shapeField = shapeField;
         this.#surfaceMesh = surfaceMesh ?? null;
@@ -57,7 +57,7 @@ export class GoldbergSurfacePicker
     {
         let o = raycaster.ray.origin;
         let d = raycaster.ray.direction;
-        const R = this.#planetRadius;
+        const R = this.#bodyRadius;
 
         // Transform the world-space ray to body-local space.
         if (this.#bodyGroup)

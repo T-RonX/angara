@@ -4,8 +4,7 @@ import { SunVisual } from './SunVisual.js';
 import { LensFlare } from './LensFlare.js';
 import { SunOcclusion } from './SunOcclusion.js';
 
-// ----------------------------------------------------------------------
-// Star — ONE complete light source. It bundles everything a sun needs:
+// Star ? ONE complete light source. It bundles everything a sun needs:
 //   * a directional light that actually lights the body's day side,
 //   * a SunVisual (disc + corona + chromatic halo + starburst),
 //   * a LensFlare chain,
@@ -13,7 +12,6 @@ import { SunOcclusion } from './SunOcclusion.js';
 //
 // Because every sun is a self-contained Star, the renderer scales to any
 // number of suns simply by creating more of them (see StarSystem).
-// ----------------------------------------------------------------------
 export class Star
 {
     // The current unit direction from the planet toward this sun.
@@ -28,6 +26,7 @@ export class Star
 
     // EMA-smoothed visible fraction of the disc (0 = covered, 1 = clear).
     #visibility = 1;
+    #disposed = false;
 
     constructor(scene, skyAnchor, starConfig, { skyDistance })
     {
@@ -86,7 +85,7 @@ export class Star
         camera.updateMatrixWorld();
 
         // The disc lives under the camera-tracked SkyAnchor, so its world
-        // position is direction × skyDistance offset by the camera.
+        // position is direction ? skyDistance offset by the camera.
         this.#sunWorldPos.copy(this.direction)
             .multiplyScalar(this.#skyDistance)
             .add(camera.position);
@@ -94,7 +93,7 @@ export class Star
         const { inFront, onScreen } = this.#flare.project(camera, this.#sunWorldPos);
 
         const measured = inFront ? this.#occlusion.measure(camera, this.#sunWorldPos, this.size) : 0;
-        // Soft cinematic fade-in when uncovering; fast hide (×4) when the
+        // Soft cinematic fade-in when uncovering; fast hide (?4) when the
         // body crosses in front so the glow never lingers on the silhouette.
         const ease = measured < this.#visibility
             ? Math.min(1, this.flareOcclusionEase * 4)
@@ -112,9 +111,18 @@ export class Star
         this.#flare.place(camera, t, vis);
     }
 
-    // --- HUD setters ---------------------------------------------------
     setAzimuth(deg)   { this.azimuth = deg; this.refresh(); }
     setElevation(deg) { this.elevation = deg; this.refresh(); }
     setIntensity(v)   { this.intensity = v; this.refresh(); }
-}
 
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        this.#light.removeFromParent();
+        this.#visual.dispose();
+        this.#flare.dispose();
+        this.#occlusion.dispose();
+    }
+}

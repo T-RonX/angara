@@ -14,13 +14,6 @@ import { deg2rad } from '../../core/MathUtils.js';
 // ----------------------------------------------------------------------
 export class GoldbergCutStrategy
 {
-    // Kept for interface parity with LonLatCutStrategy; the hexsphere never
-    // has a pole cut.
-    isPoleCut()
-    {
-        return false;
-    }
-
     orient(plane, focus)
     {
         // Pole-free frame: the traversal maintains nCut ⟂ dir, so the plane

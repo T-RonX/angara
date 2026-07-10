@@ -1,40 +1,51 @@
 // ----------------------------------------------------------------------
 // BEHAVIOUR configuration — "how the explorer FEELS to use".
 //
-// Pure DATA describing camera framing, input response, traversal style and
-// the mode-change animation. Kept separate from the physical body data so
-// the two can be tuned (and eventually sourced) independently.
+// This is the SINGLE tuning file: camera framing, input response, traversal
+// style, mode-change animation, scene rendering settings (background,
+// lighting fill, starfield), and graphics optimisations. Kept separate from
+// the physical body / star data so the two can be tuned (and eventually
+// sourced) independently.
 // ----------------------------------------------------------------------
 export const behaviour = {
+    // Scene-level rendering settings.
+    scene: {
+        background: 0x05070d,
+        fov: 50,
+        near: 1,
+        far: 200000,
+        antialias: true,
+        maxPixelRatio: 1.5,
+    },
+
     // Resource-mode camera framing.
     camera: {
-        // Angle (radians) above the meridian plane — higher looks down at
-        // the surface more, revealing terrain above the cut.
         crustTilt:       0.50,
-        // Lifts the look-at target along the surface normal (fraction of the
-        // crust thickness) so the cliff sits lower on screen.
         crustHeightBias: 0.2,
-        // Default zoom as a multiple of the crust thickness, clamped.
         crustZoom:    1.0,
-        crustZoomMin: 0.5,  // Zoom out limit
-        crustZoomMax: 2.5,  // Zoom in limit
+        crustZoomMin: 0.5,
+        crustZoomMax: 2.5,
+        zoomBaseline:           50,
+        zoomReferenceThickness: 42,
+        zoomExponent:           0.5,
+        // Orbit controls damping.
+        dampingFactor: 0.08,
+        // View-mode distance range as multiples of body radius.
+        minDistanceFactor: 1.15,
+        maxDistanceFactor: 20,
     },
 
     // Pointer / scroll response.
     input: {
-        // Drag-to-stroll sensitivity. 1 = cursor 1:1 with the surface.
         dragSensitivity: 1,
-        // Positive values keep the current drag sense; -1 flips that axis.
         dragDirectionX: 1,
         dragDirectionY: 1,
-        // Right-drag roll speed multiplier in the hexsphere traversal.
         rollSensitivity: 3,
-        // Wheel zoom factors for scrolling in/out of resource mode.
         wheelZoomInFactor: 0.9,
         wheelZoomOutFactor: 1.1,
-        // Per-frame fraction of the remaining distance eased toward the
-        // snapped target cell. Larger = snappier, smaller = more gliding.
         focusSnapEase:   0.1,
+        // Click vs drag threshold (px).
+        clickSlopPx: 4,
     },
 
     // Body generation strategy.
@@ -94,7 +105,7 @@ export const behaviour = {
         wallBandCells: 4,
 
         // Resource-mode horizon (occlusion) culling: hide slice buckets that
-        // curve over the planet's own horizon relative to the camera. Purely a
+        // curve over the body's own horizon relative to the camera. Purely a
         // per-frame visibility toggle — no geometry rebuild.
         horizonCull: {
             enabled: true,
@@ -104,15 +115,69 @@ export const behaviour = {
         },
     },
 
+    // ------------------------------------------------------------------
+    // Sky-wide fill-light constants and the background star field.
+    // Decoupled from the physical star (sun) data so the night-side floor
+    // and particle density can be tuned without touching the light sources.
+    // ------------------------------------------------------------------
+    lighting: {
+        skyDistance: 80000,       // radius the sun/stars sit at (≈ infinity)
+        // Fill lights (the unlit-side floor). Held at a constant level
+        // scaled by `nightDarkness`: 0 = pitch-black night side, 1 = full.
+        ambientIntensity:    0.12,
+        rimIntensity:        0.4,
+        nightDarkness:       0.1,
+        hemiSkyColor:        0xa8c0e8,
+        hemiGroundColor:     0xa37a52,
+        hemiIntensity:       0.85,
+        bottomFillIntensity: 0.18,
+    },
+
+    starfield: {
+        show:  true,
+        count: 2500,
+        // Per-star pixel size (power-law biased toward the small end).
+        sizeMin:  0.6,
+        sizeMax:  3.5,
+        sizeBias: 4,
+        // Per-star blackbody colour temperature range (Kelvin).
+        tempMin:  3000,
+        tempMax:  12000,
+        tempBias: 2,
+        brightnessMin: 0.45,
+        brightnessMax: 1.0,
+    },
+
     // Developer diagnostics (off in normal play).
     debug: {
-        // Log a rolling average of the resource-mode slice rebuild cost
-        // (CellSliceBuilder.build): total time, the #collect membership scan,
-        // and the #syncOpaque bucket rebuild (with the number of buckets
-        // rebuilt). Written to the console every `profileEvery` rebuilds while
-        // the cut advances. Use it to see where an advance-time FPS dip comes
-        // from before reaching for a heavier optimisation.
-        profileSlice: true,
+        profileSlice: false,
         profileEvery: 30,
+    },
+
+    // Highlight overlay colours / offsets (HighlightMeshFactory defaults).
+    highlights: {
+        hoverColor:                  0xfff2a0,
+        hoverOpacity:                0.35,
+        hoverEdgeColor:              0xffe66b,
+        selectionColor:              0x6fb0ff,
+        selectionOpacity:            0.42,
+        selectionEdgeColor:          0x9fd0ff,
+        resourceColor:               0x6fb0ff,
+        resourceOpacity:             0.5,
+        resourceEdgeColor:           0x9fd0ff,
+        polygonOffsetFactor:        -2,
+        polygonOffsetUnits:         -2,
+        resourcePolygonOffsetFactor:-3,
+        resourcePolygonOffsetUnits: -3,
+    },
+
+    // Material defaults injected into LayerMaterialFactory.
+    materials: {
+        roughness: 0.95,
+        metalness: 0.0,
+        emissiveScale: 0.06,
+        coreRoughness: 1,
+        coreCapOffsetFactor: -1,
+        coreCapOffsetUnits: -1,
     },
 };

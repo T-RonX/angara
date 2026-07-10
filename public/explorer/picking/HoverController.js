@@ -1,14 +1,13 @@
 import * as THREE from 'three';
 
-// ----------------------------------------------------------------------
-// HoverController — drives the hover highlight and the "hover lon/lat/depth"
-// read-out. It tracks the pointer, and once per frame (skipping frames where
-// nothing relevant changed) it picks the cell under the cursor and asks the
-// HighlightManager to show it and the HUD to label it.
+// HoverController -- drives the hover highlight and the "hover lon/lat/depth"
+// read-out. It reads pointer state from a shared pointerSource (InputBinding)
+// and once per frame (skipping frames where nothing changed) picks the cell
+// under the cursor and asks the HighlightManager to show it and the HUD to
+// label it.
 //
 // View mode uses the analytical SurfacePicker; resource mode raycasts the
 // cut caps via the CliffPicker.
-// ----------------------------------------------------------------------
 export class HoverController
 {
     #sceneContext;
@@ -18,12 +17,12 @@ export class HoverController
     #highlights;
     #hud;
     #bodyGroup = null;
+    #pointerSource;
 
     #raycaster = new THREE.Raycaster();
-    #pointer = new THREE.Vector2();
-    #pointerInside = false;
     #lastHoverCell = null;
     #lastHoverMode = null;
+    #disposed = false;
 
     // Cache so we can skip the work on frames where neither the cursor nor
     // the camera moved (very common).
@@ -35,7 +34,7 @@ export class HoverController
         bodyQx: NaN, bodyQy: NaN, bodyQz: NaN, bodyQw: NaN,
     };
 
-    constructor(sceneContext, state, surfacePicker, cliffPicker, highlightManager, hud, bodyGroup = null)
+    constructor(sceneContext, state, surfacePicker, cliffPicker, highlightManager, hud, bodyGroup = null, pointerSource = null)
     {
         this.#sceneContext = sceneContext;
         this.#state = state;
@@ -44,34 +43,7 @@ export class HoverController
         this.#highlights = highlightManager;
         this.#hud = hud;
         this.#bodyGroup = bodyGroup ?? null;
-
-        this.#bindPointer();
-    }
-
-    #bindPointer()
-    {
-        const el = this.#sceneContext.domElement;
-
-        el.addEventListener('pointermove', e => {
-            const rect = el.getBoundingClientRect();
-            this.#pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            this.#pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            this.#pointerInside = true;
-        });
-
-        el.addEventListener('pointerleave', () => { this.#pointerInside = false; });
-    }
-
-    // Re-point at a newly-activated body (companion selection). The DOM
-    // listeners stay bound; only the body-specific pickers are swapped.
-    retarget(surfacePicker, cliffPicker, bodyGroup = null)
-    {
-        this.#surfacePicker = surfacePicker;
-        this.#cliffPicker = cliffPicker;
-        this.#bodyGroup = bodyGroup ?? null;
-        this.#lastHoverCell = null;
-        this.#lastHoverMode = null;
-        this.invalidate();
+        this.#pointerSource = pointerSource;
     }
 
     // Force a re-pick next frame (e.g. after the cut plane moved).
@@ -98,7 +70,10 @@ export class HoverController
 
         this.#refreshCache(camPos, camQ);
 
-        if (!this.#pointerInside)
+        const pointer = this.#pointerSource?.pointer;
+        const inside = this.#pointerSource ? this.#pointerSource.pointerInside : false;
+
+        if (!inside)
         {
             if (this.#lastHoverCell !== null)
             {
@@ -111,7 +86,7 @@ export class HoverController
             return;
         }
 
-        this.#raycaster.setFromCamera(this.#pointer, camera);
+        this.#raycaster.setFromCamera(pointer, camera);
 
         const cell = this.#state.mode === 'resource'
             ? this.#cliffPicker.pick(this.#raycaster)
@@ -146,11 +121,12 @@ export class HoverController
     {
         const c = this.#cache;
         const bodyQ = this.#bodyGroup?.quaternion;
+        const pointer = this.#pointerSource?.pointer;
+        const inside = this.#pointerSource ? this.#pointerSource.pointerInside : false;
 
-        return c.inside === this.#pointerInside &&
+        return c.inside === inside &&
             c.mode === this.#state.mode &&
-            c.pointerX === this.#pointer.x &&
-            c.pointerY === this.#pointer.y &&
+            pointer && c.pointerX === pointer.x && c.pointerY === pointer.y &&
             c.camX === camPos.x && c.camY === camPos.y && c.camZ === camPos.z &&
             c.camQx === camQ.x && c.camQy === camQ.y &&
             c.camQz === camQ.z && c.camQw === camQ.w &&
@@ -161,10 +137,11 @@ export class HoverController
     #refreshCache(camPos, camQ)
     {
         const c = this.#cache;
-        c.inside = this.#pointerInside;
+        const pointer = this.#pointerSource?.pointer;
+        c.inside = this.#pointerSource ? this.#pointerSource.pointerInside : false;
         c.mode = this.#state.mode;
-        c.pointerX = this.#pointer.x;
-        c.pointerY = this.#pointer.y;
+        c.pointerX = pointer ? pointer.x : NaN;
+        c.pointerY = pointer ? pointer.y : NaN;
         c.camX = camPos.x; c.camY = camPos.y; c.camZ = camPos.z;
         c.camQx = camQ.x; c.camQy = camQ.y; c.camQz = camQ.z; c.camQw = camQ.w;
 
@@ -173,5 +150,12 @@ export class HoverController
             const bq = this.#bodyGroup.quaternion;
             c.bodyQx = bq.x; c.bodyQy = bq.y; c.bodyQz = bq.z; c.bodyQw = bq.w;
         }
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        // No DOM listeners to remove — InputBinding owns them.
     }
 }

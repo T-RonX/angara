@@ -1,15 +1,26 @@
 import { physical } from './config/physical.js';
 import { behaviour } from './config/behaviour.js';
-import { BodyExplorer } from './BodyExplorer.js';
+import { validateConfigs } from './config/ConfigValidator.js';
 import { installBvh } from './core/BvhSetup.js';
+import { BodyExplorer } from './BodyExplorer.js';
 
 // ----------------------------------------------------------------------
-// Entry point — feed the (mock, eventually backend-sourced) physical and
-// behavioural config into the BodyExplorer and start the render loop.
+// Composition root — validate configs BEFORE any THREE resources are
+// allocated, then install BVH acceleration and boot the explorer.
+// Dependencies are injected through the constructor; no service locator
+// or global event bus.
 // ----------------------------------------------------------------------
+validateConfigs(physical, behaviour);
+
+// BVH patching must run before any BufferGeometry is created (it extends
+// the prototype), so it fires between validation and construction.
 installBvh();
 
 const root = document.getElementById('scene-root');
 const explorer = new BodyExplorer(physical, behaviour, root);
-await explorer.init();
-explorer.start();
+
+(async () =>
+{
+    await explorer.init();
+    explorer.start();
+})();

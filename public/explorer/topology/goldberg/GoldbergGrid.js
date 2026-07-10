@@ -28,7 +28,7 @@ export class GoldbergGrid
     #coreRadius;
     #minSurface;
 
-    constructor(planet, layerModel, atmosphere, atmosphereRadius, frequency, shapeField, faceData = null)
+    constructor(body, layerModel, atmosphere, atmosphereRadius, frequency, shapeField, faceData = null)
     {
         // Prefer the worker's precomputed faces (rehydrated cheaply) when
         // available; otherwise compute them synchronously (fallback path).
@@ -40,7 +40,7 @@ export class GoldbergGrid
 
         // Never let a deep inward dent push the surface below (or into) the
         // core: keep at least 20% of the nominal crust so no layer inverts.
-        const nominalCrust = planet.radius - layerModel.coreRadius;
+        const nominalCrust = body.radius - layerModel.coreRadius;
         this.#minSurface = layerModel.coreRadius + 0.2 * nominalCrust;
 
         this.#buildCrustCells(layerModel);
@@ -48,7 +48,7 @@ export class GoldbergGrid
 
         if (atmosphere.selectable && atmosphere.show)
         {
-            this.#buildAtmosphereCells(planet.radius, atmosphereRadius);
+            this.#buildAtmosphereCells(body.radius, atmosphereRadius);
         }
     }
 
@@ -89,7 +89,7 @@ export class GoldbergGrid
         return surface - cumulativeThickness;
     }
 
-    #buildAtmosphereCells(planetRadius, atmosphereRadius)
+    #buildAtmosphereCells(bodyRadius, atmosphereRadius)
     {
         // Atmosphere cells sit on the (displaced) surface and rise to the
         // spherical atmosphere radius.
@@ -157,9 +157,9 @@ export function lonLatFromDir(dir)
 // the cells a slice actually renders) and are cached thereafter.
 //
 // The public shape is identical to the old plain object, so every consumer
-// (CellGeometryFactory, CrossSectionFactory, CentroidIndex, CrustCamera,
-// HighlightManager, CellSliceBuilder) is unchanged; dynamic props they add
-// (`sliceCentroid`, `triCount`, `isAtmosphere`, `geom`, `edges`) still work.
+// (CellGeometryFactory, CentroidIndex, CrustCamera, HighlightManager,
+// CellSliceBuilder) is unchanged; dynamic props they add (`sliceCentroid`,
+// `triCount`, `isAtmosphere`, `geom`, `edges`) still work.
 // ----------------------------------------------------------------------
 class GoldbergCell
 {

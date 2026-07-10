@@ -1,18 +1,21 @@
 import { Star } from './Star.js';
 
-// ----------------------------------------------------------------------
-// StarSystem — the collection of suns. It builds one `Star` per entry in
+// StarSystem ? the collection of suns. It builds one `Star` per entry in
 // `physical.stars`, updates them all each frame, and exposes their
 // directions so the atmosphere shader can scatter light from every sun.
 //
 // This is the heart of the "multiple suns" capability: nothing downstream
-// assumes a single sun — it all works off this list.
-// ----------------------------------------------------------------------
+// assumes a single sun ? it all works off this list.
 export class StarSystem
 {
     stars = [];
     directions = [];
     colors = [];
+
+    // Stable pre-allocated array ? updated in place each frame so
+    // AtmosphereSystem.update never allocates to read energies.
+    #energies = [];
+    #disposed = false;
 
     constructor(scene, skyAnchor, starConfigs, { skyDistance })
     {
@@ -22,6 +25,7 @@ export class StarSystem
             this.stars.push(star);
             this.directions.push(star.direction);
             this.colors.push(star.colorRGB);
+            this.#energies.push(star.intensity);
         }
     }
 
@@ -39,16 +43,35 @@ export class StarSystem
     }
 
     // Per-sun energy (own intensity), for the atmosphere scattering pass.
+    // Returns the same array reference every call; values are current as of
+    // the last update().
     energies()
     {
-        return this.stars.map((star) => star.intensity);
+        return this.#energies;
     }
 
     update(now, camera)
     {
+        for (let i = 0; i < this.stars.length; i++)
+        {
+            this.stars[i].update(now, camera);
+            this.#energies[i] = this.stars[i].intensity;
+        }
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
         for (const star of this.stars)
         {
-            star.update(now, camera);
+            star.dispose();
         }
+
+        this.stars = [];
+        this.directions = [];
+        this.colors = [];
+        this.#energies = [];
     }
 }

@@ -1,12 +1,10 @@
 import * as THREE from 'three';
 import { vertexShader, fragmentShader } from './shaders.js';
 
-// ----------------------------------------------------------------------
-// AtmosphereShell — the visible haze: a back-/front-face sphere slightly
+// AtmosphereShell ? the visible haze: a back-/front-face sphere slightly
 // larger than the planet whose shader integrates Rayleigh + Mie scattering
 // along the view ray. It is N-sun aware: the sun directions are fed in as
 // an array and the shader sums each sun's contribution.
-// ----------------------------------------------------------------------
 export class AtmosphereShell
 {
     mesh;
@@ -24,6 +22,7 @@ export class AtmosphereShell
     #quadScene;
     #quadCamera;
     #depthOnly;
+    #disposed = false;
 
     constructor(planet, atmosphere, numSuns, fidelity = 1.0)
     {
@@ -64,7 +63,7 @@ export class AtmosphereShell
             uniforms: this.#uniforms,
             transparent: true,
             // Side is chosen per-frame by updateForCamera(): FrontSide from
-            // orbit (camera outside → near faces draw over the disc, unchanged
+            // orbit (camera outside ? near faces draw over the disc, unchanged
             // look) and BackSide in resource mode where the camera sits INSIDE
             // the shell (only the inner faces face it). A static FrontSide
             // culled everything from inside, so the scattering vanished there.
@@ -141,7 +140,6 @@ export class AtmosphereShell
         this.#quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     }
 
-    // Copy the current sun directions into the shader uniform array.
     setSunDirections(directions)
     {
         const target = this.#uniforms.uSunDir.value;
@@ -152,7 +150,6 @@ export class AtmosphereShell
         }
     }
 
-    // Copy each sun's light colour (linear RGB) into the shader uniform array.
     setSunColors(colors)
     {
         const target = this.#uniforms.uSunColor.value;
@@ -164,7 +161,6 @@ export class AtmosphereShell
         }
     }
 
-    // Copy each sun's own energy (intensity) into the shader uniform array.
     setSunEnergies(energies)
     {
         const target = this.#uniforms.uSunEnergy.value;
@@ -254,5 +250,25 @@ export class AtmosphereShell
     {
         this.#uniforms.uSunIntensity.value = value;
     }
-}
 
+    // Releases all GPU resources owned exclusively by this shell. The mesh
+    // geometry/material and the render target must be disposed together.
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        this.#target.dispose();
+        this.#depthOnly.dispose();
+        this.mesh.geometry.dispose();
+        this.mesh.material.dispose();
+
+        const quadMesh = this.#quadScene.children[0];
+
+        if (quadMesh)
+        {
+            quadMesh.geometry.dispose();
+            quadMesh.material.dispose();
+        }
+    }
+}

@@ -1,10 +1,9 @@
 // ----------------------------------------------------------------------
-// FocusController — owns the "focus point" the crust view is centred on and
-// eases it toward its target every frame (the same damped feel as releasing
-// an OrbitControls orbit). The topology-specific rules for WHICH axis moves
-// the cut live in the injected traversal strategy; this class is just the
-// generic easing + the "when the focus moves, drive the cut / camera /
-// read-out" glue.
+// FocusController -- owns the "focus point" the crust view is centred on and
+// eases it toward its target every frame. The topology-specific rules for
+// WHICH axis moves the cut live in the injected traversal strategy; this
+// class is the generic easing + the "when the focus moves, drive the cut /
+// camera / read-out" glue.
 // For displaced bodies, the plane offset (-maxRadius) is maintained across
 // focus moves so geometry is never clipped.
 export class FocusController
@@ -29,81 +28,19 @@ export class FocusController
         this.#hud = hud;
     }
 
-    retarget(traversal, clipController, crustCamera, highlightManager, hud)
-    {
-        this.#traversal = traversal;
-        this.#clip = clipController;
-        this.#crustCamera = crustCamera;
-        this.#highlights = highlightManager;
-        this.#hud = hud;
-        this.#wasMoving = false;
-    }
-
-    // Glide focus.{lon,lat} toward their targets; rebuild the cut/camera when
-    // anything moved. Longitude eases along the shortest arc across 0/360.
+    // Delegate easing to the traversal's pole-free frame and rebuild the
+    // cut/camera when anything moved.
     easeFocusToTarget()
     {
         const focus = this.#state.focus;
+        const r = this.#traversal.advance(focus, this.#snapEase);
 
-        // Topology hook: if the traversal owns its own eased frame (the
-        // hexsphere's pole-free direction/normal frame), delegate to it and
-        // keep the lon/lat easing below strictly for the lon/lat topology.
-        if (typeof this.#traversal.advance === 'function')
-        {
-            const r = this.#traversal.advance(focus, this.#snapEase);
-            this.#state.resourceMoving = r.moved;
+        this.#state.resourceMoving = r.moved;
 
-            if (r.moved) this.#updateResource(r.cutChanged, true);
-            else this.#settle();
-
-            this.#wasMoving = r.moved;
-
-            return;
-        }
-
-        const EPS = 1e-3;
-        let lonChanged = false;
-        let latChanged = false;
-        let moved = false;
-
-        let dLon = focus.lonTarget - focus.lon;
-        if (dLon > 180)  dLon -= 360;
-        if (dLon < -180) dLon += 360;
-
-        if (Math.abs(dLon) > EPS)
-        {
-            focus.lon = (focus.lon + dLon * this.#snapEase + 360) % 360;
-            lonChanged = true;
-            moved = true;
-        }
-        else if (focus.lon !== focus.lonTarget)
-        {
-            focus.lon = focus.lonTarget;
-            lonChanged = true;
-            moved = true;
-        }
-
-        const dLat = focus.latTarget - focus.lat;
-
-        if (Math.abs(dLat) > EPS)
-        {
-            focus.lat += dLat * this.#snapEase;
-            latChanged = true;
-            moved = true;
-        }
-        else if (focus.lat !== focus.latTarget)
-        {
-            focus.lat = focus.latTarget;
-            latChanged = true;
-            moved = true;
-        }
-
-        this.#state.resourceMoving = moved;
-
-        if (moved) this.#updateResource(this.#traversal.cutMoved(lonChanged, latChanged), true);
+        if (r.moved) this.#updateResource(r.cutChanged, true);
         else this.#settle();
 
-        this.#wasMoving = moved;
+        this.#wasMoving = r.moved;
     }
 
     // Rebuild the cut (only when it actually moved), re-aim the crust camera

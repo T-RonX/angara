@@ -49,6 +49,9 @@ export class BodyGenService
             for (const entry of this.#pending.values()) entry.reject(err);
 
             this.#pending.clear();
+            this.#worker?.terminate();
+            this.#worker = null;
+            this.#supported = false;
         };
 
         return this.#worker;
@@ -65,15 +68,33 @@ export class BodyGenService
         return new Promise((resolve, reject) =>
         {
             this.#pending.set(id, { resolve, reject });
-            worker.postMessage({ id, ...spec });
+
+            try
+            {
+                worker.postMessage({ id, ...spec });
+            }
+            catch (error)
+            {
+                this.#pending.delete(id);
+                this.#supported = false;
+                worker.terminate();
+                this.#worker = null;
+                reject(error);
+            }
         });
     }
 
     dispose()
     {
+        const error = new Error('Body generation service disposed');
+
+        for (const entry of this.#pending.values()) entry.reject(error);
+
+        this.#pending.clear();
+
         if (this.#worker) this.#worker.terminate();
 
         this.#worker = null;
-        this.#pending.clear();
+        this.#supported = false;
     }
 }

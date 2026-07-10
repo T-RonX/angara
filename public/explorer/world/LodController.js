@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
-// ----------------------------------------------------------------------
-// LodController — distance-based level of detail for the bodies. The active
+// LodController ? distance-based level of detail for the bodies. The active
 // body (and any body large on screen) keeps its FULL detailed, displaced
 // surface mesh; a body that is small on screen (a distant companion) is
 // swapped for a cheap low-poly impostor sphere whose colour matches the
@@ -13,14 +12,14 @@ import * as THREE from 'three';
 // threshold doesn't flicker between levels. SINGLE RESPONSIBILITY: "pick and
 // apply a detail level per body each frame". OPEN/CLOSED: new levels are added
 // by extending the impostor factory, not by editing callers.
-// ----------------------------------------------------------------------
 export class LodController
 {
     #registry;
     #camera;
     #cfg;
-    #impostors = new Map();   // body → THREE.Mesh
-    #level = new Map();       // body → 'full' | 'impostor'
+    #impostors = new Map();   // body ? THREE.Mesh
+    #level = new Map();       // body ? 'full' | 'impostor'
+    #disposed = false;
 
     constructor(registry, camera, cfg)
     {
@@ -54,7 +53,7 @@ export class LodController
 
             const group = body.group;
             const dist = camPos.distanceTo(group.position);
-            const angular = dist > 1e-3 ? body.planet.radius / dist : Infinity;
+            const angular = dist > 1e-3 ? body.radius / dist : Infinity;
 
             const current = this.#level.get(body) ?? 'full';
             const lo = this.#cfg.impostorBelowAngular;
@@ -83,7 +82,7 @@ export class LodController
         // against the impostor. The active body is always full detail; because
         // #apply only runs on a LEVEL CHANGE and the active body never changes
         // level, this never fights the resource-mode slice machinery
-        // (BodyMesh.hideAll / restoreView) — it only restores the surface when a
+        // (BodyMesh.hideAll / restoreView) ? it only restores the surface when a
         // body is (re)promoted to full, e.g. when a distant impostor companion
         // is selected and becomes active.
         for (const mesh of bodyMesh.surfaceMeshes)
@@ -111,11 +110,11 @@ export class LodController
 
         if (mesh) return mesh;
 
-        const colors = body.planet.depthColors;
+        const colors = body.config.depthColors;
         const color = Array.isArray(colors) && colors.length ? colors[0] : 0x808080;
 
         mesh = new THREE.Mesh(
-            new THREE.SphereGeometry(body.planet.radius, this.#cfg.impostorSegments, this.#cfg.impostorSegments),
+            new THREE.SphereGeometry(body.radius, this.#cfg.impostorSegments, this.#cfg.impostorSegments),
             new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 }),
         );
         mesh.visible = false;
@@ -123,5 +122,21 @@ export class LodController
         this.#impostors.set(body, mesh);
 
         return mesh;
+    }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        for (const mesh of this.#impostors.values())
+        {
+            mesh.removeFromParent();
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+
+        this.#impostors.clear();
+        this.#level.clear();
     }
 }

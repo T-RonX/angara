@@ -1,9 +1,7 @@
-import { CellTopology } from './CellTopology.js';
 import { GoldbergGrid } from './goldberg/GoldbergGrid.js';
 import { CentroidIndex } from './goldberg/CentroidIndex.js';
 import { GoldbergSurfacePicker } from './goldberg/GoldbergSurfacePicker.js';
 import { GoldbergCutStrategy } from './goldberg/GoldbergCutStrategy.js';
-import { GoldbergBroadPhase } from './goldberg/GoldbergBroadPhase.js';
 import { GoldbergTraversal } from './goldberg/GoldbergTraversal.js';
 import { GoldbergGridLines } from './goldberg/GoldbergGridLines.js';
 import { CellSliceBuilder } from './goldberg/CellSliceBuilder.js';
@@ -11,18 +9,16 @@ import { WholeCellResourceHighlight } from './goldberg/WholeCellResourceHighligh
 import { ShapeField } from '../model/ShapeField.js';
 
 // ----------------------------------------------------------------------
-// GoldbergTopology — the hexsphere: a Goldberg polyhedron (mostly hexagons +
-// exactly 12 pentagons, NO poles), assembled behind the CellTopology
-// contract. Because it has no poles it needs none of the polar-cap / latitude
-// workaround; every cell is a uniform N-gon prism flowing through the shared
-// generic geometry, cross-section, picking, camera and HUD code.
+// GoldbergTopology -- the hexsphere: a Goldberg polyhedron (mostly hexagons +
+// exactly 12 pentagons, NO poles). Every cell is a uniform N-gon prism
+// flowing through the shared generic geometry, picking, camera and HUD code.
 //
-// It exposes the full topology contract directly, so BodyExplorer can wire
-// the hexsphere without any lon/lat branch.
+// It exposes the full topology contract directly, so the orchestrator can
+// wire the hexsphere without any special-case branches.
 // ----------------------------------------------------------------------
-export class GoldbergTopology extends CellTopology
+export class GoldbergTopology
 {
-    #planet;
+    #body;
     #grid;
     #index;
     #cutStrategy;
@@ -34,18 +30,16 @@ export class GoldbergTopology extends CellTopology
     #profileSlice;
     #profileEvery;
 
-    constructor(physical, layerModel, behaviour, atmosphereRadius, faceData = null)
+    constructor(body, layerModel, atmosphere, atmosphereRadius, behaviour, faceData = null)
     {
-        super();
+        this.#body = body;
 
-        this.#planet = physical.planet;
+        const frequency = body.hexFrequency ?? 16;
 
-        const frequency = physical.planet.hexFrequency ?? 16;
-
-        this.#shapeField = new ShapeField(physical.planet.shape, physical.planet.radius);
+        this.#shapeField = new ShapeField(body.shape, body.radius);
 
         this.#grid = new GoldbergGrid(
-            this.#planet, layerModel, physical.atmosphere, atmosphereRadius, frequency, this.#shapeField, faceData,
+            this.#body, layerModel, atmosphere, atmosphereRadius, frequency, this.#shapeField, faceData,
         );
 
         this.#index = new CentroidIndex(this.#grid.surfaceCells);
@@ -65,12 +59,7 @@ export class GoldbergTopology extends CellTopology
 
     createSurfacePicker(surfaceMesh, bodyGroup = null)
     {
-        return new GoldbergSurfacePicker(this.#planet, this.#index, this.#shapeField, surfaceMesh, bodyGroup);
-    }
-
-    createBroadPhase()
-    {
-        return new GoldbergBroadPhase();
+        return new GoldbergSurfacePicker(this.#body, this.#index, this.#shapeField, surfaceMesh, bodyGroup);
     }
 
     createSliceBuilder(ctx)
@@ -78,7 +67,7 @@ export class GoldbergTopology extends CellTopology
         return new CellSliceBuilder({
             ...ctx,
             fadeMs: this.#fadeMs,
-            planetRadius: this.#planet.radius,
+            bodyRadius: this.#body.radius,
             horizonCull: this.#horizonCull,
             wallBandCells: this.#wallBandCells,
             profileSlice: this.#profileSlice,
@@ -93,7 +82,7 @@ export class GoldbergTopology extends CellTopology
 
     buildGridLines()
     {
-        return new GoldbergGridLines(this.#planet, this.#grid.faces, this.#shapeField).lines;
+        return new GoldbergGridLines(this.#body, this.#grid.faces, this.#shapeField).lines;
     }
 
     cellTypeLabel(cell)
