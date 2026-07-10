@@ -174,6 +174,7 @@ export class CelestialBody
     get atmosphere()        { return this.#atmosphere; }
     get atmosphereConfig()  { return this.#atmosphereConfig; }
     get shapeField()        { return this.#topology.shapeField; }
+    get surfaceMesh()       { return this.#bodyMesh.surfaceMeshes[0] ?? null; }
 
     // Release all GPU resources owned by this body. Idempotent.
     dispose()

@@ -271,10 +271,28 @@ export class ExplorerApplication
         );
 
         // Preallocate star-occlusion records once; updated in place each frame.
-        this.#occlusionRecords = this.#registry.bodies.map(() => ({
-            radius: 0,
-            position: new THREE.Vector3(),
-        }));
+        // `surfaceMesh` is set only for non-sphere (displaced) bodies -- when
+        // present, SunOcclusion raycasts against the REAL rendered surface
+        // (via its BVH) instead of approximating with a single radius, so
+        // occlusion always matches exactly what's on screen. A BVH is built
+        // once per surface geometry (mirrors the lazy-build pattern used by
+        // the surface/cliff pickers).
+        this.#occlusionRecords = this.#registry.bodies.map((body) => {
+            const isSphere = body.shapeField?.isSphere !== false;
+            const surfaceMesh = isSphere ? null : body.surfaceMesh;
+            const geo = surfaceMesh?.geometry;
+
+            if (geo && geo.computeBoundsTree && !geo.boundsTree)
+            {
+                geo.computeBoundsTree({ indirect: true });
+            }
+
+            return {
+                radius: 0,
+                position: new THREE.Vector3(),
+                surfaceMesh,
+            };
+        });
     }
 
     async #buildBodyTree(config, parentBody)
@@ -469,7 +487,10 @@ export class ExplorerApplication
         this.#hud.updateCompass(this.#scene.camera);
 
         // 9. Star occlusion + update (preallocated records, no per-frame alloc).
+        // `surfaceMesh.matrixWorld` is already current (step 2 above), so
+        // SunOcclusion can raycast it directly for non-sphere bodies.
         const bodies = this.#registry.bodies;
+
         for (let i = 0; i < bodies.length; i++)
         {
             const rec = this.#occlusionRecords[i];
