@@ -128,21 +128,7 @@ export const physical = {
                 // The moon's OWN atmosphere — a thin, cool haze that stays visible
                 // without looking like a thick Earth-like blanket.
                 atmosphere: {
-                    show:        true,
-                    showInResourceMode: true,
-                    selectable:  true,
-                    thickness:   0.028,
-                    sunIntensity: 0.55,
-                    opacity:     0.72,
-                    baseColor:      [0.70, 0.74, 0.84],
-                    rayleighCoeff:  [0.16, 0.17, 0.20],
-                    // Scale heights as a FRACTION of the shell thickness.
-                    rayleighScaleFrac: 0.36,
-                    mieScaleFrac:      0.16,
-                    mieCoeff:    0.15,
-                    mieG:        0.60,
-                    viewSteps:   12,
-                    lightSteps:  6,
+                    show:        false,
                 },
                 orbit: {
                     // Scaled up ~5.7× to reduce parallax. At current zoom, far bodies
