@@ -185,7 +185,7 @@ export const physical = {
             {
                 id: 'satellite-2',
                 name: 'Glacios',
-                hexFrequency: 24,
+                hexFrequency: 10,
                 maxDepth: 3,
                 shape: {
                     type: 'sphere',

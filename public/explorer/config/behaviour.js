@@ -117,9 +117,9 @@ export const behaviour = {
         // Cap on slice rebuild frequency (ms) while actively dragging the cut plane.
         // The plane orientation updates every frame regardless, but the expensive
         // geometry rebuild is throttled. 0 = rebuild every frame (unlimited);
-        // 55 = ~18 rebuilds/sec (default). Deferred rebuilds are flushed when
+        // 33.333 = ~30 rebuilds/sec (default). Deferred rebuilds are flushed when
         // motion stops, so the geometry never gets stuck stale.
-        rebuildIntervalMs: 16.6667,
+        rebuildIntervalMs: 33.3333,
 
     },
 
