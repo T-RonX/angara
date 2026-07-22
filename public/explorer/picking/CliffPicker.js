@@ -40,7 +40,7 @@ export class CliffPicker
         if (this.#sliceBuilder.ensureAtmosphere) this.#sliceBuilder.ensureAtmosphere();
 
         this.#collectVisibleCapMeshes();
-        this.#ensureBoundsTrees();
+        this.#ensureBoundsTrees(false);
 
         this.#capHits.length = 0;
         raycaster.intersectObjects(this.#visibleCapMeshes, false, this.#capHits);
@@ -65,6 +65,15 @@ export class CliffPicker
         }
 
         return hit.object.userData.faceToCell[hit.faceIndex] ?? null;
+    }
+
+    // Restore exact sun occlusion on the first settled resource frame even
+    // when no pointer is over the canvas. Motion frames never call this path.
+    prepareOcclusion()
+    {
+        this.#collectVisibleCapMeshes();
+        this.#ensureBoundsTrees(true);
+        this.#visibleCapMeshes.length = 0;
     }
 
     #collectVisibleCapMeshes()
@@ -107,16 +116,20 @@ export class CliffPicker
     // Deferring the build to pick time (rather than mesh-creation time) keeps a
     // cut-advance cheap: picking is skipped while the view moves, so meshes that
     // are created and thrown away mid-advance never pay for a tree. Persistent
-    // buckets keep their tree across pans; only freshly rebuilt meshes build.
+    // slice meshes invalidate their tree only when active geometry changes.
     // `indirect: true` keeps the geometry index (and faceIndex) in original
     // order so the faceToCell mapping stays correct.
-    #ensureBoundsTrees()
+    #ensureBoundsTrees(occlusionOnly)
     {
         const meshes = this.#visibleCapMeshes;
 
         for (let i = 0; i < meshes.length; i++)
         {
-            const geo = meshes[i].geometry;
+            const mesh = meshes[i];
+
+            if (occlusionOnly && mesh.userData.occlusion === false) continue;
+
+            const geo = mesh.geometry;
 
             if (geo && geo.computeBoundsTree && !geo.boundsTree) geo.computeBoundsTree({ indirect: true });
         }

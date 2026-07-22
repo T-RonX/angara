@@ -89,7 +89,8 @@ export const behaviour = {
     },
 
     // Hexsphere resource-mode staircase slicing.
-    slice: {        // Duration (ms) of the temporal fade when the advancing cut reveals a
+    slice: {
+        // Duration (ms) of the temporal fade when the advancing cut reveals a
         // new row of whole cells (or hides a leaving one). 0 disables the fade.
         cellFadeMs: 0,
 
@@ -111,15 +112,6 @@ export const behaviour = {
         // motion stops, so the geometry never gets stuck stale.
         rebuildIntervalMs: 16.6667,
 
-        // Resource-mode horizon (occlusion) culling: hide slice buckets that
-        // curve over the body's own horizon relative to the camera. Purely a
-        // per-frame visibility toggle — no geometry rebuild.
-        horizonCull: {
-            enabled: true,
-            // Angular slack (degrees) added to each bucket's own extent so a
-            // partially-visible bucket is never dropped (surface-preserving).
-            marginDeg: 16,
-        },
     },
 
     // ------------------------------------------------------------------
@@ -155,10 +147,13 @@ export const behaviour = {
         brightnessMax: 1.0,
     },
 
-    // Developer diagnostics (off in normal play).
+    // Developer diagnostics.
     debug: {
-        profileSlice: false,
-        profileEvery: 30,
+        sliceProfiler: {
+            enabled: true,
+            sampleWindow: 120,
+            hudIntervalMs: 500,
+        },
     },
 
     // Highlight overlay colours / offsets (HighlightMeshFactory defaults).

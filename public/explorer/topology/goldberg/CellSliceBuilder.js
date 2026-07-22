@@ -1,22 +1,19 @@
 import * as THREE from 'three';
 import { MembershipCollector }    from './slicing/MembershipCollector.js';
-import { BucketStore }            from './slicing/BucketStore.js';
+import { PersistentSliceMeshStore } from './slicing/PersistentSliceMeshStore.js';
 import { FadeBatchManager }       from './slicing/FadeBatchManager.js';
 import { AtmospherePickRenderer } from './slicing/AtmospherePickRenderer.js';
 import { CoreDiscRenderer }       from './slicing/CoreDiscRenderer.js';
 import { CoreSkirtRenderer }      from './slicing/CoreSkirtRenderer.js';
-import { HorizonCuller }          from './slicing/HorizonCuller.js';
-import { SliceProfiler }          from './slicing/SliceProfiler.js';
 
 // ----------------------------------------------------------------------
 // CellSliceBuilder — the hexsphere SliceBuilder. Unlike the lon/lat CapBuilder
 // (which GPU-clips the body with a plane and closes the sliced cells with flat
 // cross-section caps), the hexsphere keeps WHOLE cells: a cell is included in
-// the slice iff its centroid is on the kept (+normal) half of the cut, so the
-// cut never carves through a cell. The whole near hemisphere (full surface +
-// full-depth crust) is kept, so the cliff wall and the surface rim are a
-// staircase of complete hexagon / pentagon cells and the full surface stays
-// visible from the resource camera.
+// the slice iff any surface corner is on the kept (+normal) half of the cut, so
+// the cut never carves through a cell. The near-hemisphere surface plus a
+// contiguous deep stack in the cliff wall band are kept, so the wall and rim
+// remain a staircase of complete hexagon / pentagon cells.
 //
 // The kept cells are rebuilt into lit meshes reusing the body's FrontSide
 // depthMaterials (coincident interior walls of touching cells cull to a single
@@ -24,11 +21,9 @@ import { SliceProfiler }          from './slicing/SliceProfiler.js';
 // toward the camera and read as the solid cliff). Each mesh carries a
 // faceIndex -> cell table so CliffPicker keeps working.
 //
-// PERF -- incremental, bucketed rebuild. The opaque slice is split into coarse
-// lon/lat SECTOR buckets (one merged mesh per (depth, bucket)) so Three's
-// frustum culling drops off-screen buckets, AND so a membership change only
-// re-uploads the FEW buckets whose cell set actually changed. Persistent bucket
-// meshes are kept across rebuilds; only changed buckets are disposed + rebuilt.
+// PERF -- the opaque surface is one immutable vertex atlas whose dynamic index
+// selects whole cells. The cliff is one retained full-prism stream per depth.
+// Movement mutates only retained buffers and picking maps.
 //
 // CORE -- the full core sphere would bulge into the cut-away region toward the
 // camera, so -- like the lon/lat path -- the core material is clipped to the kept
@@ -47,11 +42,10 @@ import { SliceProfiler }          from './slicing/SliceProfiler.js';
 //
 // Responsibilities are delegated to focused sub-components under slicing/:
 //   MembershipCollector    -- column-unit collect(), included(), opaqueExcluding
-//   BucketStore            -- persistent (depth x sector) opaque bucket meshes
+//   PersistentSliceMeshStore -- indexed surface atlas + retained depth streams
 //   FadeBatchManager       -- concurrent fade batches, fadingInKeys, clock
 //   AtmospherePickRenderer -- lazy invisible atmosphere pick shell
 //   CoreDiscRenderer       -- core cut-face disc (rebuilt every step)
-//   HorizonCuller          -- per-frame visibility cull for opaque buckets
 //   SliceProfiler          -- optional rolling-average rebuild profiler
 //
 // SliceBuilder contract: build(slab), capMeshes[], clearCaps(), enter(), exit().
@@ -63,16 +57,17 @@ export class CellSliceBuilder
 
     #clip;
     #bodyMesh;
-    #lastSig = null;
+    #lastCount = -1;
+    #lastHash = -1;
     #disposed = false;
+    #fadesEnabled;
 
     #collector;
-    #bucketStore;
+    #meshStore;
     #fadeMgr;
     #atmPick;
     #coreDisc;
     #coreSkirt;
-    #horizonCuller;
     #profiler;
 
     constructor(ctx)
@@ -84,13 +79,14 @@ export class CellSliceBuilder
 
         this.#clip     = ctx.clip;
         this.#bodyMesh = ctx.bodyMesh;
+        this.#profiler = ctx.profiler;
 
         // Inclusion tolerance: the focus cell straddles the meridian cut
         // (centroid distance ~0), so a small positive slack keeps it on the
         // cliff despite float error.
         const eps = layerModel.layerRadii[0] * 1e-3;
 
-        const bodyRadius = ctx.bodyRadius ?? ctx.planetRadius ?? layerModel.layerRadii[0];
+        const bodyRadius = ctx.bodyRadius ?? layerModel.layerRadii[0];
 
         // Interior-cull band width, expressed in "surface cell diameters" so it
         // scales automatically with hexFrequency. A surface cell's approximate
@@ -109,7 +105,7 @@ export class CellSliceBuilder
         const cellStride = surfaceCount + 1;
 
         const fadeDur = Math.max(0.001, (ctx.fadeMs ?? 260) / 1000);
-        const hc      = ctx.horizonCull ?? {};
+        this.#fadesEnabled = (ctx.fadeMs ?? 260) > 0.001;
 
         this.sliceGroup = new THREE.Group();
         this.sliceGroup.visible = false;
@@ -123,12 +119,15 @@ export class CellSliceBuilder
             eps,
             wallBandDist,
             cellStride,
+            profiler: this.#profiler,
         });
 
-        this.#bucketStore = new BucketStore({
+        this.#meshStore = new PersistentSliceMeshStore({
             sliceGroup: this.sliceGroup,
             materials,
             geometryFactory,
+            cellsByDepth: cellGrid.cellsByDepth,
+            profiler: this.#profiler,
         });
 
         this.#fadeMgr = new FadeBatchManager({
@@ -136,6 +135,7 @@ export class CellSliceBuilder
             materials,
             geometryFactory,
             fadeDur,
+            profiler: this.#profiler,
         });
 
         this.#atmPick = new AtmospherePickRenderer({
@@ -158,23 +158,13 @@ export class CellSliceBuilder
             stretch: ctx.skirtStretch ?? 0.4,
         });
 
-        this.#horizonCuller = new HorizonCuller({
-            enabled:   hc.enabled ?? false,
-            marginDeg: hc.marginDeg ?? 6,
-            bodyRadius,
-            bodyGroup: ctx.bodyMesh.group,
-        });
-
-        this.#profiler = new SliceProfiler({
-            enabled: ctx.profileSlice ?? false,
-            every:   ctx.profileEvery ?? 30,
-        });
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
     // and clip the (still full) core sphere to the kept half.
     enter()
     {
+        this.#ensureInitialized();
         this.#bodyMesh.hideAll();
         this.sliceGroup.visible = true;
 
@@ -182,27 +172,28 @@ export class CellSliceBuilder
         this.#bodyMesh.core.material.needsUpdate = true;
 
         this.#fadeMgr.reset();
-        this.#disposeAll();
-        this.#lastSig = null; // force a rebuild on the next updateCut
+        this.#clearAll();
+        this.#lastCount = -1; // force a rebuild on the next updateCut
+        this.#lastHash = -1;
     }
 
     exit()
     {
         this.sliceGroup.visible = false;
-        this.#horizonCuller.reset();
         this.#fadeMgr.retireAll();
-        this.#disposeAll();
+        this.#clearAll();
 
         this.#bodyMesh.core.material.clippingPlanes = [];
         this.#bodyMesh.core.material.needsUpdate = true;
 
         this.#bodyMesh.restoreView();
-        this.#lastSig = null;
+        this.#lastCount = -1;
+        this.#lastHash = -1;
     }
 
     clearCaps()
     {
-        this.#disposeAll();
+        this.#clearAll();
     }
 
     // The rendered geometry depends only on WHICH cells are included, so the
@@ -215,24 +206,32 @@ export class CellSliceBuilder
     // rebuild (see header comment) -- multiple batches can be in flight at
     // once. fadingInKeys tracks every cell currently fading in across ALL
     // active batches so the opaque set always excludes them (a cell only
-    // folds into the opaque buckets once ITS OWN batch finishes). During the
+    // folds into persistent meshes once ITS OWN batch finishes). During the
     // transition fly-through (slab=true) the set changes every frame, so it
     // rebuilds directly with no fade.
     build(slab = false)
     {
+        this.#ensureInitialized();
+
+        const startedAt = this.#profiler.now();
+        this.#profiler.increment('buildScans');
+
         const plane = this.#clip.plane;
         const n     = plane.normal;
         const k     = plane.constant;
 
-        const t0 = this.#profiler.begin();
+        const inc = this.#collector.collect(n, k, this.#fadesEnabled);
 
-        const inc = this.#collector.collect(n, k);
+        if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
+        {
+            this.#profiler.increment('unchangedMembership');
+            this.#profiler.recordSince('buildTotal', startedAt);
 
-        if (inc.sig === this.#lastSig) return;
+            return;
+        }
 
-        const tCollect = this.#profiler.mark();
-
-        this.#lastSig = inc.sig;
+        this.#lastCount = inc.count;
+        this.#lastHash = inc.hash;
 
         // Record the cut and flag the (invisible) atmosphere pick shell dirty --
         // it is rebuilt lazily on the next pick, not here (see ensureAtmosphere).
@@ -240,61 +239,108 @@ export class CellSliceBuilder
 
         // Hard (non-fade) rebuild during the transition sweep or when the fade
         // is disabled; otherwise the whole revealed set would fade at once.
-        if (slab || this.#fadeMgr.fadeDur <= 0.001)
+        if (slab || !this.#fadesEnabled)
         {
+            this.#profiler.increment('hardRebuilds');
             this.#fadeMgr.retireAll();
-            this.#bucketStore.sync(inc.byDepth);
+            this.#meshStore.sync(inc.byDepth, inc.wallSurface);
+
+            let phaseStartedAt = this.#profiler.now();
             this.#coreDisc.rebuild(n, k);
+            this.#profiler.recordSince('coreDisc', phaseStartedAt);
+
+            phaseStartedAt = this.#profiler.now();
             this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
-            // Store new membership so tick() can re-sync after batches complete.
-            this.#fadeMgr.commitBatch(inc.keys, inc.byDepth, { hasAdded: false, hasRemoved: false });
+            this.#profiler.recordSince('coreSkirt', phaseStartedAt);
+
+            if (this.#fadesEnabled)
+            {
+                // A slab build is hard, but its membership seeds the next
+                // enabled-fade diff once the transition completes.
+                this.#fadeMgr.commitBatch(
+                    inc.keys,
+                    inc.byDepth,
+                    inc.wallSurface,
+                    inc.wallKeys,
+                    { hasAdded: false, hasRemoved: false },
+                );
+            }
+
             this.#refreshCapMeshes();
-            this.#profiler.record(t0, tCollect, this.#bucketStore.bucketsRebuilt);
+            this.#profiler.recordSince('buildTotal', startedAt);
 
             return;
         }
+
+        this.#profiler.increment('fadingRebuilds');
 
         // 1. Compute diff and register new fading-in cells (side effect inside
         //    prepareUpdate updates fadingInKeys before step 2).
         const diff = this.#fadeMgr.prepareUpdate(
             inc.byDepth,
             inc.keys,
+            inc.wallSurface,
+            inc.wallKeys,
             this.#collector.cellStride,
         );
 
         // 2. Sync opaque using the now-updated fadingInKeys so fading-in cells
-        //    are excluded from the persistent buckets.
-        this.#bucketStore.sync(
-            this.#collector.opaqueExcludingFadingIn(inc.byDepth, this.#fadeMgr.fadingInKeys),
+        //    are excluded from the persistent meshes.
+        const opaque = this.#collector.opaqueExcludingFadingIn(
+            inc.byDepth,
+            inc.wallSurface,
+            this.#fadeMgr.fadingInKeys,
+            this.#fadeMgr.fadingInWallKeys,
         );
+        this.#meshStore.sync(opaque.byDepth, opaque.wallSurface);
 
         // 3. Rebuild core disc, store new membership, build fade batch.
+        let phaseStartedAt = this.#profiler.now();
         this.#coreDisc.rebuild(n, k);
+        this.#profiler.recordSince('coreDisc', phaseStartedAt);
+
+        phaseStartedAt = this.#profiler.now();
         this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
-        this.#fadeMgr.commitBatch(inc.keys, inc.byDepth, diff);
+        this.#profiler.recordSince('coreSkirt', phaseStartedAt);
+
+        this.#fadeMgr.commitBatch(
+            inc.keys,
+            inc.byDepth,
+            inc.wallSurface,
+            inc.wallKeys,
+            diff,
+        );
         this.#refreshCapMeshes();
-        this.#profiler.record(t0, tCollect, this.#bucketStore.bucketsRebuilt);
+        this.#profiler.recordSince('buildTotal', startedAt);
     }
 
     // Advance every in-flight fade batch; called once per frame from the
     // animate loop. Only material .opacity values update most frames -- the
     // fade meshes themselves are rebuilt only when a batch starts or finishes
-    // (folding its cells into the opaque buckets).
+    // (folding its cells into the persistent meshes). Returns true when a
+    // completion changed the current pick meshes.
     tick(dt)
     {
         const completed = this.#fadeMgr.tick(dt);
 
         if (completed && this.#fadeMgr.lastByDepth)
         {
-            this.#bucketStore.sync(
-                this.#collector.opaqueExcludingFadingIn(
-                    this.#fadeMgr.lastByDepth,
-                    this.#fadeMgr.fadingInKeys,
-                ),
+            const resyncStartedAt = this.#profiler.now();
+
+            const opaque = this.#collector.opaqueExcludingFadingIn(
+                this.#fadeMgr.lastByDepth,
+                this.#fadeMgr.lastWallSurface,
+                this.#fadeMgr.fadingInKeys,
+                this.#fadeMgr.fadingInWallKeys,
             );
+            this.#meshStore.sync(opaque.byDepth, opaque.wallSurface);
 
             this.#refreshCapMeshes();
+            this.#profiler.increment('fadeResyncs');
+            this.#profiler.recordSince('fadeResync', resyncStartedAt);
         }
+
+        return completed;
     }
 
     // Rebuild the invisible atmosphere pick shell if the cut moved since it was
@@ -306,24 +352,41 @@ export class CellSliceBuilder
         if (this.#atmPick.ensure()) this.#refreshCapMeshes();
     }
 
-    // Per-frame horizon (occlusion) cull: hide opaque buckets that curve over
-    // the planet's own horizon relative to the camera. Cheap visibility toggle
-    // only -- no geometry work, no membership change. Surface-preserving: each
-    // bucket's own angular extent plus a configurable margin is added, so a
-    // partially-visible bucket is never dropped.
-    updateHorizonCull(camera)
+    // Appends only currently rendered slice occluders and reports whether every
+    // appended geometry already has a current BVH. It never builds a tree:
+    // CliffPicker remains the lazy tree owner once resource motion settles.
+    collectReadyOcclusionMeshes(target)
     {
-        this.#horizonCuller.update(camera, this.#bucketStore.opaqueBuckets);
+        let ready = true;
+        let count = 0;
+
+        for (const mesh of this.capMeshes)
+        {
+            if (!mesh.visible || mesh.userData.occlusion === false) continue;
+
+            target.push(mesh);
+            count++;
+
+            if (!mesh.geometry?.boundsTree) ready = false;
+        }
+
+        return count > 0 && ready;
     }
 
-    // Rebuild the pick list from the CURRENT meshes (opaque buckets + any
-    // transient pick meshes / blockers). Called after every change so
+    // Consolidated meshes rely on normal back-face and depth rejection.
+    updateHorizonCull()
+    {
+    }
+
+    // Rebuild the pick list from the CURRENT meshes (persistent + transient
+    // pick meshes / blockers). Called after every change so
     // raycasting never sees a stale or disposed mesh.
     #refreshCapMeshes()
     {
+        const startedAt = this.#profiler.now();
         this.capMeshes.length = 0;
 
-        for (const { mesh } of this.#bucketStore.opaqueBuckets.values()) this.capMeshes.push(mesh);
+        for (const mesh of this.#meshStore.activeMeshes) this.capMeshes.push(mesh);
 
         for (const m of this.#coreDisc.meshes) this.capMeshes.push(m);
 
@@ -337,25 +400,25 @@ export class CellSliceBuilder
         {
             if (m.userData.faceToCell) this.capMeshes.push(m);
         }
+
+        this.#profiler.recordSince('capRefresh', startedAt);
     }
 
-    #disposeAll()
+    #clearAll()
     {
-        this.#bucketStore.disposeAll();
+        this.#meshStore.clear();
         this.#fadeMgr.retireAll();
         this.#coreDisc.clear();
         this.#coreSkirt.clear();
         this.#atmPick.clearMesh();
 
-        // Safety: drop any stray children (should be none).
-        for (const m of this.sliceGroup.children.slice())
-        {
-            this.sliceGroup.remove(m);
-
-            if (m.geometry) m.geometry.dispose();
-        }
-
         this.capMeshes.length = 0;
+    }
+
+    #ensureInitialized()
+    {
+        this.#collector.ensureInitialized();
+        this.#meshStore.ensureInitialized();
     }
 
     // Release every GPU resource owned by this slice builder and remove the
@@ -365,7 +428,12 @@ export class CellSliceBuilder
         if (this.#disposed) return;
         this.#disposed = true;
 
-        this.#disposeAll();
+        this.#clearAll();
+        this.#meshStore.dispose();
+        this.#fadeMgr.dispose();
+        this.#coreDisc.dispose();
+        this.#coreSkirt.dispose();
+        this.#atmPick.dispose();
         this.sliceGroup.removeFromParent();
         this.capMeshes.length = 0;
     }

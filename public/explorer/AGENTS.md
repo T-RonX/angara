@@ -92,7 +92,7 @@ Do not reorder the frame pipeline:
 2. Update world matrices and active world clip plane.
 3. Update transition/view/resource camera.
 4. Update LOD.
-5. Tick slice fades and settled horizon culling.
+5. Tick slice fades.
 6. Anchor sky to camera.
 7. Update hover when transition is idle.
 8. Update compass.
@@ -106,23 +106,33 @@ This order ensures camera, clipping, and picking see current body transforms.
 
 ## Slice performance invariants
 
-`topology/goldberg/CellSliceBuilder.js` is an orchestrator. Its focused collaborators own membership, buckets, mesh assembly, fades, atmosphere picking, core disc, horizon culling, and profiling.
+`topology/goldberg/CellSliceBuilder.js` is an orchestrator. Its focused collaborators own membership, persistent slice meshes, transient mesh assembly, fades, atmosphere picking, core rendering, and profiling.
 
 Never regress these rules:
 
 - Membership is decided once per surface column; a rendered deep column is a contiguous stack.
+- Surface membership scans use typed corner and centroid coordinates prepared on first resource entry.
 - Depth 0 covers the kept hemisphere; deeper cells exist only in the configured wall band.
-- Membership and bucket keys are numbers, not allocated strings.
+- Membership keys and cell indices are numbers, not allocated strings.
 - `sliceCentroid` and `geoCache` remain per-cell caches.
-- Merged geometry uses pre-sized typed arrays and `.set()` copies.
-- Opaque bucket meshes persist; only changed bucket signatures rebuild.
-- Panning along an unchanged wall performs no geometry rebuild.
-- Fade batches overlap independently. `fadingInKeys` excludes each cell from opaque buckets until its own batch completes.
+- The opaque surface is one persistent mesh with immutable outer-face positions/normals and a worst-case preallocated dynamic index.
+- Surface atlas construction appends outer fans directly and must not populate every full-prism `geoCache`.
+- The cliff uses at most one retained no-outer prism stream for the depth-0 wall and one full-prism stream per deeper layer; the surface atlas exclusively owns depth-0 outer fans.
+- Persistent meshes and geometries are created once/lazily, geometrically grow buffers when needed, and survive empty ranges until body disposal.
+- Persistent stream growth keeps mesh/geometry identity, dispatches geometry disposal before replacing attributes, and marks every retained attribute for re-upload.
+- Persistent meshes use conservative fixed body-local bounding spheres; movement never recomputes bounds.
+- Every active index/stream mutation invalidates a lazy BVH first and preserves triangle-order `faceToCell`; inner prism fans map to `null`.
+- Empty persistent streams have zero active draw/index ranges and are invisible, not removed or disposed.
+- Panning along unchanged membership performs no geometry update.
+- Transient merged geometry for fades and atmosphere uses pre-sized typed arrays and `.set()` copies.
+- Fade batches overlap independently. `fadingInKeys` excludes each cell from persistent meshes until its own batch completes.
 - Transition slab rebuilds and disabled fades use hard rebuilds.
 - Atmosphere pick geometry is marked dirty during movement and built lazily at the first settled pick.
-- BVHs are built lazily at pick time with `{ indirect: true }`; eager BVH construction breaks advance performance, and non-indirect construction breaks `faceToCell`.
+- BVHs are built lazily with `{ indirect: true }` on the first settled resource frame; eager construction during movement breaks advance performance, and non-indirect construction breaks `faceToCell`.
+- Settled BVH preparation is pointer-independent so exact sun occlusion resumes when the pointer is outside the canvas.
+- Sun occlusion consumes only slice meshes whose current BVHs are ready and retains its last per-body/sun result while dynamic ranges are dirty; it never builds a slice BVH.
 - `capMeshes` is refreshed after every ownership change and must never retain disposed meshes.
-- Horizon culling toggles visibility only; it never changes membership.
+- Consolidated persistent meshes rely on normal back-face and depth rejection; do not reintroduce CPU sector horizon culling.
 - Do not introduce `supports()` calls, polymorphic dispatch, object allocation, or string allocation inside per-cell loops.
 
 If abstractions conflict with a hot loop, select a specialized implementation once during construction and keep the loop direct and monomorphic.
@@ -142,7 +152,7 @@ Every owner of a worker, listener, RAF handle, render target, texture, material,
 
 - Comments explain ownership, invariants, coordinate spaces, or performance decisions. Remove historical attempt logs and comments that restate a method.
 - Add JSDoc primarily for config records, cell/focus records, factory inputs, and algorithm result shapes.
-- The first future TypeScript types should be `PhysicalConfig`, `BehaviourConfig`, `Cell`, `FocusFrame`, `BodyInteractionSession`, and slice membership/bucket records.
+- The first future TypeScript types should be `PhysicalConfig`, `BehaviourConfig`, `Cell`, `FocusFrame`, `BodyInteractionSession`, and slice membership/stream records.
 - Avoid untyped `userData` additions. Existing `faceToCell`, depth, and highlight-cell metadata should become explicit typed adapters during the TypeScript port.
 
 ## Validation
@@ -157,5 +167,5 @@ Get-ChildItem public\explorer -Recurse -Filter *.js | ForEach-Object {
 
 - Search deleted concepts before finishing: `physical.planet`, `.planet`, `cellTopology`, `CellTopology`, `createTopology`, `GoldbergBroadPhase`, `CrossSectionFactory`, cap branches, `isPoleCut`, `polarCap`, `InputController`, and broad `retarget` methods.
 - Smoke-test `http://localhost:4100/` in a browser and inspect the console.
-- Compare fixed view/resource scenarios with the FPS/render-info HUD and `behaviour.debug.profileSlice`.
+- Compare fixed view/resource scenarios with the FPS/render-info HUD and `behaviour.debug.sliceProfiler`.
 - Do not run TypeScript build or style checks for explorer-only changes.

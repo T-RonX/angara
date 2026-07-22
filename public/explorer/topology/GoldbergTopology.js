@@ -25,10 +25,7 @@ export class GoldbergTopology
     #traversal;
     #shapeField;
     #fadeMs;
-    #horizonCull;
     #wallBandCells;
-    #profileSlice;
-    #profileEvery;
 
     constructor(body, layerModel, atmosphere, atmosphereRadius, behaviour, faceData = null)
     {
@@ -46,10 +43,7 @@ export class GoldbergTopology
         this.#cutStrategy = new GoldbergCutStrategy();
         this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex, behaviour.input);
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
-        this.#horizonCull = behaviour?.slice?.horizonCull ?? { enabled: false, marginDeg: 6 };
         this.#wallBandCells = behaviour?.slice?.wallBandCells ?? 4;
-        this.#profileSlice = behaviour?.debug?.profileSlice ?? false;
-        this.#profileEvery = behaviour?.debug?.profileEvery ?? 30;
     }
 
     get grid()        { return this.#grid; }
@@ -69,10 +63,7 @@ export class GoldbergTopology
             fadeMs: this.#fadeMs,
             bodyRadius: this.#body.radius,
             skirtStretch: this.#body.coreSkirt?.stretch ?? 0.4,
-            horizonCull: this.#horizonCull,
             wallBandCells: this.#wallBandCells,
-            profileSlice: this.#profileSlice,
-            profileEvery: this.#profileEvery,
         });
     }
 

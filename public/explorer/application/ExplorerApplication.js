@@ -65,6 +65,9 @@ export class ExplorerApplication
     #hud;
     #sliderPanel;
     #bodyPicker;
+    #sliceProfilerEnabled;
+    #sliceProfilerHudInterval;
+    #lastSliceProfilerHud = -Infinity;
     #disposed = false;
 
     // Preallocated star-occlusion body records; updated in place each frame.
@@ -75,6 +78,8 @@ export class ExplorerApplication
         this.#physical = physical;
         this.#behaviour = behaviour;
         this.#root = rootElement;
+        this.#sliceProfilerEnabled = behaviour.debug.sliceProfiler.enabled;
+        this.#sliceProfilerHudInterval = behaviour.debug.sliceProfiler.hudIntervalMs;
 
         // Derive radius = hexFrequency × cellSize on every body so
         // downstream consumers keep reading a plain `.radius`.
@@ -113,6 +118,7 @@ export class ExplorerApplication
                 this.#registry.active.topology,
                 hudElements,
             );
+            this.#hud.setSliceProfilerEnabled(this.#sliceProfilerEnabled);
             this.#buildHudControls();
 
             // Input binding -- DOM listeners bound exactly once.
@@ -277,8 +283,9 @@ export class ExplorerApplication
         // instead of approximating with a single radius, so occlusion always
         // matches exactly what's on screen -- for any body, sphere or
         // displaced. The base surface and core BVHs are built once here
-        // (persistent geometry); slice/cliff bucket meshes change over time
-        // and get their BVH built lazily in SunOcclusion (mirrors CliffPicker).
+        // (persistent geometry); active slice/cliff ranges change over time.
+        // CliffPicker builds their BVHs lazily after motion settles, while
+        // SunOcclusion consumes only trees reported ready by the slice builder.
         this.#occlusionRecords = this.#registry.bodies.map((body) => {
             const surfaceMesh = body.surfaceMesh;
             const coreMesh = body.bodyMesh.core;
@@ -365,6 +372,8 @@ export class ExplorerApplication
 
         this.#hud.updateSelectionReadout(this.#state);
         this.#hud.refreshModeButton(false);
+        this.#hud.clearSliceProfiler();
+        this.#lastSliceProfilerHud = -Infinity;
         this.#bodyPicker?.setActive(index);
     }
 
@@ -521,6 +530,20 @@ export class ExplorerApplication
 
         // 13. Render info.
         this.#hud.updateRenderInfo(this.#scene.renderer.info);
+        this.#updateSliceProfilerHud(now, session);
+    }
+
+    #updateSliceProfilerHud(now, session)
+    {
+        if (!this.#sliceProfilerEnabled) return;
+        if (!this.#hud.sliceProfilerOpen) return;
+        if (now - this.#lastSliceProfilerHud < this.#sliceProfilerHudInterval) return;
+
+        this.#hud.renderSliceProfiler(
+            session.sliceProfilerSnapshot(),
+            session.body.name,
+        );
+        this.#lastSliceProfilerHud = now;
     }
 
     // ------------------------------------------------------------------

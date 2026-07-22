@@ -8,7 +8,7 @@ import * as THREE from 'three';
 // rebuilds the caps. It is otherwise topology-agnostic.
 //
 // THROTTLING — re-orienting the plane is cheap and happens every call, but
-// `sliceBuilder.build()` re-scans every cell and re-uploads changed bucket
+// `sliceBuilder.build()` re-scans every cell and updates retained slice buffers
 // geometry, which is expensive when called on every animation frame during a
 // continuous drag. Callers that opt in via `{ throttle: true }` (the
 // FocusController's per-frame easing) get the rebuild capped to
@@ -29,17 +29,19 @@ export class ClipController
     #cutStrategy;
     #bodyGroup = null;
     #sliceBuilder = null;
+    #profiler;
 
     #lastBuildT = -Infinity;
     #rebuildIntervalMs = 55;
     #pendingRebuild = false;
 
-    constructor(focus, cutStrategy, bodyGroup = null, rebuildIntervalMs = 55)
+    constructor(focus, cutStrategy, bodyGroup = null, rebuildIntervalMs = 55, profiler)
     {
         this.#focus = focus;
         this.#cutStrategy = cutStrategy;
         this.#bodyGroup = bodyGroup ?? null;
         this.#rebuildIntervalMs = rebuildIntervalMs;
+        this.#profiler = profiler;
     }
 
     setSliceBuilder(sliceBuilder)
@@ -76,6 +78,7 @@ export class ClipController
     // open-slice transition, which always forces an immediate rebuild.
     updateCut(constant = 0, slab = false, { throttle = false } = {})
     {
+        this.#profiler.increment('cutAttempts');
         this.#cutStrategy.orient(this.plane, this.#focus);
         this.plane.constant = constant;
         this.syncWorldPlane();
@@ -86,9 +89,12 @@ export class ClipController
         if (!forced && now - this.#lastBuildT < this.#rebuildIntervalMs)
         {
             this.#pendingRebuild = true;
+            this.#profiler.increment('cutThrottled');
 
             return false;
         }
+
+        if (forced) this.#profiler.increment('cutForced');
 
         this.#sliceBuilder.build(slab);
         this.cutKey = `${this.#focus.lon},${this.#focus.lat}`;

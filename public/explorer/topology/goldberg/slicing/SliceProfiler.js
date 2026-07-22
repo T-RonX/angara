@@ -1,61 +1,195 @@
-// Opt-in rolling-average profiler for CellSliceBuilder.build() sub-phase
-// timings. Activated by behaviour.debug.profileSlice; off by default so the
-// probe calls add no measurable overhead in production (branch on #enabled).
+const TIMING_LABELS = new Map([
+    ['buildTotal', 'Build total'],
+    ['membershipCollect', 'Membership collect'],
+    ['opaqueFilter', 'Opaque filter'],
+    ['fadeDiff', 'Fade diff'],
+    ['sliceMeshSync', 'Slice mesh sync total'],
+    ['surfaceIndexUpdate', 'Surface index update'],
+    ['wallStreamUpdate', 'Wall/deep stream update'],
+    ['coreDisc', 'Core disc rebuild'],
+    ['coreSkirt', 'Core skirt rebuild'],
+    ['fadeCommit', 'Fade commit/meshes'],
+    ['capRefresh', 'Cap-list refresh'],
+    ['fadeResync', 'Fade completion resync'],
+    ['persistentStreamMergedTotal', 'Persistent stream merge total'],
+    ['persistentStreamMergedSizing', 'Persistent stream array sizing'],
+    ['persistentStreamMergedAssembly', 'Persistent stream array assembly'],
+    ['persistentStreamMergedFinalize', 'Persistent stream finalization'],
+    ['transientMergedTotal', 'Transient mesh merge total'],
+    ['transientMergedSizing', 'Transient mesh array sizing'],
+    ['transientMergedAssembly', 'Transient mesh array assembly'],
+    ['transientMergedFinalize', 'Transient mesh finalization'],
+]);
+
+const COUNT_LABELS = new Map([
+    ['cutAttempts', 'Cut attempts'],
+    ['cutThrottled', 'Throttled attempts'],
+    ['cutForced', 'Forced builds'],
+    ['buildScans', 'Membership scans'],
+    ['unchangedMembership', 'Unchanged exits'],
+    ['hardRebuilds', 'Hard rebuilds'],
+    ['fadingRebuilds', 'Fading rebuilds'],
+    ['fadeResyncs', 'Fade resyncs'],
+    ['fadeBatchesCreated', 'Fade batches created'],
+    ['fadeBatchesCompleted', 'Fade batches completed'],
+    ['persistentStreamMergedMeshes', 'Persistent stream merges'],
+    ['persistentStreamMergedCells', 'Persistent stream merged cells'],
+    ['persistentStreamMergedVertices', 'Persistent stream merged vertices'],
+    ['persistentStreamMergedTriangles', 'Persistent stream merged triangles'],
+    ['persistentStreamCapacityGrowths', 'Persistent stream capacity growths'],
+    ['transientMergedMeshes', 'Transient merged meshes'],
+    ['transientMergedCells', 'Transient merged cells'],
+    ['transientMergedVertices', 'Transient merged vertices'],
+    ['transientMergedTriangles', 'Transient merged triangles'],
+    ['persistentMeshAllocations', 'Persistent mesh allocations'],
+]);
+
+const VALUE_LABELS = new Map([
+    ['surfaceColumnsScanned', 'Last columns scanned'],
+    ['surfaceColumnsKept', 'Last columns kept'],
+    ['wallColumns', 'Last wall columns'],
+    ['emittedCells', 'Last emitted cells'],
+    ['addedCells', 'Last added cells'],
+    ['removedCells', 'Last removed cells'],
+    ['fadingCells', 'Fading-in cells'],
+    ['activeFadeBatches', 'Active fade batches'],
+    ['activePersistentMeshes', 'Active persistent meshes'],
+    ['surfaceCells', 'Surface cells'],
+    ['surfaceIndices', 'Surface indices'],
+    ['streamedCells', 'Streamed cells'],
+    ['streamedVertices', 'Streamed vertices'],
+    ['streamedTriangles', 'Streamed triangles'],
+]);
+
+// Per-body, config-gated rolling diagnostics for resource slice generation.
+// Samples are retained in fixed-size typed rings; display objects are allocated
+// only when snapshot() is called at the HUD cadence.
 export class SliceProfiler
 {
     #enabled;
-    #every;
-    #acc = { total: 0, collect: 0, sync: 0, buckets: 0, n: 0 };
+    #sampleWindow;
+    #timings = new Map();
+    #counters = new Map();
+    #values = new Map();
 
-    constructor({ enabled, every })
+    constructor({ enabled, sampleWindow })
     {
-        this.#enabled = enabled ?? false;
-        this.#every   = Math.max(1, every ?? 30);
+        this.#enabled = enabled;
+        this.#sampleWindow = sampleWindow;
     }
 
     get enabled() { return this.#enabled; }
 
-    // Returns a timestamp (ms) when enabled, 0 otherwise. Call once at the
-    // start of build() to capture t0.
-    begin()
+    now()
     {
         return this.#enabled ? performance.now() : 0;
     }
 
-    // Returns a timestamp (ms) when enabled, 0 otherwise. Call after collect()
-    // to capture tCollect.
-    mark()
-    {
-        return this.#enabled ? performance.now() : 0;
-    }
-
-    // Accumulate one rebuild's timings and log a rolling average every
-    // #every rebuilds. bucketsRebuilt comes from BucketStore.bucketsRebuilt.
-    record(t0, tCollect, bucketsRebuilt)
+    recordTiming(name, duration)
     {
         if (!this.#enabled) return;
 
-        const end = performance.now();
-        const a   = this.#acc;
+        let metric = this.#timings.get(name);
 
-        a.total   += end - t0;
-        a.collect += tCollect - t0;
-        a.sync    += end - tCollect;
-        a.buckets += bucketsRebuilt;
-        a.n++;
+        if (!metric)
+        {
+            metric = {
+                samples: new Float64Array(this.#sampleWindow),
+                cursor: 0,
+                count: 0,
+                latest: 0,
+            };
+            this.#timings.set(name, metric);
+        }
 
-        if (a.n < this.#every) return;
-
-        const n = a.n;
-
-        console.log(
-            `[slice] rebuild avg over ${n}: total ${(a.total / n).toFixed(2)}ms `
-            + `(collect ${(a.collect / n).toFixed(2)}ms, geom ${(a.sync / n).toFixed(2)}ms, `
-            + `${(a.buckets / n).toFixed(1)} buckets/rebuild)`,
-        );
-
-        a.total = a.collect = a.sync = a.buckets = a.n = 0;
+        metric.samples[metric.cursor] = duration;
+        metric.cursor = (metric.cursor + 1) % this.#sampleWindow;
+        metric.count = Math.min(this.#sampleWindow, metric.count + 1);
+        metric.latest = duration;
     }
 
-    dispose() {}
+    recordSince(name, startedAt)
+    {
+        if (!this.#enabled) return;
+
+        this.recordTiming(name, performance.now() - startedAt);
+    }
+
+    increment(name, amount = 1)
+    {
+        if (!this.#enabled) return;
+
+        this.#counters.set(name, (this.#counters.get(name) ?? 0) + amount);
+    }
+
+    setValue(name, value)
+    {
+        if (!this.#enabled) return;
+
+        this.#values.set(name, value);
+    }
+
+    snapshot()
+    {
+        if (!this.#enabled) return null;
+
+        const timings = [];
+
+        for (const [name, label] of TIMING_LABELS)
+        {
+            const metric = this.#timings.get(name);
+
+            if (!metric) continue;
+
+            let total = 0;
+            let max = 0;
+
+            for (let i = 0; i < metric.count; i++)
+            {
+                const sample = metric.samples[i];
+                total += sample;
+                max = Math.max(max, sample);
+            }
+
+            timings.push({
+                label,
+                latest: metric.latest,
+                average: total / metric.count,
+                max,
+                samples: metric.count,
+            });
+        }
+
+        const counts = [];
+
+        for (const [name, label] of COUNT_LABELS)
+        {
+            if (this.#counters.has(name))
+            {
+                counts.push({ label, value: this.#counters.get(name), cumulative: true });
+            }
+        }
+
+        for (const [name, label] of VALUE_LABELS)
+        {
+            if (this.#values.has(name))
+            {
+                counts.push({ label, value: this.#values.get(name), cumulative: false });
+            }
+        }
+
+        return { timings, counts };
+    }
+
+    reset()
+    {
+        this.#timings.clear();
+        this.#counters.clear();
+        this.#values.clear();
+    }
+
+    dispose()
+    {
+        this.reset();
+    }
 }

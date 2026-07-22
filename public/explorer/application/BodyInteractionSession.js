@@ -60,6 +60,11 @@ export class BodyInteractionSession
 
     get body() { return this.#body; }
 
+    sliceProfilerSnapshot()
+    {
+        return this.#body.sliceProfiler.snapshot();
+    }
+
     // --- construction --------------------------------------------------
 
     #buildCollaborators()
@@ -192,7 +197,13 @@ export class BodyInteractionSession
 
     tickSlice(dt)
     {
-        this.#body.sliceBuilder.tick(dt);
+        if (this.#body.sliceBuilder.tick(dt))
+        {
+            // Fade completion folds cells into persistent buffers and invalidates
+            // their BVHs. Schedule one settled lazy pick so exact occlusion can
+            // resume without building trees in the slice-sync path.
+            this.#hover.invalidate();
+        }
     }
 
     updateHorizonCull(camera)
@@ -202,6 +213,11 @@ export class BodyInteractionSession
 
     updateHover()
     {
+        if (this.#state.mode === 'resource' && !this.#state.resourceMoving)
+        {
+            this.#cliffPicker.prepareOcclusion();
+        }
+
         this.#hover.update();
     }
 

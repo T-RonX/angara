@@ -33,6 +33,30 @@ function assertNumber(obj, path, label, min = -Infinity)
     }
 }
 
+function assertBoolean(obj, path, label)
+{
+    assertPath(obj, path, label);
+
+    const value = path.split('.').reduce((current, part) => current[part], obj);
+
+    if (typeof value !== 'boolean')
+    {
+        throw new Error(`[ConfigValidator] ${label}.${path} must be a boolean`);
+    }
+}
+
+function assertInteger(obj, path, label, min = -Infinity, max = Infinity)
+{
+    assertNumber(obj, path, label, min);
+
+    const value = path.split('.').reduce((current, part) => current[part], obj);
+
+    if (!Number.isInteger(value) || value > max)
+    {
+        throw new Error(`[ConfigValidator] ${label}.${path} must be an integer between ${min} and ${max}`);
+    }
+}
+
 function assertPath(obj, path, label)
 {
     const parts = path.split('.');
@@ -157,5 +181,8 @@ export function validateConfigs(physical, behaviour)
     assertNumber(behaviour, 'materials.roughness', 'behaviour', 0);
     assertNumber(behaviour, 'materials.emissiveScale', 'behaviour', 0);
     assertNumber(behaviour, 'highlights.hoverOpacity', 'behaviour', 0);
+    assertBoolean(behaviour, 'debug.sliceProfiler.enabled', 'behaviour');
+    assertInteger(behaviour, 'debug.sliceProfiler.sampleWindow', 'behaviour', 1, 10000);
+    assertNumber(behaviour, 'debug.sliceProfiler.hudIntervalMs', 'behaviour', 1);
     assertPath(behaviour, 'generation.useWorker', 'behaviour');
 }

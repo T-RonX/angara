@@ -11,8 +11,10 @@ import { discOverlapArea } from '../core/MathUtils.js';
 // ExplorerApplication). A sample is occluded iff the ray actually hits
 // before reaching the sun -- this always matches exactly what is on screen,
 // with no approximation error, for any body shape and either mode. The
-// exact closed-form circle/circle overlap is kept as a defensive fallback
-// for the (should-not-happen) case where no mesh is available at all.
+// exact closed-form circle/circle overlap is the first-use fallback while a
+// dynamic slice has no ready BVH. Later dirty frames retain the last exact
+// per-body result for this sun, avoiding both rebuild stalls and flicker until
+// the picker prepares current trees on the first settled resource frame.
 
 // Sun-disc samples used for the numerical integration against a body's real
 // surface. Fibonacci-disc distributed for even coverage without grid
@@ -34,6 +36,7 @@ export class SunOcclusion
     #raycaster = new THREE.Raycaster();
     #hits = [];
     #occluderMeshes = [];
+    #lastBodyVisibility = new WeakMap();
     #disposed = false;
 
     constructor(bodies = [])
@@ -74,11 +77,27 @@ export class SunOcclusion
             // A sun closer than the body can't be occluded by it.
             if (dSun <= dBody) continue;
 
-            const meshes = this.#collectOccluderMeshes(body);
+            const exactReady = this.#collectReadyOccluderMeshes(body);
+            let visibility;
 
-            const visibility = meshes.length > 0
-                ? this.#measureAgainstMeshes(meshes, camera, dSun, sunSize)
-                : this.#measureSphere(radius, dBody, dSun, sunSize);
+            if (exactReady)
+            {
+                visibility = this.#measureAgainstMeshes(
+                    this.#occluderMeshes,
+                    camera,
+                    dSun,
+                    sunSize,
+                );
+                this.#lastBodyVisibility.set(body, visibility);
+            }
+            else if (this.#lastBodyVisibility.has(body))
+            {
+                visibility = this.#lastBodyVisibility.get(body);
+            }
+            else
+            {
+                visibility = this.#measureSphere(radius, dBody, dSun, sunSize);
+            }
 
             if (visibility < bestVisibility)
             {
@@ -89,12 +108,11 @@ export class SunOcclusion
         return bestVisibility;
     }
 
-    // Gathers whichever mesh(es) currently render this body: the base
-    // surface in view mode, or -- once resource mode hides that surface --
-    // the currently-visible cliff/cap buckets plus the core cut disc. Cliff
-    // buckets are rebuilt on cut changes, so their BVH is (re)built lazily
-    // here rather than once up front (mirrors CliffPicker's pattern).
-    #collectOccluderMeshes(body)
+    // Exact slice occlusion is allowed only when every current mesh already has
+    // a BVH. Dynamic slice updates invalidate those trees; CliffPicker rebuilds
+    // them lazily after motion settles, independently of pointer state. This
+    // path never builds a tree itself.
+    #collectReadyOccluderMeshes(body)
     {
         this.#occluderMeshes.length = 0;
 
@@ -102,36 +120,25 @@ export class SunOcclusion
         {
             this.#occluderMeshes.push(body.surfaceMesh);
 
-            return this.#occluderMeshes;
+            return Boolean(body.surfaceMesh.geometry?.boundsTree);
         }
 
         if (body.sliceBuilder && body.sliceBuilder.sliceGroup.visible)
         {
-            for (const mesh of body.sliceBuilder.capMeshes)
-            {
-                if (mesh.visible) this.#occluderMeshes.push(mesh);
-            }
+            let ready = body.sliceBuilder.collectReadyOcclusionMeshes(
+                this.#occluderMeshes,
+            );
 
             if (body.coreMesh && body.coreMesh.visible)
             {
                 this.#occluderMeshes.push(body.coreMesh);
+                ready = ready && Boolean(body.coreMesh.geometry?.boundsTree);
             }
 
-            for (const mesh of this.#occluderMeshes)
-            {
-                const geo = mesh.geometry;
-
-                // `indirect: true` matches CliffPicker/GoldbergSurfacePicker --
-                // harmless here since we only care about hit/no-hit, not face
-                // indices, but keeps a single shared build convention.
-                if (geo && geo.computeBoundsTree && !geo.boundsTree)
-                {
-                    geo.computeBoundsTree({ indirect: true });
-                }
-            }
+            return ready && this.#occluderMeshes.length > 0;
         }
 
-        return this.#occluderMeshes;
+        return false;
     }
 
     // Exact analytic circle/circle overlap -- defensive fallback for a body
@@ -214,5 +221,6 @@ export class SunOcclusion
         this.#bodies = [];
         this.#hits.length = 0;
         this.#occluderMeshes.length = 0;
+        this.#lastBodyVisibility = new WeakMap();
     }
 }

@@ -20,6 +20,7 @@ export class HudElements
 
     // Optional render-info nodes (null when template omits them).
     calls; tris; points; lines; geoms; textures;
+    sliceProfiler; sliceProfilerBody; sliceProfilerTimings; sliceProfilerCounts;
 
     // Interactive elements.
     modeBtn;
@@ -63,6 +64,10 @@ export class HudElements
         this.lines    = opt('rLines');
         this.geoms    = opt('rGeoms');
         this.textures = opt('rTextures');
+        this.sliceProfiler        = req('sliceProfiler',        'slice profiler panel');
+        this.sliceProfilerBody    = req('sliceProfilerBody',    'slice profiler body');
+        this.sliceProfilerTimings = req('sliceProfilerTimings', 'slice profiler timing rows');
+        this.sliceProfilerCounts  = req('sliceProfilerCounts',  'slice profiler count rows');
 
         // Interactive elements.
         this.modeBtn          = req('modeBtn',          'mode toggle button');

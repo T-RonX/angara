@@ -5,6 +5,7 @@ import { BodyMesh } from '../world/BodyMesh.js';
 import { ClipController } from '../slicing/ClipController.js';
 import { GoldbergTopology } from '../topology/GoldbergTopology.js';
 import { AtmosphereShell } from '../atmosphere/AtmosphereShell.js';
+import { SliceProfiler } from '../topology/goldberg/slicing/SliceProfiler.js';
 
 // ----------------------------------------------------------------------
 // CelestialBody -- one self-contained, positionable body in the scene. Owns
@@ -35,6 +36,7 @@ export class CelestialBody
     #bodyMesh;
     #clip;
     #sliceBuilder;
+    #sliceProfiler;
     #gridLines;
 
     #atmosphere;        // AtmosphereShell | null (per-body haze)
@@ -76,7 +78,14 @@ export class CelestialBody
         this.#gridLines = this.#topology.buildGridLines();
         this.#bodyMesh.add(this.#gridLines);
 
-        this.#clip = new ClipController(focus, this.#topology.cutStrategy, this.#bodyMesh.group, behaviour.slice.rebuildIntervalMs);
+        this.#sliceProfiler = new SliceProfiler(behaviour.debug.sliceProfiler);
+        this.#clip = new ClipController(
+            focus,
+            this.#topology.cutStrategy,
+            this.#bodyMesh.group,
+            behaviour.slice.rebuildIntervalMs,
+            this.#sliceProfiler,
+        );
 
         this.#sliceBuilder = this.#topology.createSliceBuilder({
             clip: this.#clip,
@@ -86,6 +95,7 @@ export class CelestialBody
             focus,
             geometryFactory: this.#cellGeometry,
             bodyMesh: this.#bodyMesh,
+            profiler: this.#sliceProfiler,
         });
 
         this.#clip.setSliceBuilder(this.#sliceBuilder);
@@ -171,6 +181,7 @@ export class CelestialBody
     get bodyMesh()      { return this.#bodyMesh; }
     get clip()          { return this.#clip; }
     get sliceBuilder()      { return this.#sliceBuilder; }
+    get sliceProfiler()     { return this.#sliceProfiler; }
     get atmosphere()        { return this.#atmosphere; }
     get atmosphereConfig()  { return this.#atmosphereConfig; }
     get shapeField()        { return this.#topology.shapeField; }
@@ -185,6 +196,7 @@ export class CelestialBody
         this.#clip.onCutChanged = null;
 
         this.#sliceBuilder?.dispose();
+        this.#sliceProfiler?.dispose();
         this.#atmosphere?.dispose();
         this.#gridLines?.geometry.dispose();
         this.#gridLines?.material.dispose();
@@ -201,6 +213,7 @@ export class CelestialBody
                 cell.resourceGeometry?.dispose();
                 cell.resourceEdges?.dispose();
                 cell.geoCache = null;
+                cell.wallGeoCache = null;
             }
         }
 
@@ -211,6 +224,7 @@ export class CelestialBody
             cell.resourceGeometry?.dispose();
             cell.resourceEdges?.dispose();
             cell.geoCache = null;
+            cell.wallGeoCache = null;
         }
     }
 }

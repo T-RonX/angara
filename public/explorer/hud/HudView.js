@@ -17,6 +17,10 @@ export class HudView
     #modeBtn;
     #resourceControls;
     #compassRose;
+    #sliceProfiler;
+    #sliceProfilerBody;
+    #sliceProfilerTimings;
+    #sliceProfilerCounts;
     #modeBtnListener = null;
     #disposed = false;
 
@@ -50,6 +54,10 @@ export class HudView
         this.#modeBtn           = elements.modeBtn;
         this.#resourceControls  = elements.resourceControls ?? null;
         this.#compassRose       = elements.compassRose ?? null;
+        this.#sliceProfiler        = elements.sliceProfiler;
+        this.#sliceProfilerBody    = elements.sliceProfilerBody;
+        this.#sliceProfilerTimings = elements.sliceProfilerTimings;
+        this.#sliceProfilerCounts  = elements.sliceProfilerCounts;
     }
 
     setBodyContext(layerModel, hasAtmosphere, topology)
@@ -190,6 +198,75 @@ export class HudView
         if (this.#el.lines)    this.#el.lines.textContent = String(render.lines ?? '?');
         if (this.#el.geoms)    this.#el.geoms.textContent = String(memory.geometries ?? '?');
         if (this.#el.textures) this.#el.textures.textContent = String(memory.textures ?? '?');
+    }
+
+    setSliceProfilerEnabled(enabled)
+    {
+        this.#sliceProfiler.hidden = !enabled;
+
+        if (!enabled)
+        {
+            this.#sliceProfiler.open = false;
+            this.clearSliceProfiler();
+        }
+    }
+
+    clearSliceProfiler()
+    {
+        this.#sliceProfilerBody.textContent = '—';
+        this.#sliceProfilerTimings.replaceChildren();
+        this.#sliceProfilerCounts.replaceChildren();
+    }
+
+    get sliceProfilerOpen()
+    {
+        return !this.#sliceProfiler.hidden && this.#sliceProfiler.open;
+    }
+
+    renderSliceProfiler(snapshot, bodyName)
+    {
+        if (!snapshot || !this.sliceProfilerOpen) return;
+
+        this.#sliceProfilerBody.textContent = bodyName;
+
+        const timingRows = document.createDocumentFragment();
+
+        for (const timing of snapshot.timings)
+        {
+            timingRows.appendChild(this.#profilerRow([
+                timing.label,
+                `${timing.latest.toFixed(2)} ms`,
+                `${timing.average.toFixed(2)} ms`,
+                `${timing.max.toFixed(2)} ms`,
+            ]));
+        }
+
+        const countRows = document.createDocumentFragment();
+
+        for (const count of snapshot.counts)
+        {
+            countRows.appendChild(this.#profilerRow([
+                count.cumulative ? `${count.label} Σ` : count.label,
+                count.value.toLocaleString(),
+            ]));
+        }
+
+        this.#sliceProfilerTimings.replaceChildren(timingRows);
+        this.#sliceProfilerCounts.replaceChildren(countRows);
+    }
+
+    #profilerRow(values)
+    {
+        const row = document.createElement('tr');
+
+        for (const value of values)
+        {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+        }
+
+        return row;
     }
 
     dispose()

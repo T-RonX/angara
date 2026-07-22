@@ -99,6 +99,7 @@ export class AtmospherePickRenderer
 
         const mesh = buildMergedMesh(cells, this.#pickMaterial, this.#geometryFactory);
 
+        mesh.userData.occlusion = false;
         this.#sliceGroup.add(mesh);
         this.#atmosphereMesh = mesh;
     }

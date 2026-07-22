@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 
+export const CELL_GEOMETRY_VARIANT = Object.freeze({
+    FULL: 'full',
+    NO_OUTER: 'noOuter',
+});
+
 // ----------------------------------------------------------------------
 // CellGeometryFactory — turns a cell record into raw vertex / normal /
 // index data. A cell is a general N-gon PRISM (quad = 4, pentagon = 5,
@@ -28,14 +33,31 @@ export class CellGeometryFactory
         cell.triCount = indices.length / 3 - triStart;
     }
 
+    // Append only the immutable outward-facing fan. The persistent slice atlas
+    // uses this path so constructing it does not populate every cell's prism cache.
+    appendOuterFace(cell, positions, normals, indices)
+    {
+        this.#appendFan(cell.outerRing, +1, positions, normals, indices);
+    }
+
     // Cell geometry is STATIC (it depends only on the cell's corner rings, which
     // never change), so compute each cell's raw arrays ONCE and cache them on the
-    // cell. The merged-slice rebuild path (#buildBucketMesh / fade / atmosphere)
+    // cell. The merged-slice rebuild paths (persistent streams, fades, atmosphere)
     // re-runs every ~55ms while the cut advances; recomputing appendCell there
     // meant per-corner Vector3 clone/normalize/cross math for thousands of cells
     // every step. With the cache those rebuilds become plain number copies.
-    cellArrays(cell)
+    cellArrays(cell, variant = CELL_GEOMETRY_VARIANT.FULL)
     {
+        if (variant === CELL_GEOMETRY_VARIANT.NO_OUTER)
+        {
+            return this.#cellArraysWithoutOuter(cell);
+        }
+
+        if (variant !== CELL_GEOMETRY_VARIANT.FULL)
+        {
+            throw new Error(`[CellGeometryFactory] Unknown geometry variant: ${variant}`);
+        }
+
         if (cell.geoCache) return cell.geoCache;
 
         const positions = [], normals = [], indices = [];
@@ -61,6 +83,31 @@ export class CellGeometryFactory
         return cell.geoCache;
     }
 
+    // Wall prisms share their outer face with the immutable surface atlas.
+    // This static variant emits only the inner fan and side quads.
+    #cellArraysWithoutOuter(cell)
+    {
+        if (cell.wallGeoCache) return cell.wallGeoCache;
+
+        const positions = [], normals = [], indices = [];
+        const triStart = indices.length / 3;
+
+        this.#appendPrismCell(cell, positions, normals, indices, false);
+
+        const n = cell.outerRing.length;
+
+        cell.wallGeoCache = {
+            pos: new Float32Array(positions),
+            nrm: new Float32Array(normals),
+            idx: new Uint32Array(indices),
+            triCount: indices.length / 3 - triStart,
+            innerFaceTriStart: 0,
+            innerFaceTriCount: n - 2,
+        };
+
+        return cell.wallGeoCache;
+    }
+
     // Standalone BufferGeometry for ONE cell (hover / selection overlay).
     buildSingleCellGeometry(cell)
     {
@@ -76,7 +123,7 @@ export class CellGeometryFactory
         return geo;
     }
 
-    #appendPrismCell(cell, positions, normals, indices)
+    #appendPrismCell(cell, positions, normals, indices, includeOuter = true)
     {
         const outer = cell.outerRing;
         const inner = cell.innerRing;
@@ -96,7 +143,7 @@ export class CellGeometryFactory
         const cen = new THREE.Vector3(dir.x * avgRadius, dir.y * avgRadius, dir.z * avgRadius);
 
         // Outer skin (radial-outward normals) and inner skin (inward).
-        this.#appendFan(outer, +1, positions, normals, indices);
+        if (includeOuter) this.#appendFan(outer, +1, positions, normals, indices);
         this.#appendFan(inner, -1, positions, normals, indices);
 
         // One flat side quad per ring edge.
