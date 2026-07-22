@@ -483,14 +483,14 @@ export class ExplorerApplication
         // 4. LOD.
         this.#lod.update();
 
-        // 5. Slice fades + horizon cull (resource mode only).
+        // 5. Slice fades + camera-local wall cull (resource mode only).
         if (state.mode === 'resource')
         {
             session.tickSlice(dt);
 
             if (!state.transition.active)
             {
-                session.updateHorizonCull(this.#scene.camera);
+                session.updateViewCull(this.#scene.camera);
             }
         }
 

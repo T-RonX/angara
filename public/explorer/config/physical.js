@@ -19,7 +19,7 @@ export const physical = {
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
         // surface has 10·f²+2 cells; keep modest (e.g. 12–24). The body's
         // `radius` is derived from this via the global `cellSize`.
-        hexFrequency: 32,
+        hexFrequency: 64,
         maxDepth: 5,              // number of crust layers (any reasonable number)
         shape: {
             type: 'sphere',        // 'sphere' | 'noise'

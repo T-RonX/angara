@@ -113,6 +113,8 @@ Never regress these rules:
 - Membership is decided once per surface column; a rendered deep column is a contiguous stack.
 - Surface membership scans use typed corner and centroid coordinates prepared on first resource entry.
 - Depth 0 covers the kept hemisphere; deeper cells exist only in the configured wall band.
+- The depth-0 atlas remains stable during a pure pan; only cliff/depth columns intersecting the padded camera frustum are streamed.
+- View culling transforms the camera frustum into body-local space, reuses cached cut membership, and selects conservative whole-column radial bounds. It must not restore sector meshes or force a surface-index upload during a pure pan.
 - Membership keys and cell indices are numbers, not allocated strings.
 - `sliceCentroid` and `geoCache` remain per-cell caches.
 - The opaque surface is one persistent mesh with immutable outer-face positions/normals and a worst-case preallocated dynamic index.
@@ -123,7 +125,7 @@ Never regress these rules:
 - Persistent meshes use conservative fixed body-local bounding spheres; movement never recomputes bounds.
 - Every active index/stream mutation invalidates a lazy BVH first and preserves triangle-order `faceToCell`; inner prism fans map to `null`.
 - Empty persistent streams have zero active draw/index ranges and are invisible, not removed or disposed.
-- Panning along unchanged membership performs no geometry update.
+- Panning along an unchanged cut updates only the small camera-visible wall/depth streams when their whole-column membership changes.
 - Transient merged geometry for fades and atmosphere uses pre-sized typed arrays and `.set()` copies.
 - Fade batches overlap independently. `fadingInKeys` excludes each cell from persistent meshes until its own batch completes.
 - Transition slab rebuilds and disabled fades use hard rebuilds.
@@ -132,7 +134,7 @@ Never regress these rules:
 - Settled BVH preparation is pointer-independent so exact sun occlusion resumes when the pointer is outside the canvas.
 - Sun occlusion consumes only slice meshes whose current BVHs are ready and retains its last per-body/sun result while dynamic ranges are dirty; it never builds a slice BVH.
 - `capMeshes` is refreshed after every ownership change and must never retain disposed meshes.
-- Consolidated persistent meshes rely on normal back-face and depth rejection; do not reintroduce CPU sector horizon culling.
+- Consolidated persistent meshes rely on normal back-face and depth rejection for the full surface; do not reintroduce CPU sector horizon culling.
 - Do not introduce `supports()` calls, polymorphic dispatch, object allocation, or string allocation inside per-cell loops.
 
 If abstractions conflict with a hot loop, select a specialized implementation once during construction and keep the loop direct and monomorphic.

@@ -206,9 +206,12 @@ export class BodyInteractionSession
         }
     }
 
-    updateHorizonCull(camera)
+    updateViewCull(camera)
     {
-        this.#body.sliceBuilder.updateHorizonCull(camera);
+        if (this.#body.sliceBuilder.updateViewCull(camera))
+        {
+            this.#hover.invalidate();
+        }
     }
 
     updateHover()

@@ -26,6 +26,7 @@ export class GoldbergTopology
     #shapeField;
     #fadeMs;
     #wallBandCells;
+    #viewCull;
 
     constructor(body, layerModel, atmosphere, atmosphereRadius, behaviour, faceData = null)
     {
@@ -44,6 +45,10 @@ export class GoldbergTopology
         this.#traversal = new GoldbergTraversal(this.#index, this.#grid.surfaceByIndex, behaviour.input);
         this.#fadeMs = behaviour?.slice?.cellFadeMs ?? 260;
         this.#wallBandCells = behaviour?.slice?.wallBandCells ?? 4;
+        this.#viewCull = behaviour?.slice?.viewCull ?? {
+            enabled: true,
+            paddingCells: 2,
+        };
     }
 
     get grid()        { return this.#grid; }
@@ -64,6 +69,7 @@ export class GoldbergTopology
             bodyRadius: this.#body.radius,
             skirtStretch: this.#body.coreSkirt?.stretch ?? 0.4,
             wallBandCells: this.#wallBandCells,
+            viewCull: this.#viewCull,
         });
     }
 

@@ -105,6 +105,15 @@ export const behaviour = {
         // hemisphere at every depth — the original, slower behaviour).
         wallBandCells: 4,
 
+        // The camera only sees a local section of the great-circle cliff.
+        // Retain columns whose full radial bounds intersect the camera frustum,
+        // expanded by this many surface-cell diameters to prevent edge popping.
+        // Set enabled=false for profiling against the full circumference.
+        viewCull: {
+            enabled: true,
+            paddingCells: 2,
+        },
+
         // Cap on slice rebuild frequency (ms) while actively dragging the cut plane.
         // The plane orientation updates every frame regardless, but the expensive
         // geometry rebuild is throttled. 0 = rebuild every frame (unlimited);

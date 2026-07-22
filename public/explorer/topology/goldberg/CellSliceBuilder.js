@@ -59,6 +59,7 @@ export class CellSliceBuilder
     #bodyMesh;
     #lastCount = -1;
     #lastHash = -1;
+    #physicalMembership = null;
     #disposed = false;
     #fadesEnabled;
 
@@ -119,6 +120,9 @@ export class CellSliceBuilder
             eps,
             wallBandDist,
             cellStride,
+            viewCullEnabled: ctx.viewCull?.enabled ?? true,
+            viewCullPadding: (ctx.viewCull?.paddingCells ?? 2) * cellDiameter,
+            skirtStretch: ctx.skirtStretch ?? 0.4,
             profiler: this.#profiler,
         });
 
@@ -175,6 +179,7 @@ export class CellSliceBuilder
         this.#clearAll();
         this.#lastCount = -1; // force a rebuild on the next updateCut
         this.#lastHash = -1;
+        this.#physicalMembership = null;
     }
 
     exit()
@@ -189,6 +194,7 @@ export class CellSliceBuilder
         this.#bodyMesh.restoreView();
         this.#lastCount = -1;
         this.#lastHash = -1;
+        this.#physicalMembership = null;
     }
 
     clearCaps()
@@ -220,7 +226,17 @@ export class CellSliceBuilder
         const n     = plane.normal;
         const k     = plane.constant;
 
-        const inc = this.#collector.collect(n, k, this.#fadesEnabled);
+        const inc = this.#collector.collect(
+            n,
+            k,
+            this.#fadesEnabled,
+            !slab,
+        );
+        this.#physicalMembership = {
+            surface: inc.surface,
+            surfaceHash: inc.surfaceHash,
+            wallCandidates: inc.wallCandidates,
+        };
 
         if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
         {
@@ -373,9 +389,72 @@ export class CellSliceBuilder
         return count > 0 && ready;
     }
 
-    // Consolidated meshes rely on normal back-face and depth rejection.
-    updateHorizonCull()
+    // A pure pan leaves the cut plane unchanged, so reuse its full surface and
+    // wall-band membership. Only columns intersecting the padded camera
+    // frustum are streamed again; the large surface atlas is never touched.
+    updateViewCull(camera)
     {
+        if (
+            this.#disposed
+            || !this.sliceGroup.visible
+            || !this.#physicalMembership
+            || !camera
+        )
+        {
+            return false;
+        }
+
+        const startedAt = this.#profiler.now();
+
+        if (!this.#collector.updateView(camera, this.#bodyMesh.group.matrixWorld))
+        {
+            return false;
+        }
+
+        const inc = this.#collector.refocus(
+            this.#physicalMembership,
+            this.#fadesEnabled,
+        );
+        this.#atmPick.markDirty(this.#clip.plane.normal, this.#clip.plane.constant);
+
+        if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
+        {
+            return true;
+        }
+
+        this.#lastCount = inc.count;
+        this.#lastHash = inc.hash;
+
+        // View-window changes are not physical reveal/hide transitions. Retire
+        // any temporal fades and seed their state from the new visible window.
+        const updateSurface = this.#fadeMgr.hasFadingInSurface;
+
+        this.#fadeMgr.reset();
+        this.#meshStore.sync(
+            inc.byDepth,
+            inc.wallSurface,
+            { updateSurface },
+        );
+
+        if (this.#fadesEnabled)
+        {
+            this.#fadeMgr.commitBatch(
+                inc.keys,
+                inc.byDepth,
+                inc.wallSurface,
+                inc.wallKeys,
+                { hasAdded: false, hasRemoved: false },
+            );
+        }
+
+        const skirtStartedAt = this.#profiler.now();
+        this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
+        this.#profiler.recordSince('coreSkirt', skirtStartedAt);
+        this.#refreshCapMeshes();
+        this.#profiler.increment('visibilityUpdates');
+        this.#profiler.recordSince('visibilitySync', startedAt);
+
+        return true;
     }
 
     // Rebuild the pick list from the CURRENT meshes (persistent + transient
@@ -411,6 +490,7 @@ export class CellSliceBuilder
         this.#coreDisc.clear();
         this.#coreSkirt.clear();
         this.#atmPick.clearMesh();
+        this.#physicalMembership = null;
 
         this.capMeshes.length = 0;
     }

@@ -48,14 +48,14 @@ export class PersistentSliceMeshStore
         this.#profiler.increment('persistentMeshAllocations');
     }
 
-    sync(byDepth, wallSurface)
+    sync(byDepth, wallSurface, { updateSurface = true } = {})
     {
         if (this.#disposed) return;
 
         this.ensureInitialized();
 
         const startedAt = this.#profiler.now();
-        this.#updateSurface(byDepth[0] ?? []);
+        if (updateSurface) this.#updateSurface(byDepth[0] ?? []);
 
         const wallStartedAt = this.#profiler.now();
         let streamedCells = 0;

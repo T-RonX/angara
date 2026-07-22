@@ -32,6 +32,7 @@ export class FadeBatchManager
     #lastByDepth = null;
     #lastWallSurface = null;
     #lastWallKeys = null;
+    #cellStride = 0;
 
     constructor({ sliceGroup, materials, geometryFactory, fadeDur, profiler })
     {
@@ -47,6 +48,15 @@ export class FadeBatchManager
     get lastKeys()     { return this.#lastKeys; }
     get lastByDepth()  { return this.#lastByDepth; }
     get lastWallSurface() { return this.#lastWallSurface; }
+    get hasFadingInSurface()
+    {
+        for (const key of this.#fadingInKeys.keys())
+        {
+            if (key < this.#cellStride) return true;
+        }
+
+        return false;
+    }
 
     // Live list — callers iterate but must not mutate.
     get fadeMeshList() { return this.#fadeMeshList; }
@@ -57,6 +67,7 @@ export class FadeBatchManager
     prepareUpdate(incByDepth, incKeys, wallSurface, wallKeys, cellStride)
     {
         const startedAt = this.#profiler.now();
+        this.#cellStride = cellStride;
         const prevKeys       = this.#lastKeys ?? new Set();
         const prevWallKeys   = this.#lastWallKeys ?? new Set();
         const addedByDepth   = [];

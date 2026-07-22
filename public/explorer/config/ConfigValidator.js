@@ -181,6 +181,8 @@ export function validateConfigs(physical, behaviour)
     assertNumber(behaviour, 'materials.roughness', 'behaviour', 0);
     assertNumber(behaviour, 'materials.emissiveScale', 'behaviour', 0);
     assertNumber(behaviour, 'highlights.hoverOpacity', 'behaviour', 0);
+    assertBoolean(behaviour, 'slice.viewCull.enabled', 'behaviour');
+    assertNumber(behaviour, 'slice.viewCull.paddingCells', 'behaviour', 0);
     assertBoolean(behaviour, 'debug.sliceProfiler.enabled', 'behaviour');
     assertInteger(behaviour, 'debug.sliceProfiler.sampleWindow', 'behaviour', 1, 10000);
     assertNumber(behaviour, 'debug.sliceProfiler.hudIntervalMs', 'behaviour', 1);
