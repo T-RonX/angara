@@ -27,7 +27,10 @@ function clamp(v, lo, hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-import { TerrainField } from '../texture/procedural/TerrainField.js';
+import {
+    effectiveDisplacement,
+    TerrainField,
+} from '../texture/procedural/TerrainField.js';
 
 class ShapeSampler
 {
@@ -36,7 +39,7 @@ class ShapeSampler
         this.size = size;
         const axis = shape?.axisScale ?? [1, 1, 1];
         this.field = new TerrainField(seed, terrain, axis);
-        this.maxDisplacement = terrain.maxDisplacement;
+        this.maxDisplacement = effectiveDisplacement(terrain);
     }
 
     get maxRadius()
@@ -330,24 +333,23 @@ function appendPrismCell(outer, inner, positions, normals, indices)
     }
 }
 
-// Radius of a crust layer boundary in direction u: displaced surface minus
-// cumulative thickness. Layers maintain uniform absolute thickness.
-function layerRadius(ux, uy, uz, cumulativeThickness, shapeSampler, minSurface)
+// Scale a layer between the fixed core and displaced surface.
+function layerRadius(ux, uy, uz, layerFraction, coreRadius, shapeSampler, minSurface)
 {
     const surface = Math.max(shapeSampler.surfaceRadius(ux, uy, uz), minSurface);
 
-    return surface - cumulativeThickness;
+    return coreRadius + (surface - coreRadius) * layerFraction;
 }
 
 // Build the depth-0 SURFACE render geometry (full N-gon prisms, identical to
 // what BodyMesh builds for depth 0) as transferable typed arrays, plus a
 // per-triangle cell-index table for picking. `faces` is the buildGoldbergFaces
 // output.
-function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, shapeSampler)
+function buildSurfaceGeometry(faces, layerFrac, coreRadius, minSurface, shapeSampler)
 {
     const { count, cornerOffset, cornerXYZ } = faces;
-    const cumulativeThicknessOuter = 0;
-    const cumulativeThicknessInner = layerThicknesses[0];
+    const outerFraction = layerFrac[0];
+    const innerFraction = layerFrac[1];
 
     const positions = [];
     const normals = [];
@@ -355,6 +357,7 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
     const faceCellIndex = [];
     const tileIds = [];
     const outward = [];
+    const terrainClimate = [];
 
     for (let p = 0; p < count; p++)
     {
@@ -366,8 +369,8 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
         for (let c = start; c < end; c++)
         {
             const ux = cornerXYZ[c * 3], uy = cornerXYZ[c * 3 + 1], uz = cornerXYZ[c * 3 + 2];
-            const ro = layerRadius(ux, uy, uz, cumulativeThicknessOuter, shapeSampler, minSurface);
-            const ri = layerRadius(ux, uy, uz, cumulativeThicknessInner, shapeSampler, minSurface);
+            const ro = layerRadius(ux, uy, uz, outerFraction, coreRadius, shapeSampler, minSurface);
+            const ri = layerRadius(ux, uy, uz, innerFraction, coreRadius, shapeSampler, minSurface);
             outer.push([ux * ro, uy * ro, uz * ro]);
             inner.push([ux * ri, uy * ri, uz * ri]);
         }
@@ -382,7 +385,24 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
         for (let v = 0; v < vertexCount; v++)
         {
             tileIds.push(p);
-            outward.push(v < outer.length ? 1 : 0);
+            const isOutward = v < outer.length;
+            outward.push(isOutward ? 1 : 0);
+
+            if (isOutward)
+            {
+                const corner = (start + v) * 3;
+                const x = cornerXYZ[corner];
+                const y = cornerXYZ[corner + 1];
+                const z = cornerXYZ[corner + 2];
+                terrainClimate.push(
+                    shapeSampler.field.sampleElevation(x, y, z),
+                    shapeSampler.field.sampleMoisture(x, y, z),
+                );
+            }
+            else
+            {
+                terrainClimate.push(0, 0);
+            }
         }
     }
 
@@ -393,6 +413,7 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
         faceCellIndex: new Uint32Array(faceCellIndex),
         tileIds: new Float32Array(tileIds),
         outward: new Float32Array(outward),
+        terrainClimate: new Float32Array(terrainClimate),
     };
 }
 

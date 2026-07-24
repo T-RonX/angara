@@ -79,6 +79,7 @@ export class BodyMesh
         geo.setAttribute('normal', new THREE.BufferAttribute(surfaceData.normals, 3));
         geo.setAttribute('tileId', new THREE.BufferAttribute(surfaceData.tileIds, 1));
         geo.setAttribute('outwardFace', new THREE.BufferAttribute(surfaceData.outward, 1));
+        geo.setAttribute('terrainClimate', new THREE.BufferAttribute(surfaceData.terrainClimate, 2));
         geo.setIndex(new THREE.BufferAttribute(surfaceData.indices, 1));
         geo.computeBoundingSphere();
 
@@ -104,6 +105,7 @@ export class BodyMesh
         const indices = [];
         const tileIds = [];
         const outwardFaces = [];
+        const terrainClimates = [];
         const faceToCell = [];
 
         for (const cell of cellGrid.cellsByDepth[d])
@@ -116,6 +118,7 @@ export class BodyMesh
                 indices,
                 tileIds,
                 outwardFaces,
+                terrainClimates,
             );
 
             for (let t = triStart; t < indices.length / 3; t++)
@@ -129,6 +132,7 @@ export class BodyMesh
         geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
         geo.setAttribute('tileId', new THREE.Float32BufferAttribute(tileIds, 1));
         geo.setAttribute('outwardFace', new THREE.Float32BufferAttribute(outwardFaces, 1));
+        geo.setAttribute('terrainClimate', new THREE.Float32BufferAttribute(terrainClimates, 2));
         geo.setIndex(indices);
         geo.computeBoundingSphere();
 

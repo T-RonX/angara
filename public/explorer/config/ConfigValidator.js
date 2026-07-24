@@ -147,6 +147,11 @@ function validateBody(body, label)
         for (const path of positive) assertNumber(terrain, path, label, Number.EPSILON);
         for (const path of nonNegative) assertNumber(terrain, path, label, 0);
 
+        if (terrain.displacementMultiplier !== undefined)
+        {
+            assertNumber(terrain, 'displacementMultiplier', label, 0);
+        }
+
         assertInteger(terrain, 'detailOctaves', label, 1, 5);
         assertInteger(terrain, 'climateOctaves', label, 3, 5);
         assertInteger(terrain, 'textureWidth', label, 1, 16384);
@@ -168,9 +173,16 @@ function validateBody(body, label)
             assertRange(terrain, path, label, -1, 1);
         }
 
-        if (terrain.maxDisplacement >= 0.5)
+        const displacementMultiplier = terrain.displacementMultiplier ?? 1;
+
+        if (displacementMultiplier > 4)
         {
-            throw new Error(`[ConfigValidator] ${label}.maxDisplacement must be < 0.5`);
+            throw new Error(`[ConfigValidator] ${label}.displacementMultiplier must be <= 4`);
+        }
+
+        if (terrain.maxDisplacement * displacementMultiplier >= 0.5)
+        {
+            throw new Error(`[ConfigValidator] ${label} effective displacement must be < 0.5`);
         }
 
         if (terrain.dryThreshold >= terrain.wetThreshold)

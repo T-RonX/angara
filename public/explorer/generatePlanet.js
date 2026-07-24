@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { TerrainField } from './texture/procedural/TerrainField.js';
+import {
+    effectiveDisplacement,
+    TerrainField,
+} from './texture/procedural/TerrainField.js';
 import { generateTileDataWithField } from './texture/procedural/generateTileData.js';
 import { TileDataTexture } from './texture/TileDataTexture.js';
 import { createProceduralSurfaceMaterial } from './material/ProceduralSurfaceMaterial.js';
@@ -23,7 +26,11 @@ export async function generatePlanet(goldbergGeometry, seed, params)
     const field = new TerrainField(seed, terrain, params.axisScale ?? [1, 1, 1]);
     const centroids = deriveCentroids(position.array, tileId.array);
     const tileData = generateTileDataWithField(centroids, field);
-    displacePositions(position.array, field, terrain.maxDisplacement);
+    goldbergGeometry.setAttribute(
+        'terrainClimate',
+        new THREE.BufferAttribute(deriveTerrainClimate(position.array, field), 2),
+    );
+    displacePositions(position.array, field, effectiveDisplacement(terrain));
     position.needsUpdate = true;
     goldbergGeometry.computeVertexNormals();
     goldbergGeometry.computeBoundingSphere();
@@ -125,4 +132,25 @@ function displacePositions(positions, field, maxDisplacement)
         positions[offset + 1] = y * displacedRadius;
         positions[offset + 2] = z * displacedRadius;
     }
+}
+
+function deriveTerrainClimate(positions, field)
+{
+    const climate = new Float32Array((positions.length / 3) * 2);
+
+    for (let offset = 0, target = 0; offset < positions.length; offset += 3, target += 2)
+    {
+        const inverseLength = 1 / (Math.hypot(
+            positions[offset],
+            positions[offset + 1],
+            positions[offset + 2],
+        ) || 1);
+        const x = positions[offset] * inverseLength;
+        const y = positions[offset + 1] * inverseLength;
+        const z = positions[offset + 2] * inverseLength;
+        climate[target] = field.sampleElevation(x, y, z);
+        climate[target + 1] = field.sampleMoisture(x, y, z);
+    }
+
+    return climate;
 }

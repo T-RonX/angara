@@ -167,6 +167,11 @@ export class TerrainField
     }
 }
 
+export function effectiveDisplacement(params)
+{
+    return params.maxDisplacement * (params.displacementMultiplier ?? 1);
+}
+
 function clamp(value, min, max)
 {
     return Math.max(min, Math.min(max, value));

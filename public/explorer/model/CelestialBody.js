@@ -74,7 +74,7 @@ export class CelestialBody
             tileData,
             this.#topology.shapeField.terrainField,
         );
-        this.#cellGeometry = new CellGeometryFactory();
+        this.#cellGeometry = new CellGeometryFactory(this.#topology.shapeField.terrainField);
 
         this.#bodyMesh = new BodyMesh(
             scene, this.#cellGrid, this.#cellGeometry, this.#materials, this.#layerModel, generated?.surface ?? null,
@@ -155,7 +155,7 @@ export class CelestialBody
     }
 
     // Serialisable worker request describing this body's geometry. Mirrors the
-    // radii maths in GoldbergGrid (surface-relative layer thicknesses).
+    // radii maths in GoldbergGrid (core-to-surface layer fractions).
     static #specFor(body)
     {
         const layerModel = new LayerModel(body);
@@ -164,7 +164,7 @@ export class CelestialBody
 
         return {
             frequency: body.hexFrequency ?? 16,
-            layerThicknesses: layerModel.layerThicknesses,
+            layerFrac: layerModel.layerFrac,
             coreRadius,
             minSurface: coreRadius + 0.2 * nominalCrust,
             shape: body.shape ?? { type: 'sphere' },

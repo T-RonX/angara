@@ -9,6 +9,8 @@
 const terrain = (palette, overrides = {}) => ({
     // Maximum radial displacement as a body-radius fraction. Practical: 0–0.2.
     maxDisplacement: 0.06,
+    // Multiplies maxDisplacement without changing the terrain field. Range: 0–4.
+    displacementMultiplier: 1,
     // Broad Perlin features around the sphere. Lower = continents; higher = ranges. Practical: 0.3–3.
     macroFrequency: 1.0,
     // Relative contribution of broad Perlin elevation. Practical: 0–1.
@@ -58,8 +60,8 @@ const terrain = (palette, overrides = {}) => ({
         octaves: 2,
         // Object-space micro-detail density. Practical: 8–80.
         frequency: 80,
-        // Micro-noise color modulation. Practical: 0–0.1.
-        strength: 0.1,
+        // Micro-noise color modulation. Practical: 0–0.06; higher values overpower biome color.
+        strength: 0.035,
         // Analytic bump strength. Keep at 0 to avoid noisy day/night terminators; practical close-up range: 0–0.003.
         normalStrength: 0,
     },
@@ -87,7 +89,10 @@ const physicalTemplate = {
         },
         terrain: terrain(
             [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
-            { maxDisplacement: 0.055 },
+            {
+                maxDisplacement: 0.055,
+                displacementMultiplier: 0.22,
+            },
         ),
         axialTiltDeg:      23.4,  // obliquity (degrees); 0 = north pole aligned with world Y
         rotationPeriodSec: 1360,   // one full prograde spin in real-time seconds; 0 = stationary
@@ -213,9 +218,12 @@ const physicalTemplate = {
                     [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
                     {
                         maxDisplacement: 0.085,
-                        macroFrequency: 1.35,
-                        ridgeStrength: 0.16,
+                        displacementMultiplier: 3.4,
+                        macroFrequency: 2.35,
+                        macroStrength: 0.4,
+                        ridgeStrength: 0.28,
                         detailFrequency: 2.7,
+                        detailStrength: 0.24,
                         seaLevel: -0.7,
                     },
                 ),

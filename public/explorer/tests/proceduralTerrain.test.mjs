@@ -6,9 +6,11 @@ import {
     buildGoldbergFaces,
     buildSurfaceGeometry,
 } from '../worker/GoldbergGen.js';
+import { effectiveDisplacement } from '../texture/procedural/TerrainField.js';
 
 const terrain = {
     maxDisplacement: 0.11,
+    displacementMultiplier: 1.5,
     macroFrequency: 1.35,
     macroStrength: 0.72,
     ridgeStrength: 0.28,
@@ -78,6 +80,8 @@ try
     }
 
     const radius = 100;
+    const coreRadius = 60;
+    const layerFrac = [1, 0.9];
     const sampler = new ShapeSampler(
         { type: 'sphere', axisScale: [1, 0.82, 1.15] },
         radius,
@@ -86,18 +90,19 @@ try
     );
     const surface = buildSurfaceGeometry(
         faces,
-        [4],
-        60,
+        layerFrac,
+        coreRadius,
         68,
         sampler,
     );
 
     assert.equal(surface.tileIds.length, surface.positions.length / 3);
     assert.equal(surface.outward.length, surface.positions.length / 3);
+    assert.equal(surface.terrainClimate.length, surface.positions.length / 3 * 2);
     assert.ok(surface.outward.some(value => value === 1));
     assert.ok(surface.outward.some(value => value === 0));
 
-    for (let offset = 0; offset < surface.positions.length; offset += 3)
+    for (let offset = 0, vertex = 0; offset < surface.positions.length; offset += 3, vertex++)
     {
         const value = Math.hypot(
             surface.positions[offset],
@@ -105,8 +110,24 @@ try
             surface.positions[offset + 2],
         );
 
-        assert.ok(value >= radius * (1 - terrain.maxDisplacement) - 4.001);
-        assert.ok(value <= radius * (1 + terrain.maxDisplacement) + 0.001);
+        const displacement = effectiveDisplacement(terrain);
+        assert.ok(value >= radius * (1 - displacement) - 4.001);
+        assert.ok(value <= radius * (1 + displacement) + 0.001);
+        assert.ok(value >= coreRadius);
+
+        if (surface.outward[vertex] === 1)
+        {
+            const climate = vertex * 2;
+            const x = surface.positions[offset] / value;
+            const y = surface.positions[offset + 1] / value;
+            const z = surface.positions[offset + 2] / value;
+            assert.ok(Math.abs(
+                surface.terrainClimate[climate] - fieldA.sampleElevation(x, y, z),
+            ) < 1e-6);
+            assert.ok(Math.abs(
+                surface.terrainClimate[climate + 1] - fieldA.sampleMoisture(x, y, z),
+            ) < 1e-6);
+        }
     }
 
     const currentPrimaryCount = 10 * 64 ** 2 + 2;

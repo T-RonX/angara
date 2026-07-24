@@ -19,23 +19,51 @@ export const CELL_GEOMETRY_VARIANT = Object.freeze({
 // ----------------------------------------------------------------------
 export class CellGeometryFactory
 {
-    constructor()
+    #terrainField;
+
+    constructor(terrainField = null)
     {
+        this.#terrainField = terrainField;
     }
 
     // Append one cell's geometry, recording its triangle count on the cell.
-    appendCell(cell, positions, normals, indices, tileIds = null, outwardFaces = null)
+    appendCell(
+        cell,
+        positions,
+        normals,
+        indices,
+        tileIds = null,
+        outwardFaces = null,
+        terrainClimates = null,
+    )
     {
         const triStart = indices.length / 3;
 
-        this.#appendPrismCell(cell, positions, normals, indices, true, tileIds, outwardFaces);
+        this.#appendPrismCell(
+            cell,
+            positions,
+            normals,
+            indices,
+            true,
+            tileIds,
+            outwardFaces,
+            terrainClimates,
+        );
 
         cell.triCount = indices.length / 3 - triStart;
     }
 
     // Append only the immutable outward-facing fan. The persistent slice atlas
     // uses this path so constructing it does not populate every cell's prism cache.
-    appendOuterFace(cell, positions, normals, indices, tileIds = null, outwardFaces = null)
+    appendOuterFace(
+        cell,
+        positions,
+        normals,
+        indices,
+        tileIds = null,
+        outwardFaces = null,
+        terrainClimates = null,
+    )
     {
         this.#appendFan(
             cell.outerRing,
@@ -45,6 +73,7 @@ export class CellGeometryFactory
             indices,
             tileIds,
             outwardFaces,
+            terrainClimates,
             cell.cellIndex,
             !cell.isAtmosphere,
         );
@@ -71,7 +100,16 @@ export class CellGeometryFactory
         if (cell.geoCache) return cell.geoCache;
 
         const positions = [], normals = [], indices = [], tileIds = [], outwardFaces = [];
-        this.appendCell(cell, positions, normals, indices, tileIds, outwardFaces);
+        const terrainClimates = [];
+        this.appendCell(
+            cell,
+            positions,
+            normals,
+            indices,
+            tileIds,
+            outwardFaces,
+            terrainClimates,
+        );
 
         // #appendPrismCell always emits, in order: the outer (surface-facing)
         // fan (n-2 triangles), then the inner (core-facing / "bottom") fan
@@ -87,6 +125,7 @@ export class CellGeometryFactory
             idx: new Uint32Array(indices),
             tileId: new Float32Array(tileIds),
             outwardFace: new Float32Array(outwardFaces),
+            terrainClimate: new Float32Array(terrainClimates),
             triCount: cell.triCount,
             innerFaceTriStart,
             innerFaceTriCount,
@@ -102,6 +141,7 @@ export class CellGeometryFactory
         if (cell.wallGeoCache) return cell.wallGeoCache;
 
         const positions = [], normals = [], indices = [], tileIds = [], outwardFaces = [];
+        const terrainClimates = [];
         const triStart = indices.length / 3;
 
         this.#appendPrismCell(
@@ -112,6 +152,7 @@ export class CellGeometryFactory
             false,
             tileIds,
             outwardFaces,
+            terrainClimates,
         );
 
         const n = cell.outerRing.length;
@@ -122,6 +163,7 @@ export class CellGeometryFactory
             idx: new Uint32Array(indices),
             tileId: new Float32Array(tileIds),
             outwardFace: new Float32Array(outwardFaces),
+            terrainClimate: new Float32Array(terrainClimates),
             triCount: indices.length / 3 - triStart,
             innerFaceTriStart: 0,
             innerFaceTriCount: n - 2,
@@ -153,6 +195,7 @@ export class CellGeometryFactory
         includeOuter = true,
         tileIds = null,
         outwardFaces = null,
+        terrainClimates = null,
     )
     {
         const outer = cell.outerRing;
@@ -183,6 +226,7 @@ export class CellGeometryFactory
                 indices,
                 tileIds,
                 outwardFaces,
+                terrainClimates,
                 cell.cellIndex,
                 cell.depth === 0 && !cell.isAtmosphere,
             );
@@ -195,6 +239,7 @@ export class CellGeometryFactory
             indices,
             tileIds,
             outwardFaces,
+            terrainClimates,
             cell.cellIndex,
             false,
         );
@@ -214,6 +259,7 @@ export class CellGeometryFactory
                 indices,
                 tileIds,
                 outwardFaces,
+                terrainClimates,
                 cell.cellIndex,
             );
         }
@@ -230,6 +276,7 @@ export class CellGeometryFactory
         indices,
         tileIds = null,
         outwardFaces = null,
+        terrainClimates = null,
         tileId = 0,
         isOutward = false,
     )
@@ -253,6 +300,7 @@ export class CellGeometryFactory
             normals.push(p.x * inv, p.y * inv, p.z * inv);
             tileIds?.push(tileId);
             outwardFaces?.push(isOutward ? 1 : 0);
+            this.#appendTerrainClimate(terrainClimates, p, isOutward);
         }
 
         for (let i = 1; i < n - 1; i++)
@@ -275,6 +323,7 @@ export class CellGeometryFactory
         indices,
         tileIds = null,
         outwardFaces = null,
+        terrainClimates = null,
         tileId = 0,
     )
     {
@@ -300,8 +349,30 @@ export class CellGeometryFactory
             normals.push(nx, ny, nz);
             tileIds?.push(tileId);
             outwardFaces?.push(0);
+            terrainClimates?.push(0, 0);
         }
 
         indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
+    }
+
+    #appendTerrainClimate(target, point, isOutward)
+    {
+        if (!target) return;
+
+        if (!isOutward || !this.#terrainField)
+        {
+            target.push(0, 0);
+
+            return;
+        }
+
+        const inverseLength = 1 / (Math.hypot(point.x, point.y, point.z) || 1);
+        const x = point.x * inverseLength;
+        const y = point.y * inverseLength;
+        const z = point.z * inverseLength;
+        target.push(
+            this.#terrainField.sampleElevation(x, y, z),
+            this.#terrainField.sampleMoisture(x, y, z),
+        );
     }
 }

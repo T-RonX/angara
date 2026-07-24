@@ -21,6 +21,7 @@ export function buildMergedMesh(
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(size.floatCount), 3));
     geo.setAttribute('tileId', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
     geo.setAttribute('outwardFace', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
+    geo.setAttribute('terrainClimate', new THREE.BufferAttribute(new Float32Array(size.vertexCount * 2), 2));
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(size.idxCount), 1));
 
     const faceToCell = new Array(size.idxCount / 3);
@@ -74,6 +75,7 @@ export function updateMergedMesh(
     const normal = geo?.getAttribute('normal');
     const tileId = geo?.getAttribute('tileId');
     const outwardFace = geo?.getAttribute('outwardFace');
+    const terrainClimate = geo?.getAttribute('terrainClimate');
     const index = geo?.index;
 
     if (
@@ -83,11 +85,13 @@ export function updateMergedMesh(
         || !(index?.array instanceof Uint32Array)
         || !(tileId?.array instanceof Float32Array)
         || !(outwardFace?.array instanceof Float32Array)
+        || !(terrainClimate?.array instanceof Float32Array)
         || position.itemSize !== 3
         || normal.itemSize !== 3
         || index.itemSize !== 1
         || tileId.itemSize !== 1
         || outwardFace.itemSize !== 1
+        || terrainClimate.itemSize !== 2
     )
     {
         return null;
@@ -188,15 +192,19 @@ function fill(
     const index = geo.index;
     const tileId = geo.getAttribute('tileId');
     const outwardFace = geo.getAttribute('outwardFace');
+    const terrainClimate = geo.getAttribute('terrainClimate');
     const positions = position.array;
     const normals = normal.array;
     const indices = index.array;
     const tileIds = tileId.array;
     const outwardFaces = outwardFace.array;
+    const terrainClimates = terrainClimate.array;
     let floatOff = 0;
     let idxOff = 0;
     let vertBase = 0;
     let faceOff = 0;
+    const writesTerrainClimate = variant === CELL_GEOMETRY_VARIANT.FULL
+        && cells.some(cell => cell.depth === 0 && !cell.isAtmosphere);
 
     for (const cell of cells)
     {
@@ -206,6 +214,7 @@ function fill(
         normals.set(g.nrm, floatOff);
         tileIds.set(g.tileId, vertBase);
         outwardFaces.set(g.outwardFace, vertBase);
+        if (writesTerrainClimate) terrainClimates.set(g.terrainClimate, vertBase * 2);
 
         for (let j = 0; j < g.idx.length; j++)
         {
@@ -232,6 +241,7 @@ function fill(
     index.count = size.idxCount;
     tileId.count = size.vertexCount;
     outwardFace.count = size.vertexCount;
+    terrainClimate.count = size.vertexCount;
     geo.setDrawRange(0, size.idxCount);
 
     if (markForUpload)
@@ -241,6 +251,7 @@ function fill(
         markUpdated(index, size.idxCount);
         markUpdated(tileId, size.vertexCount);
         markUpdated(outwardFace, size.vertexCount);
+        if (writesTerrainClimate) markUpdated(terrainClimate, size.vertexCount * 2);
     }
 }
 
@@ -251,13 +262,15 @@ function ensureCapacity(geo, size, dynamicDraw)
     const index = geo.index;
     const tileId = geo.getAttribute('tileId');
     const outwardFace = geo.getAttribute('outwardFace');
+    const terrainClimate = geo.getAttribute('terrainClimate');
     const growFloats = position.array.length < size.floatCount
         || normal.array.length < size.floatCount;
     const growVertices = tileId.array.length < size.vertexCount
         || outwardFace.array.length < size.vertexCount;
+    const growClimate = terrainClimate.array.length < size.vertexCount * 2;
     const growIndices = index.array.length < size.idxCount;
 
-    if (!growFloats && !growVertices && !growIndices) return false;
+    if (!growFloats && !growVertices && !growClimate && !growIndices) return false;
 
     // Three r160's renderer releases uploaded BufferAttributes only from the
     // geometry dispose event. Keep the geometry identity, but release every
@@ -296,6 +309,16 @@ function ensureCapacity(geo, size, dynamicDraw)
 
         geo.setAttribute('tileId', nextTileId);
         geo.setAttribute('outwardFace', nextOutwardFace);
+    }
+
+    if (growClimate)
+    {
+        const capacity = grownCapacity(terrainClimate.array.length, size.vertexCount * 2, 2);
+        const nextTerrainClimate = new THREE.BufferAttribute(new Float32Array(capacity), 2);
+
+        if (dynamicDraw) nextTerrainClimate.setUsage(THREE.DynamicDrawUsage);
+
+        geo.setAttribute('terrainClimate', nextTerrainClimate);
     }
 
     if (growIndices)

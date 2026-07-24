@@ -63,8 +63,10 @@ function terrainVertexShader(source)
             `#define STANDARD
 attribute float tileId;
 attribute float outwardFace;
+attribute vec2 terrainClimate;
 flat out float vTileId;
 flat out float vOutwardFace;
+out vec2 vTerrainClimate;
 out vec3 vTerrainPosition;`,
         )
         .replace(
@@ -72,6 +74,7 @@ out vec3 vTerrainPosition;`,
             `#include <begin_vertex>
 vTileId = tileId;
 vOutwardFace = outwardFace;
+vTerrainClimate = terrainClimate;
 vTerrainPosition = normalize(position);`,
         );
 }
@@ -81,6 +84,7 @@ function terrainFragmentShader(source)
     const declarations = `
 flat in float vTileId;
 flat in float vOutwardFace;
+in vec2 vTerrainClimate;
 in vec3 vTerrainPosition;
 uniform mat4 modelViewMatrix;
 uniform sampler2D tileDataTexture;
@@ -100,27 +104,63 @@ uniform vec3 palette3;
 uniform vec3 palette4;
 uniform vec3 palette5;
 
+vec3 terrainGradient(vec3 lattice)
+{
+    vec3 hashed = fract(lattice * vec3(0.1031, 0.1030, 0.0973));
+    hashed += dot(hashed, hashed.yxz + 33.33);
+    vec3 gradient = fract((hashed.xxy + hashed.yxx) * hashed.zyx) * 2.0 - 1.0;
+
+    return gradient * inversesqrt(max(dot(gradient, gradient), 0.0001));
+}
+
 float terrainNoise(vec3 p)
 {
     p += terrainSeedOffset;
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    float n = dot(i, vec3(1.0, 57.0, 113.0));
+    vec3 lattice = floor(p);
+    vec3 offset = fract(p);
+    vec3 blend = offset * offset * offset * (offset * (offset * 6.0 - 15.0) + 10.0);
+
     return mix(
-        mix(mix(fract(sin(n + 0.0) * 43758.5453), fract(sin(n + 1.0) * 43758.5453), f.x),
-            mix(fract(sin(n + 57.0) * 43758.5453), fract(sin(n + 58.0) * 43758.5453), f.x), f.y),
-        mix(mix(fract(sin(n + 113.0) * 43758.5453), fract(sin(n + 114.0) * 43758.5453), f.x),
-            mix(fract(sin(n + 170.0) * 43758.5453), fract(sin(n + 171.0) * 43758.5453), f.x), f.y),
-        f.z
-    ) * 2.0 - 1.0;
+        mix(
+            mix(
+                dot(terrainGradient(lattice + vec3(0.0, 0.0, 0.0)), offset),
+                dot(terrainGradient(lattice + vec3(1.0, 0.0, 0.0)), offset - vec3(1.0, 0.0, 0.0)),
+                blend.x
+            ),
+            mix(
+                dot(terrainGradient(lattice + vec3(0.0, 1.0, 0.0)), offset - vec3(0.0, 1.0, 0.0)),
+                dot(terrainGradient(lattice + vec3(1.0, 1.0, 0.0)), offset - vec3(1.0, 1.0, 0.0)),
+                blend.x
+            ),
+            blend.y
+        ),
+        mix(
+            mix(
+                dot(terrainGradient(lattice + vec3(0.0, 0.0, 1.0)), offset - vec3(0.0, 0.0, 1.0)),
+                dot(terrainGradient(lattice + vec3(1.0, 0.0, 1.0)), offset - vec3(1.0, 0.0, 1.0)),
+                blend.x
+            ),
+            mix(
+                dot(terrainGradient(lattice + vec3(0.0, 1.0, 1.0)), offset - vec3(0.0, 1.0, 1.0)),
+                dot(terrainGradient(lattice + vec3(1.0, 1.0, 1.0)), offset - vec3(1.0, 1.0, 1.0)),
+                blend.x
+            ),
+            blend.y
+        ),
+        blend.z
+    ) * 1.5;
 }
 
 float terrainFbm(vec3 p)
 {
     float value = terrainNoise(p);
 #ifdef TERRAIN_TWO_OCTAVES
-    value = (value + terrainNoise(p * 2.03) * 0.5) / 1.5;
+    mat3 octaveRotation = mat3(
+         0.0, -0.8, -0.6,
+         0.8,  0.36, -0.48,
+         0.6, -0.48,  0.64
+    );
+    value = (value + terrainNoise(octaveRotation * p * 2.03) * 0.5) / 1.5;
 #endif
     return value;
 }
@@ -151,22 +191,14 @@ vec4 readTile()
 
 vec3 resolveTerrainColor(vec4 tile)
 {
-    float elevation = tile.r;
-    float moisture = tile.g;
-    int biome = int(tile.b + 0.5);
-    vec3 biomeColor = biome == 0 ? palette0
-        : biome == 1 ? palette1
-        : biome == 2 ? palette2
-        : biome == 3 ? palette3
-        : biome == 4 ? palette4
-        : palette5;
+    float elevation = vTerrainClimate.x;
+    float moisture = vTerrainClimate.y;
     float shore = smoothstep(seaLevel - 0.06, seaLevel + 0.1, elevation);
     vec3 land = mix(palette2, palette3, smoothstep(dryThreshold, wetThreshold, moisture));
     land = mix(land, palette4, smoothstep(snowLine * 0.58, snowLine + 0.05, elevation));
     land = mix(land, palette5, smoothstep(snowLine - 0.04, snowLine + 0.18, elevation));
-    vec3 continuousColor = mix(palette0, mix(palette1, land, shore), shore);
 
-    return mix(continuousColor, biomeColor, 0.1);
+    return mix(palette0, mix(palette1, land, shore), shore);
 }
 `;
 

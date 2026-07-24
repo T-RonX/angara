@@ -1,4 +1,7 @@
-import { TerrainField } from '../texture/procedural/TerrainField.js';
+import {
+    effectiveDisplacement,
+    TerrainField,
+} from '../texture/procedural/TerrainField.js';
 
 // ----------------------------------------------------------------------
 // Three.js adapter around the shared pure terrain field.
@@ -15,7 +18,7 @@ export class ShapeField
         this.#size = size;
         const axis = shape?.axisScale ?? [1, 1, 1];
         this.#field = new TerrainField(seed, terrain, axis);
-        this.#maxDisplacement = terrain.maxDisplacement;
+        this.#maxDisplacement = effectiveDisplacement(terrain);
     }
 
     get terrainField() { return this.#field; }
