@@ -183,23 +183,24 @@ diffuseColor.rgb = mix(diffuseColor.rgb, terrainColor, vOutwardFace);`,
         .replace(
             '#include <normal_fragment_begin>',
             `#include <normal_fragment_begin>
-if (vOutwardFace > 0.5)
+if (vOutwardFace > 0.5 && terrainNormalStrength > 0.0)
 {
     vec3 objectNormal = normalize(vTerrainPosition);
     vec3 objectTangent;
     vec3 objectBitangent;
     terrainBasis(objectNormal, objectTangent, objectBitangent);
-    float epsilon = 0.012;
+    vec3 noisePosition = vTerrainPosition * terrainFrequency;
+    float noiseEpsilon = 0.15;
     float tangentDelta =
-        terrainFbm((vTerrainPosition + objectTangent * epsilon) * terrainFrequency)
-        - terrainFbm((vTerrainPosition - objectTangent * epsilon) * terrainFrequency);
+        terrainFbm(noisePosition + objectTangent * noiseEpsilon)
+        - terrainFbm(noisePosition - objectTangent * noiseEpsilon);
     float bitangentDelta =
-        terrainFbm((vTerrainPosition + objectBitangent * epsilon) * terrainFrequency)
-        - terrainFbm((vTerrainPosition - objectBitangent * epsilon) * terrainFrequency);
+        terrainFbm(noisePosition + objectBitangent * noiseEpsilon)
+        - terrainFbm(noisePosition - objectBitangent * noiseEpsilon);
     vec3 viewTangent = normalize(mat3(modelViewMatrix) * objectTangent);
     vec3 viewBitangent = normalize(mat3(modelViewMatrix) * objectBitangent);
     vec3 perturbation = viewTangent * tangentDelta + viewBitangent * bitangentDelta;
-    normal = normalize(normal - perturbation * terrainNormalStrength / (2.0 * epsilon));
+    normal = normalize(normal - perturbation * terrainNormalStrength / (2.0 * noiseEpsilon));
 }`,
         );
 }

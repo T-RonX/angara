@@ -59,9 +59,9 @@ const terrain = (palette, overrides = {}) => ({
         // Object-space micro-detail density. Practical: 8–80.
         frequency: 80,
         // Micro-noise color modulation. Practical: 0–0.1.
-        strength: .1,
-        // Analytic bump strength; high values look carved or noisy. Practical: 0–0.2.
-        normalStrength: 0.005,
+        strength: 0.1,
+        // Analytic bump strength. Keep at 0 to avoid noisy day/night terminators; practical close-up range: 0–0.003.
+        normalStrength: 0,
     },
     ...overrides,
 });
