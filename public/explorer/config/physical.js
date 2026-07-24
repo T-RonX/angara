@@ -6,67 +6,157 @@
 // in behaviour.js. Eventually this exact shape will be delivered by the
 // backend, so keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
-const terrain = (palette, overrides = {}) => ({
-    // Maximum radial displacement as a body-radius fraction. Practical: 0–0.2.
-    maxDisplacement: 0.06,
-    // Multiplies maxDisplacement without changing the terrain field. Range: 0–4.
-    displacementMultiplier: 1,
-    // Broad Perlin features around the sphere. Lower = continents; higher = ranges. Practical: 0.3–3.
-    macroFrequency: 1.0,
-    // Relative contribution of broad Perlin elevation. Practical: 0–1.
-    macroStrength: 0.82,
-    // Folds broad noise into mountain ridges. 0 = rolling, 1 = strongly ridged. Range: 0–1.
-    ridgeStrength: 0.1,
-    // Scale of CPU simplex landform detail. Practical: 1–8.
-    detailFrequency: 2.0,
-    // Relative contribution of CPU simplex detail. Practical: 0–0.5.
-    detailStrength: 0.18,
-    // CPU detail layers; quality cost is paid once during generation. Range: 1–5.
-    detailOctaves: 3,
-    // Frequency multiplier between CPU octaves. Practical: 1.5–3.
-    lacunarity: 1.9,
-    // Amplitude retained by each CPU octave. Practical: 0.25–0.7.
-    gain: 0.42,
-    // Scale of the domain warp that bends detail patterns. Practical: 0.2–3.
-    warpFrequency: 0.8,
-    // Domain-warp distance; high values create turbulent/swirl-like terrain. Practical: 0–1.
-    warpStrength: 0.2,
-    // CPU climate layers for moisture and temperature. Range: 3–5.
-    climateOctaves: 4,
-    // Moisture-region scale. Practical: 0.3–4.
-    moistureFrequency: 1.7,
-    // Temperature-region scale. Practical: 0.3–4.
-    temperatureFrequency: 1.25,
-    // Temperature controlled by latitude instead of noise. Range: 0–1.
-    latitudeInfluence: 0.62,
-    // Elevation below which a tile is ocean. Range: -1–1.
-    seaLevel: -0.2,
-    // Elevation above which rock transitions toward snow. Range: -1–1.
-    snowLine: 0.48,
-    // Normalized temperature below which land becomes snow/tundra. Range: 0–1.
-    coldThreshold: 0.3,
-    // Normalized moisture below which land becomes desert. Range: 0–1.
-    dryThreshold: 0.34,
-    // Normalized moisture above which land becomes lush. Range: 0–1; must exceed dryThreshold.
-    wetThreshold: 0.68,
-    // Ocean, shore, dry land, grassland, rock, snow.
-    palette,
-    // Seeded brightness variation applied once to palette colors. Practical: 0–0.15.
-    paletteVariation: 0.03,
-    // Tile-data texture row width; affects packing only, not visual scale. Range: 1–16384.
-    textureWidth: 1024,
-    shader: {
-        // Per-pixel fBm layers. Keep at 1–2 for fragment performance.
-        octaves: 2,
-        // Object-space micro-detail density. Practical: 8–80.
-        frequency: 80,
-        // Micro-noise color modulation. Practical: 0–0.06; higher values overpower biome color.
-        strength: 0.035,
-        // Analytic bump strength. Keep at 0 to avoid noisy day/night terminators; practical close-up range: 0–0.003.
-        normalStrength: 0,
+// Channels are elevation (0, -1..1), moisture (1, 0..1), and temperature
+// (2, 0..1). Rules in a region are ANDed; regions are ORed. `blend` is the
+// smooth distance outside a rule's hard min/max bounds.
+const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
+{
+    const e1 = e0 + 0.14;
+    const e2 = e3 * 0.72;
+    const rule = (channel, min, max, blend) => ({ channel, min, max, blend });
+
+    return [
+        { color: colors[0], regions: [[rule(0, -1, e0, 0.06)]] },
+        {
+            color: colors[1],
+            regions: [[rule(0, e0, e1, 0.1), rule(2, t0, 1, 0.05)]],
+        },
+        {
+            color: colors[2],
+            regions: [[
+                rule(0, e1, e3, 0.08),
+                rule(1, 0, m0, 0.08),
+                rule(2, t0, 1, 0.05),
+            ]],
+        },
+        {
+            color: colors[3],
+            regions: [
+                [
+                    rule(0, e1, e2, 0.08),
+                    rule(1, m0, 1, 0.08),
+                    rule(2, t0, 1, 0.05),
+                ],
+                [
+                    rule(0, e2, e3, 0.08),
+                    rule(1, m1, 1, 0.08),
+                    rule(2, t0, 1, 0.05),
+                ],
+            ],
+        },
+        {
+            color: colors[4],
+            regions: [[
+                rule(0, e2, e3, 0.08),
+                rule(1, m0, m1, 0.08),
+                rule(2, t0, 1, 0.05),
+            ]],
+        },
+        {
+            color: colors[5],
+            regions: [
+                [rule(0, e0, e3, 0.08), rule(2, 0, t0, 0.05)],
+                [rule(0, e3, 1, 0.12)],
+            ],
+        },
+    ];
+};
+
+// Reusable named presets own climate classification and surface colours only.
+const biomePresets = {
+    temperate: {
+        biomes: classicBiomes(
+            [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
+            [-0.2, 0.48, 0.3, 0.34, 0.68],
+        ),
+        biomeJitter: 0.015,
+        biomeColorVariation: 0.03,
     },
-    ...overrides,
-});
+    barren: {
+        biomes: classicBiomes(
+            [0x374050, 0x8f8578, 0x9a8f81, 0x858078, 0x625e59, 0xd7d9dc],
+            [-0.75, 0.48, 0.3, 0.34, 0.68],
+        ),
+        biomeJitter: 0.015,
+        biomeColorVariation: 0.03,
+    },
+    arid: {
+        biomes: classicBiomes(
+            [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
+            [-0.7, 0.48, 0.3, 0.34, 0.68],
+        ),
+        biomeJitter: 0.015,
+        biomeColorVariation: 0.03,
+    },
+    glacial: {
+        biomes: classicBiomes(
+            [0x264b74, 0xb6d7ee, 0xcde8f5, 0x9abecc, 0x7196aa, 0xf4f8ff],
+            [-0.08, 0.28, 0.3, 0.34, 0.68],
+        ),
+        biomeJitter: 0.015,
+        biomeColorVariation: 0.03,
+    },
+};
+
+const terrain = (biomeName, overrides = {}) =>
+{
+    const biome = biomePresets[biomeName];
+
+    if (!biome)
+    {
+        throw new Error(`[physical] Unknown biome preset '${biomeName}'`);
+    }
+
+    return {
+        // Maximum radial displacement as a body-radius fraction. Practical: 0–0.2.
+        maxDisplacement: 0.06,
+        // Multiplies maxDisplacement without changing the terrain field. Range: 0–4.
+        displacementMultiplier: 1,
+        // Broad Perlin features around the sphere. Lower = continents; higher = ranges. Practical: 0.3–3.
+        macroFrequency: 1.0,
+        // Relative contribution of broad Perlin elevation. Practical: 0–1.
+        macroStrength: 0.82,
+        // Folds broad noise into mountain ridges. 0 = rolling, 1 = strongly ridged. Range: 0–1.
+        ridgeStrength: 0.1,
+        // Scale of CPU simplex landform detail. Practical: 1–8.
+        detailFrequency: 2.0,
+        // Relative contribution of CPU simplex detail. Practical: 0–0.5.
+        detailStrength: 0.18,
+        // CPU detail layers; quality cost is paid once during generation. Range: 1–5.
+        detailOctaves: 3,
+        // Frequency multiplier between CPU octaves. Practical: 1.5–3.
+        lacunarity: 1.9,
+        // Amplitude retained by each CPU octave. Practical: 0.25–0.7.
+        gain: 0.42,
+        // Scale of the domain warp that bends detail patterns. Practical: 0.2–3.
+        warpFrequency: 0.8,
+        // Domain-warp distance; high values create turbulent/swirl-like terrain. Practical: 0–1.
+        warpStrength: 0.2,
+        // CPU climate layers for moisture and temperature. Range: 3–5.
+        climateOctaves: 4,
+        // Moisture-region scale. Practical: 0.3–4.
+        moistureFrequency: 1.7,
+        // Temperature-region scale. Practical: 0.3–4.
+        temperatureFrequency: 1.25,
+        // Temperature controlled by latitude instead of noise. Range: 0–1.
+        latitudeInfluence: 0.62,
+        ...biome,
+        biomes: structuredClone(biome.biomes),
+        // Tile-data texture row width; affects packing only, not visual scale. Range: 1–16384.
+        textureWidth: 1024,
+        shader: {
+            // Per-pixel fBm layers. Keep at 1–2 for fragment performance.
+            octaves: 2,
+            // Object-space micro-detail density. Practical: 8–80.
+            frequency: 80,
+            // Micro-noise color modulation. Practical: 0–0.06; higher values overpower biome color.
+            strength: 0.035,
+            // Analytic bump strength. Keep at 0 to avoid noisy day/night terminators; practical close-up range: 0–0.003.
+            normalStrength: 0,
+        },
+        ...overrides,
+    };
+};
 
 const physicalTemplate = {
     // Global cell size: world units of body radius per unit of `hexFrequency`.
@@ -88,7 +178,7 @@ const physicalTemplate = {
             axisScale: [1.0, 0.82, 1.15],
         },
         terrain: terrain(
-            [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
+            'temperate',
             {
                 maxDisplacement: 0.055,
                 displacementMultiplier: 0.22,
@@ -170,13 +260,12 @@ const physicalTemplate = {
                     type: 'noise',
                 },
                 terrain: terrain(
-                    [0x374050, 0x8f8578, 0x9a8f81, 0x858078, 0x625e59, 0xd7d9dc],
+                    'barren',
                     {
                         maxDisplacement: 0.075,
                         macroFrequency: 1.2,
                         ridgeStrength: 0.14,
                         detailFrequency: 2.4,
-                        seaLevel: -0.75,
                     },
                 ),
                 axialTiltDeg:      6.7,  // obliquity (degrees); 0 = north pole aligned with world Y
@@ -215,7 +304,7 @@ const physicalTemplate = {
                     type: 'noise',
                 },
                 terrain: terrain(
-                    [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
+                    'arid',
                     {
                         maxDisplacement: 0.085,
                         displacementMultiplier: 3.4,
@@ -224,7 +313,6 @@ const physicalTemplate = {
                         ridgeStrength: 0.28,
                         detailFrequency: 2.7,
                         detailStrength: 0.24,
-                        seaLevel: -0.7,
                     },
                 ),
                 axialTiltDeg:      57,  // obliquity (degrees); 0 = north pole aligned with world Y
@@ -262,14 +350,12 @@ const physicalTemplate = {
                     type: 'sphere',
                 },
                 terrain: terrain(
-                    [0x264b74, 0xb6d7ee, 0xcde8f5, 0x9abecc, 0x7196aa, 0xf4f8ff],
+                    'glacial',
                     {
                         maxDisplacement: 0.035,
                         macroFrequency: 0.8,
                         ridgeStrength: 0.06,
                         detailFrequency: 1.7,
-                        seaLevel: -0.08,
-                        snowLine: 0.28,
                     },
                 ),
                 axialTiltDeg:      28,   // obliquity (degrees); 0 = north pole aligned with world Y

@@ -21,6 +21,10 @@ const BEHAVIOUR_REQUIRED = [
     'highlights', 'materials', 'debug',
 ];
 
+const MAX_BIOMES = 32;
+const MAX_BIOME_REGIONS = 64;
+const MAX_BIOME_RULES = 128;
+
 function assertNumber(obj, path, label, min = -Infinity)
 {
     assertPath(obj, path, label);
@@ -139,7 +143,6 @@ function validateBody(body, label)
             'detailStrength',
             'ridgeStrength',
             'warpStrength',
-            'paletteVariation',
             'shader.strength',
             'shader.normalStrength',
         ];
@@ -160,17 +163,11 @@ function validateBody(body, label)
         for (const path of [
             'gain',
             'latitudeInfluence',
-            'coldThreshold',
-            'dryThreshold',
-            'wetThreshold',
+            'biomeColorVariation',
+            'biomeJitter',
         ])
         {
             assertRange(terrain, path, label, 0, 1);
-        }
-
-        for (const path of ['seaLevel', 'snowLine'])
-        {
-            assertRange(terrain, path, label, -1, 1);
         }
 
         const displacementMultiplier = terrain.displacementMultiplier ?? 1;
@@ -185,23 +182,107 @@ function validateBody(body, label)
             throw new Error(`[ConfigValidator] ${label} effective displacement must be < 0.5`);
         }
 
-        if (terrain.dryThreshold >= terrain.wetThreshold)
+        if (!Array.isArray(terrain.biomes) || terrain.biomes.length === 0)
         {
-            throw new Error(`[ConfigValidator] ${label}.dryThreshold must be below wetThreshold`);
+            throw new Error(`[ConfigValidator] ${label}.biomes must be a non-empty array`);
         }
 
-        if (!Array.isArray(terrain.palette) || terrain.palette.length !== 6)
+        if (terrain.biomes.length > MAX_BIOMES)
         {
-            throw new Error(`[ConfigValidator] ${label}.palette must contain exactly 6 colors`);
+            throw new Error(`[ConfigValidator] ${label}.biomes must contain at most ${MAX_BIOMES} entries`);
         }
 
-        for (let i = 0; i < terrain.palette.length; i++)
-        {
-            const color = terrain.palette[i];
+        const channelBounds = [[-1, 1], [0, 1], [0, 1]];
+        let regionCount = 0;
+        let ruleCount = 0;
 
-            if (!Number.isInteger(color) || color < 0 || color > 0xffffff)
+        for (let biomeIndex = 0; biomeIndex < terrain.biomes.length; biomeIndex++)
+        {
+            const biome = terrain.biomes[biomeIndex];
+            const biomeLabel = `${label}.biomes[${biomeIndex}]`;
+
+            if (!biome || typeof biome !== 'object')
             {
-                throw new Error(`[ConfigValidator] ${label}.palette[${i}] must be a 24-bit integer color`);
+                throw new Error(`[ConfigValidator] ${biomeLabel} must be an object`);
+            }
+
+            if (!Number.isInteger(biome.color) || biome.color < 0 || biome.color > 0xffffff)
+            {
+                throw new Error(`[ConfigValidator] ${biomeLabel}.color must be a 24-bit integer color`);
+            }
+
+            if (!Array.isArray(biome.regions) || biome.regions.length === 0)
+            {
+                throw new Error(`[ConfigValidator] ${biomeLabel}.regions must be a non-empty array`);
+            }
+
+            regionCount += biome.regions.length;
+
+            if (regionCount > MAX_BIOME_REGIONS)
+            {
+                throw new Error(
+                    `[ConfigValidator] ${label}.biomes must contain at most ${MAX_BIOME_REGIONS} regions`,
+                );
+            }
+
+            for (let regionIndex = 0; regionIndex < biome.regions.length; regionIndex++)
+            {
+                const region = biome.regions[regionIndex];
+                const regionLabel = `${biomeLabel}.regions[${regionIndex}]`;
+
+                if (!Array.isArray(region))
+                {
+                    throw new Error(`[ConfigValidator] ${regionLabel} must be an array`);
+                }
+
+                ruleCount += region.length;
+
+                if (ruleCount > MAX_BIOME_RULES)
+                {
+                    throw new Error(
+                        `[ConfigValidator] ${label}.biomes must contain at most ${MAX_BIOME_RULES} rules`,
+                    );
+                }
+
+                for (let ruleIndex = 0; ruleIndex < region.length; ruleIndex++)
+                {
+                    const rule = region[ruleIndex];
+                    const ruleLabel = `${regionLabel}[${ruleIndex}]`;
+
+                    if (!rule || typeof rule !== 'object')
+                    {
+                        throw new Error(`[ConfigValidator] ${ruleLabel} must be an object`);
+                    }
+
+                    if (!Number.isInteger(rule.channel) || rule.channel < 0 || rule.channel > 2)
+                    {
+                        throw new Error(`[ConfigValidator] ${ruleLabel}.channel must be 0, 1, or 2`);
+                    }
+
+                    const [minChannel, maxChannel] = channelBounds[rule.channel];
+
+                    if (
+                        !Number.isFinite(rule.min)
+                        || !Number.isFinite(rule.max)
+                        || rule.min < minChannel
+                        || rule.max > maxChannel
+                    )
+                    {
+                        throw new Error(
+                            `[ConfigValidator] ${ruleLabel} bounds must be within ${minChannel} and ${maxChannel}`,
+                        );
+                    }
+
+                    if (rule.min > rule.max)
+                    {
+                        throw new Error(`[ConfigValidator] ${ruleLabel}.min must be <= max`);
+                    }
+
+                    if (!Number.isFinite(rule.blend) || rule.blend < 0)
+                    {
+                        throw new Error(`[ConfigValidator] ${ruleLabel}.blend must be >= 0`);
+                    }
+                }
             }
         }
     }

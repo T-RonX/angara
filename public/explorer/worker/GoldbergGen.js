@@ -394,14 +394,16 @@ function buildSurfaceGeometry(faces, layerFrac, coreRadius, minSurface, shapeSam
                 const x = cornerXYZ[corner];
                 const y = cornerXYZ[corner + 1];
                 const z = cornerXYZ[corner + 2];
+                const elevation = shapeSampler.field.sampleElevation(x, y, z);
                 terrainClimate.push(
-                    shapeSampler.field.sampleElevation(x, y, z),
+                    elevation,
                     shapeSampler.field.sampleMoisture(x, y, z),
+                    shapeSampler.field.sampleTemperature(x, y, z, elevation),
                 );
             }
             else
             {
-                terrainClimate.push(0, 0);
+                terrainClimate.push(0, 0, 0);
             }
         }
     }

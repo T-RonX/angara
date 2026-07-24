@@ -153,7 +153,7 @@ export class PersistentSliceMeshStore
         const normal = new THREE.BufferAttribute(new Float32Array(normals), 3);
         const tileId = new THREE.BufferAttribute(new Float32Array(tileIds), 1);
         const outwardFace = new THREE.BufferAttribute(new Float32Array(outwardFaces), 1);
-        const terrainClimate = new THREE.BufferAttribute(new Float32Array(terrainClimates), 2);
+        const terrainClimate = new THREE.BufferAttribute(new Float32Array(terrainClimates), 3);
         const index = new THREE.BufferAttribute(
             new Uint32Array(this.#surfaceSourceIndices.length),
             1,

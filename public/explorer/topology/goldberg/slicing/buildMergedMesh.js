@@ -21,7 +21,7 @@ export function buildMergedMesh(
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(size.floatCount), 3));
     geo.setAttribute('tileId', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
     geo.setAttribute('outwardFace', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
-    geo.setAttribute('terrainClimate', new THREE.BufferAttribute(new Float32Array(size.vertexCount * 2), 2));
+    geo.setAttribute('terrainClimate', new THREE.BufferAttribute(new Float32Array(size.vertexCount * 3), 3));
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(size.idxCount), 1));
 
     const faceToCell = new Array(size.idxCount / 3);
@@ -91,7 +91,7 @@ export function updateMergedMesh(
         || index.itemSize !== 1
         || tileId.itemSize !== 1
         || outwardFace.itemSize !== 1
-        || terrainClimate.itemSize !== 2
+        || terrainClimate.itemSize !== 3
     )
     {
         return null;
@@ -214,7 +214,7 @@ function fill(
         normals.set(g.nrm, floatOff);
         tileIds.set(g.tileId, vertBase);
         outwardFaces.set(g.outwardFace, vertBase);
-        if (writesTerrainClimate) terrainClimates.set(g.terrainClimate, vertBase * 2);
+        if (writesTerrainClimate) terrainClimates.set(g.terrainClimate, vertBase * 3);
 
         for (let j = 0; j < g.idx.length; j++)
         {
@@ -251,7 +251,7 @@ function fill(
         markUpdated(index, size.idxCount);
         markUpdated(tileId, size.vertexCount);
         markUpdated(outwardFace, size.vertexCount);
-        if (writesTerrainClimate) markUpdated(terrainClimate, size.vertexCount * 2);
+        if (writesTerrainClimate) markUpdated(terrainClimate, size.vertexCount * 3);
     }
 }
 
@@ -267,7 +267,7 @@ function ensureCapacity(geo, size, dynamicDraw)
         || normal.array.length < size.floatCount;
     const growVertices = tileId.array.length < size.vertexCount
         || outwardFace.array.length < size.vertexCount;
-    const growClimate = terrainClimate.array.length < size.vertexCount * 2;
+    const growClimate = terrainClimate.array.length < size.vertexCount * 3;
     const growIndices = index.array.length < size.idxCount;
 
     if (!growFloats && !growVertices && !growClimate && !growIndices) return false;
@@ -313,8 +313,8 @@ function ensureCapacity(geo, size, dynamicDraw)
 
     if (growClimate)
     {
-        const capacity = grownCapacity(terrainClimate.array.length, size.vertexCount * 2, 2);
-        const nextTerrainClimate = new THREE.BufferAttribute(new Float32Array(capacity), 2);
+        const capacity = grownCapacity(terrainClimate.array.length, size.vertexCount * 3, 3);
+        const nextTerrainClimate = new THREE.BufferAttribute(new Float32Array(capacity), 3);
 
         if (dynamicDraw) nextTerrainClimate.setUsage(THREE.DynamicDrawUsage);
 

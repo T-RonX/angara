@@ -1,5 +1,6 @@
 import { createNoise3D } from '../../vendor/simplex-noise.js';
 import { ImprovedPerlin3D } from './ImprovedPerlin3D.js';
+import { BiomeModel } from './BiomeModel.js';
 import {
     createNamedRandom,
     namedVector3,
@@ -11,8 +12,7 @@ export class TerrainField
     seed;
     params;
     shaderOffsets;
-    paletteFactors;
-    thresholds;
+    biomeModel;
 
     #axis;
     #macro;
@@ -42,8 +42,12 @@ export class TerrainField
         this.#moistureOffset = namedVector3(this.seed, 'moisture-offset');
         this.#temperatureOffset = namedVector3(this.seed, 'temperature-offset');
         this.shaderOffsets = Object.freeze(namedVector3(this.seed, 'shader-micro-offset', 64));
-        this.paletteFactors = Object.freeze(this.#buildPaletteFactors());
-        this.thresholds = Object.freeze(this.#buildThresholds());
+        this.biomeModel = new BiomeModel(
+            this.seed,
+            this.params.biomes,
+            this.params.biomeJitter,
+            this.params.biomeColorVariation,
+        );
     }
 
     sampleElevation(x, y, z)
@@ -114,16 +118,7 @@ export class TerrainField
 
     classifyBiome(elevation, moisture, temperature)
     {
-        const t = this.thresholds;
-
-        if (elevation < t.seaLevel) return 0;
-        if (temperature < t.coldThreshold || elevation > t.snowLine) return 5;
-        if (elevation < t.seaLevel + 0.14) return 1;
-        if (moisture < t.dryThreshold) return 2;
-        if (moisture > t.wetThreshold) return 3;
-        if (elevation > t.snowLine * 0.72) return 4;
-
-        return 3;
+        return this.biomeModel.classify(elevation, moisture, temperature);
     }
 
     #fbm(noise, x, y, z, octaves)
@@ -144,27 +139,6 @@ export class TerrainField
         return normalizer > 0 ? sum / normalizer : 0;
     }
 
-    #buildPaletteFactors()
-    {
-        const random = createNamedRandom(this.seed, 'palette-variation');
-        const variation = this.params.paletteVariation;
-
-        return this.params.palette.map(() => 1 + (random() * 2 - 1) * variation);
-    }
-
-    #buildThresholds()
-    {
-        const random = createNamedRandom(this.seed, 'biome-threshold-jitter');
-        const jitter = () => (random() * 2 - 1) * 0.015;
-
-        return {
-            seaLevel: this.params.seaLevel + jitter(),
-            snowLine: this.params.snowLine + jitter(),
-            coldThreshold: this.params.coldThreshold + jitter(),
-            dryThreshold: this.params.dryThreshold + jitter(),
-            wetThreshold: this.params.wetThreshold + jitter(),
-        };
-    }
 }
 
 export function effectiveDisplacement(params)

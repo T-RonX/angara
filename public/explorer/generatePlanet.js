@@ -28,7 +28,7 @@ export async function generatePlanet(goldbergGeometry, seed, params)
     const tileData = generateTileDataWithField(centroids, field);
     goldbergGeometry.setAttribute(
         'terrainClimate',
-        new THREE.BufferAttribute(deriveTerrainClimate(position.array, field), 2),
+        new THREE.BufferAttribute(deriveTerrainClimate(position.array, field), 3),
     );
     displacePositions(position.array, field, effectiveDisplacement(terrain));
     position.needsUpdate = true;
@@ -136,9 +136,9 @@ function displacePositions(positions, field, maxDisplacement)
 
 function deriveTerrainClimate(positions, field)
 {
-    const climate = new Float32Array((positions.length / 3) * 2);
+    const climate = new Float32Array(positions.length);
 
-    for (let offset = 0, target = 0; offset < positions.length; offset += 3, target += 2)
+    for (let offset = 0; offset < positions.length; offset += 3)
     {
         const inverseLength = 1 / (Math.hypot(
             positions[offset],
@@ -148,8 +148,10 @@ function deriveTerrainClimate(positions, field)
         const x = positions[offset] * inverseLength;
         const y = positions[offset + 1] * inverseLength;
         const z = positions[offset + 2] * inverseLength;
-        climate[target] = field.sampleElevation(x, y, z);
-        climate[target + 1] = field.sampleMoisture(x, y, z);
+        const elevation = field.sampleElevation(x, y, z);
+        climate[offset] = elevation;
+        climate[offset + 1] = field.sampleMoisture(x, y, z);
+        climate[offset + 2] = field.sampleTemperature(x, y, z, elevation);
     }
 
     return climate;

@@ -349,7 +349,7 @@ export class CellGeometryFactory
             normals.push(nx, ny, nz);
             tileIds?.push(tileId);
             outwardFaces?.push(0);
-            terrainClimates?.push(0, 0);
+            terrainClimates?.push(0, 0, 0);
         }
 
         indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);
@@ -361,7 +361,7 @@ export class CellGeometryFactory
 
         if (!isOutward || !this.#terrainField)
         {
-            target.push(0, 0);
+            target.push(0, 0, 0);
 
             return;
         }
@@ -370,9 +370,11 @@ export class CellGeometryFactory
         const x = point.x * inverseLength;
         const y = point.y * inverseLength;
         const z = point.z * inverseLength;
+        const elevation = this.#terrainField.sampleElevation(x, y, z);
         target.push(
-            this.#terrainField.sampleElevation(x, y, z),
+            elevation,
             this.#terrainField.sampleMoisture(x, y, z),
+            this.#terrainField.sampleTemperature(x, y, z, elevation),
         );
     }
 }

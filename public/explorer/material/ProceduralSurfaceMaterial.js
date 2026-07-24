@@ -10,8 +10,9 @@ export function createProceduralSurfaceMaterial({
 {
     const terrain = body.terrain;
     const standard = THREE.ShaderLib.standard;
-    const palette = terrain.palette.map((color, index) =>
-        new THREE.Color(color).multiplyScalar(terrainField.paletteFactors[index]));
+    const resolvedBiomes = terrainField.biomeModel.resolvedBiomes;
+    const biomeColors = resolvedBiomes.map((biome, index) =>
+        new THREE.Color(biome.color).multiplyScalar(terrainField.biomeModel.colorFactors[index]));
     const uniforms = THREE.UniformsUtils.clone(standard.uniforms);
 
     Object.assign(uniforms, {
@@ -25,16 +26,7 @@ export function createProceduralSurfaceMaterial({
         terrainFrequency: { value: terrain.shader.frequency },
         terrainStrength: { value: terrain.shader.strength },
         terrainNormalStrength: { value: terrain.shader.normalStrength },
-        seaLevel: { value: terrainField.thresholds.seaLevel },
-        snowLine: { value: terrainField.thresholds.snowLine },
-        dryThreshold: { value: terrainField.thresholds.dryThreshold },
-        wetThreshold: { value: terrainField.thresholds.wetThreshold },
-        palette0: { value: palette[0] },
-        palette1: { value: palette[1] },
-        palette2: { value: palette[2] },
-        palette3: { value: palette[3] },
-        palette4: { value: palette[4] },
-        palette5: { value: palette[5] },
+        biomeColors: { value: biomeColors },
     });
 
     const material = new THREE.ShaderMaterial({
@@ -44,7 +36,7 @@ export function createProceduralSurfaceMaterial({
         },
         uniforms,
         vertexShader: terrainVertexShader(standard.vertexShader),
-        fragmentShader: terrainFragmentShader(standard.fragmentShader),
+        fragmentShader: terrainFragmentShader(standard.fragmentShader, resolvedBiomes),
         lights: true,
         clipping: true,
         side: THREE.FrontSide,
@@ -63,10 +55,10 @@ function terrainVertexShader(source)
             `#define STANDARD
 attribute float tileId;
 attribute float outwardFace;
-attribute vec2 terrainClimate;
+attribute vec3 terrainClimate;
 flat out float vTileId;
 flat out float vOutwardFace;
-out vec2 vTerrainClimate;
+out vec3 vTerrainClimate;
 out vec3 vTerrainPosition;`,
         )
         .replace(
@@ -79,12 +71,13 @@ vTerrainPosition = normalize(position);`,
         );
 }
 
-function terrainFragmentShader(source)
+function terrainFragmentShader(source, biomes)
 {
+    const biomeShader = buildBiomeShader(biomes);
     const declarations = `
 flat in float vTileId;
 flat in float vOutwardFace;
-in vec2 vTerrainClimate;
+in vec3 vTerrainClimate;
 in vec3 vTerrainPosition;
 uniform mat4 modelViewMatrix;
 uniform sampler2D tileDataTexture;
@@ -93,16 +86,7 @@ uniform vec3 terrainSeedOffset;
 uniform float terrainFrequency;
 uniform float terrainStrength;
 uniform float terrainNormalStrength;
-uniform float seaLevel;
-uniform float snowLine;
-uniform float dryThreshold;
-uniform float wetThreshold;
-uniform vec3 palette0;
-uniform vec3 palette1;
-uniform vec3 palette2;
-uniform vec3 palette3;
-uniform vec3 palette4;
-uniform vec3 palette5;
+uniform vec3 biomeColors[${biomes.length}];
 
 vec3 terrainGradient(vec3 lattice)
 {
@@ -189,17 +173,7 @@ vec4 readTile()
     return texelFetch(tileDataTexture, ivec2(id % width, id / width), 0);
 }
 
-vec3 resolveTerrainColor(vec4 tile)
-{
-    float elevation = vTerrainClimate.x;
-    float moisture = vTerrainClimate.y;
-    float shore = smoothstep(seaLevel - 0.06, seaLevel + 0.1, elevation);
-    vec3 land = mix(palette2, palette3, smoothstep(dryThreshold, wetThreshold, moisture));
-    land = mix(land, palette4, smoothstep(snowLine * 0.58, snowLine + 0.05, elevation));
-    land = mix(land, palette5, smoothstep(snowLine - 0.04, snowLine + 0.18, elevation));
-
-    return mix(palette0, mix(palette1, land, shore), shore);
-}
+${biomeShader}
 `;
 
     return source
@@ -235,4 +209,86 @@ if (vOutwardFace > 0.5 && terrainNormalStrength > 0.0)
     normal = normalize(normal - perturbation * terrainNormalStrength / (2.0 * noiseEpsilon));
 }`,
         );
+}
+
+function buildBiomeShader(biomes)
+{
+    const channels = ['vTerrainClimate.x', 'vTerrainClimate.y', 'vTerrainClimate.z'];
+    const lines = [
+        'vec3 resolveTerrainColor(vec4 tile)',
+        '{',
+        '    vec3 hardColor = biomeColors[0];',
+    ];
+
+    for (let biome = 1; biome < biomes.length; biome++)
+    {
+        lines.push(
+            `    if (tile.z >= ${glslNumber(biome - 0.5)}) hardColor = biomeColors[${biome}];`,
+        );
+    }
+
+    lines.push(
+        '    vec3 blendedColor = vec3(0.0);',
+        '    float remainingWeight = 1.0;',
+    );
+
+    for (let biome = 0; biome < biomes.length; biome++)
+    {
+        const regions = biomes[biome].regions.map(region =>
+        {
+            if (region.length === 0) return '1.0';
+
+            return combine(
+                region.map(rule => ruleInfluence(rule, channels[rule.channel])),
+                'min',
+            );
+        });
+        const influence = combine(regions, 'max');
+
+        lines.push(
+            `    float biomeWeight${biome} = clamp(${influence}, 0.0, 1.0);`,
+            `    blendedColor += biomeColors[${biome}] * remainingWeight * biomeWeight${biome};`,
+            `    remainingWeight *= 1.0 - biomeWeight${biome};`,
+        );
+    }
+
+    lines.push(
+        '    return blendedColor + hardColor * remainingWeight;',
+        '}',
+    );
+
+    return lines.join('\n');
+}
+
+function ruleInfluence(rule, value)
+{
+    const min = glslNumber(rule.min);
+    const max = glslNumber(rule.max);
+
+    if (rule.blend === 0)
+    {
+        return `(step(${min}, ${value}) * step(${value}, ${max}))`;
+    }
+
+    const blend = glslNumber(rule.blend);
+
+    return `(`
+        + `smoothstep(${min} - ${blend}, ${min}, ${value})`
+        + ` * (1.0 - smoothstep(${max}, ${max} + ${blend}, ${value}))`
+        + `)`;
+}
+
+function combine(expressions, operation)
+{
+    if (expressions.length === 1) return expressions[0];
+
+    return expressions.slice(1).reduce(
+        (combined, expression) => `${operation}(${combined}, ${expression})`,
+        expressions[0],
+    );
+}
+
+function glslNumber(value)
+{
+    return Number.isInteger(value) ? `${value}.0` : String(value);
 }
