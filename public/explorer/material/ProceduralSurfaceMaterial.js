@@ -105,7 +105,7 @@ float terrainNoise(vec3 p)
     p += terrainSeedOffset;
     vec3 i = floor(p);
     vec3 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
     float n = dot(i, vec3(1.0, 57.0, 113.0));
     return mix(
         mix(mix(fract(sin(n + 0.0) * 43758.5453), fract(sin(n + 1.0) * 43758.5453), f.x),
@@ -160,13 +160,13 @@ vec3 resolveTerrainColor(vec4 tile)
         : biome == 3 ? palette3
         : biome == 4 ? palette4
         : palette5;
-    float shore = smoothstep(seaLevel - 0.035, seaLevel + 0.06, elevation);
+    float shore = smoothstep(seaLevel - 0.06, seaLevel + 0.1, elevation);
     vec3 land = mix(palette2, palette3, smoothstep(dryThreshold, wetThreshold, moisture));
-    land = mix(land, palette4, smoothstep(snowLine * 0.68, snowLine, elevation));
-    land = mix(land, palette5, smoothstep(snowLine, snowLine + 0.12, elevation));
+    land = mix(land, palette4, smoothstep(snowLine * 0.58, snowLine + 0.05, elevation));
+    land = mix(land, palette5, smoothstep(snowLine - 0.04, snowLine + 0.18, elevation));
     vec3 continuousColor = mix(palette0, mix(palette1, land, shore), shore);
 
-    return mix(continuousColor, biomeColor, 0.35);
+    return mix(continuousColor, biomeColor, 0.1);
 }
 `;
 

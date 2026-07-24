@@ -7,34 +7,61 @@
 // backend, so keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
 const terrain = (palette, overrides = {}) => ({
+    // Maximum radial displacement as a body-radius fraction. Practical: 0–0.2.
     maxDisplacement: 0.06,
+    // Broad Perlin features around the sphere. Lower = continents; higher = ranges. Practical: 0.3–3.
     macroFrequency: 1.0,
+    // Relative contribution of broad Perlin elevation. Practical: 0–1.
     macroStrength: 0.82,
+    // Folds broad noise into mountain ridges. 0 = rolling, 1 = strongly ridged. Range: 0–1.
     ridgeStrength: 0.1,
+    // Scale of CPU simplex landform detail. Practical: 1–8.
     detailFrequency: 2.0,
+    // Relative contribution of CPU simplex detail. Practical: 0–0.5.
     detailStrength: 0.18,
+    // CPU detail layers; quality cost is paid once during generation. Range: 1–5.
     detailOctaves: 3,
+    // Frequency multiplier between CPU octaves. Practical: 1.5–3.
     lacunarity: 1.9,
+    // Amplitude retained by each CPU octave. Practical: 0.25–0.7.
     gain: 0.42,
+    // Scale of the domain warp that bends detail patterns. Practical: 0.2–3.
     warpFrequency: 0.8,
+    // Domain-warp distance; high values create turbulent/swirl-like terrain. Practical: 0–1.
     warpStrength: 0.2,
+    // CPU climate layers for moisture and temperature. Range: 3–5.
     climateOctaves: 4,
+    // Moisture-region scale. Practical: 0.3–4.
     moistureFrequency: 1.7,
+    // Temperature-region scale. Practical: 0.3–4.
     temperatureFrequency: 1.25,
+    // Temperature controlled by latitude instead of noise. Range: 0–1.
     latitudeInfluence: 0.62,
+    // Elevation below which a tile is ocean. Range: -1–1.
     seaLevel: -0.2,
+    // Elevation above which rock transitions toward snow. Range: -1–1.
     snowLine: 0.48,
+    // Normalized temperature below which land becomes snow/tundra. Range: 0–1.
     coldThreshold: 0.3,
+    // Normalized moisture below which land becomes desert. Range: 0–1.
     dryThreshold: 0.34,
+    // Normalized moisture above which land becomes lush. Range: 0–1; must exceed dryThreshold.
     wetThreshold: 0.68,
+    // Ocean, shore, dry land, grassland, rock, snow.
     palette,
+    // Seeded brightness variation applied once to palette colors. Practical: 0–0.15.
     paletteVariation: 0.03,
+    // Tile-data texture row width; affects packing only, not visual scale. Range: 1–16384.
     textureWidth: 1024,
     shader: {
+        // Per-pixel fBm layers. Keep at 1–2 for fragment performance.
         octaves: 2,
-        frequency: 14,
-        strength: 0.018,
-        normalStrength: 0.06,
+        // Object-space micro-detail density. Practical: 8–80.
+        frequency: 80,
+        // Micro-noise color modulation. Practical: 0–0.1.
+        strength: .1,
+        // Analytic bump strength; high values look carved or noisy. Practical: 0–0.2.
+        normalStrength: 0.005,
     },
     ...overrides,
 });
@@ -52,7 +79,7 @@ const physicalTemplate = {
         // Hexsphere subdivision frequency (icosahedron edge divisions). The
         // surface has 10·f²+2 cells; keep modest (e.g. 12–24). The body's
         // `radius` is derived from this via the global `cellSize`.
-        hexFrequency: 64,
+        hexFrequency: 32,
         maxDepth: 5,              // number of crust layers (any reasonable number)
         shape: {
             type: 'sphere',
