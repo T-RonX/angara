@@ -17,7 +17,8 @@
         "dev-server": "encore dev-server",
         "dev": "encore dev",
         "watch": "encore dev --watch",
-        "build": "encore production --progress"
+        "build": "encore production --progress",
+        "test:explorer": "node --experimental-default-type=module public/explorer/tests/proceduralTerrain.test.mjs"
     },
     "dependencies": {
         "pinia": "^3.0",
@@ -38,6 +39,7 @@
         "jsdom": "^24.0.0",
         "npm-run-all2": "^6.1.2",
         "prettier": "^3.2.5",
+        "simplex-noise": "4.0.3",
         "typescript": "~5.4.0",
         "vue-tsc": "^2.0.11",
         "@symfony/stimulus-bridge": "^4.0",

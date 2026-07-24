@@ -194,6 +194,8 @@
     }
     </script>
 
+    <script id="body-seeds" type="application/json">{{ bodySeeds|json_encode|raw }}</script>
+
     {# The whole renderer now lives in modular, SOLID plain-JS under
        public/explorer/. This is just the loader. #}
     <script type="module" src="/explorer/index.js"></script>

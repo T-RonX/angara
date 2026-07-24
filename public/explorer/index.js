@@ -1,4 +1,4 @@
-import { physical } from './config/physical.js';
+import { createPhysical } from './config/physical.js';
 import { behaviour } from './config/behaviour.js';
 import { validateConfigs } from './config/ConfigValidator.js';
 import { installBvh } from './core/BvhSetup.js';
@@ -10,6 +10,9 @@ import { BodyExplorer } from './BodyExplorer.js';
 // Dependencies are injected through the constructor; no service locator
 // or global event bus.
 // ----------------------------------------------------------------------
+const seedPayload = JSON.parse(document.getElementById('body-seeds')?.textContent ?? 'null');
+const physical = createPhysical(seedPayload);
+
 validateConfigs(physical, behaviour);
 
 // BVH patching must run before any BufferGeometry is created (it extends

@@ -34,7 +34,7 @@ export class GoldbergTopology
 
         const frequency = body.hexFrequency ?? 16;
 
-        this.#shapeField = new ShapeField(body.shape, body.radius);
+        this.#shapeField = new ShapeField(body.shape, body.radius, body.seed, body.terrain);
 
         this.#grid = new GoldbergGrid(
             this.#body, layerModel, atmosphere, atmosphereRadius, frequency, this.#shapeField, faceData,

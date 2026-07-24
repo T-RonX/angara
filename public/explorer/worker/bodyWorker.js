@@ -12,6 +12,7 @@
 // Transferables and the main thread never blocks on generation.
 // ----------------------------------------------------------------------
 import { buildGoldbergFaces, buildSurfaceGeometry, ShapeSampler } from './GoldbergGen.js';
+import { generateTileDataWithField } from '../texture/procedural/generateTileData.js';
 
 self.onmessage = (e) =>
 {
@@ -19,8 +20,9 @@ self.onmessage = (e) =>
 
     try
     {
-        const shapeSampler = new ShapeSampler(req.shape, req.size);
+        const shapeSampler = new ShapeSampler(req.shape, req.size, req.seed, req.terrain);
         const faces = buildGoldbergFaces(req.frequency);
+        const tileData = generateTileDataWithField(faces.dirs, shapeSampler.field);
         const surface = buildSurfaceGeometry(
             faces,
             req.layerThicknesses,
@@ -40,9 +42,12 @@ self.onmessage = (e) =>
             surface.normals.buffer,
             surface.indices.buffer,
             surface.faceCellIndex.buffer,
+            surface.tileIds.buffer,
+            surface.outward.buffer,
+            tileData.packed.buffer,
         ];
 
-        self.postMessage({ id: req.id, ok: true, faces, surface }, transfer);
+        self.postMessage({ id: req.id, ok: true, faces, surface, tileData }, transfer);
     }
     catch (err)
     {

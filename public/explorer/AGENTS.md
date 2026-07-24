@@ -12,8 +12,8 @@ The architecture must strictly follow the SOLID principles. Dependency injection
 
 The main config files are the key runtime drivers and should remain the authoritative input surface for behavior:
 
-- `config/physical.js` owns body, shape, layers, materials, atmosphere, orbit, rotation, and star definitions.
-- `config/behaviour.js` owns camera, input, traversal, transitions, slicing, HUD, lighting fill, atmosphere rendering, and debug behavior.
+- `config/physical.js` owns body seeds, terrain, shape, layers, materials, atmosphere, orbit, rotation, and star definitions.
+- `config/behaviour.js` owns camera, input, traversal, transitions, generation thresholds, procedural rendering, slicing, HUD, lighting fill, atmosphere rendering, and debug behavior.
 
 New behavior should usually be introduced first in these config files, then consumed through injected collaborators and validated before runtime use.
 
@@ -21,7 +21,7 @@ New behavior should usually be introduced first in these config files, then cons
 
 There are exactly two runtime data files:
 
-- `config/physical.js`: serializable solar-system input only. It owns `cellSize`, `body`, recursive companions, body shape/layers/material identity/atmosphere/orbit/rotation, and physical star definitions.
+- `config/physical.js`: serializable solar-system input only. It owns `cellSize`, `body`, recursive companions, explicit uint32 body seeds, terrain, shape/layers/material identity/atmosphere/orbit/rotation, and physical star definitions.
 - `config/behaviour.js`: the single tuning surface for scene, camera, input, transitions, generation, LOD, lighting fill, materials, highlights, atmosphere rendering, slicing, starfield, HUD cadence, and debug behavior.
 
 `config/ConfigValidator.js` validates both trees before BVH installation or GPU/worker allocation. Add new required values to validation and consume validated values directly instead of scattering fallback defaults.
@@ -58,7 +58,8 @@ index.js
 - `geometry/`: generic N-gon prism geometry and cached typed arrays.
 - `hud/`: strict DOM contract, readouts, body/orbit editors, sliders, and loading state.
 - `input/`: the only raw DOM input listener owner.
-- `lighting/`, `star/`, `sky/`, `texture/`: lighting and procedural sky visuals.
+- `lighting/`, `star/`, `sky/`: lighting and procedural sky visuals.
+- `texture/`: pure seeded terrain sampling, packed per-tile records, and GPU tile-data textures.
 - `material/`: layer/core material creation and texture ownership.
 - `mode/`, `transition/`, `selection/`: mode state, interpolation, and selection policy.
 - `model/`: body/layer/orbit/rotation/shape domain models.
@@ -68,13 +69,15 @@ index.js
 - `slicing/`: clip-plane coordination.
 - `topology/GoldbergTopology.js`: direct hexsphere assembly.
 - `topology/goldberg/slicing/`: resource slice algorithms and render ownership.
-- `worker/`: Three-free body generation and worker client.
+- `worker/`: Three-free topology, terrain, displaced geometry, and packed tile-data generation plus its worker client.
 - `world/`: body meshes/registry/orbit/rotation/LOD/zoom.
 
 ## Required runtime behavior
 
 - Recursive bodies have independent orbit, axial tilt, spin, atmosphere, shape, and layer data.
-- Shape noise is deterministic for the same radius/seed and remains radially single-valued.
+- One explicit uint32 seed per body drives displacement, climate, biome palette variation, and shader offsets without unseeded randomness.
+- Worker and main-thread generation share the same pure terrain field, remain deterministic for the same inputs, and produce radially single-valued geometry.
+- Procedural biome rendering applies only to depth-0 outward fans. Walls, inner faces, deeper layers, highlights, core, and atmosphere retain their dedicated materials.
 - Sphere view picking is analytic; displaced-body view picking uses the BVH surface mesh.
 - Navigation is pole-free: horizontal left-drag pans along the wall, vertical left-drag advances the cut, right-drag rolls, and arrows mirror pan/advance.
 - Resource clicks select a cell and update Goldberg focus targets so the camera glides to it.
@@ -144,7 +147,7 @@ If abstractions conflict with a hot loop, select a specialized implementation on
 Every owner of a worker, listener, RAF handle, render target, texture, material, geometry, or transient mesh exposes an idempotent `dispose()`.
 
 - `ExplorerApplication.dispose()` stops RAF/listeners before disposing sessions and bodies.
-- `CelestialBody` owns its slice builder, atmosphere shell, body mesh, grid lines, layer materials/textures, and cached cell geometry.
+- `CelestialBody` owns its slice builder, atmosphere shell, body mesh, grid lines, layer materials/textures, tile-data texture, and cached cell geometry.
 - `BodyMesh` owns mesh geometries but not shared layer materials.
 - Slice collaborators dispose only their own transient meshes/material clones.
 - A body session clears `clip.onCutChanged` before releasing hover/highlight objects.
@@ -165,6 +168,12 @@ Every owner of a worker, listener, RAF handle, render target, texture, material,
 Get-ChildItem public\explorer -Recurse -Filter *.js | ForEach-Object {
     Get-Content $_.FullName -Raw | node --input-type=module --check
 }
+```
+
+- Run deterministic terrain invariants with:
+
+```powershell
+npm run test:explorer
 ```
 
 - Search deleted concepts before finishing: `physical.planet`, `.planet`, `cellTopology`, `CellTopology`, `createTopology`, `GoldbergBroadPhase`, `CrossSectionFactory`, cap branches, `isPoleCut`, `polarCap`, `InputController`, and broad `retarget` methods.

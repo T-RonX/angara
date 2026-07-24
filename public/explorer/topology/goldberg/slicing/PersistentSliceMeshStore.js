@@ -119,6 +119,8 @@ export class PersistentSliceMeshStore
         const positions = [];
         const normals = [];
         const sourceIndices = [];
+        const tileIds = [];
+        const outwardFaces = [];
         let maxCellIndex = 0;
 
         for (const cell of surfaceCells) maxCellIndex = Math.max(maxCellIndex, cell.cellIndex);
@@ -130,7 +132,14 @@ export class PersistentSliceMeshStore
         {
             const offset = sourceIndices.length;
 
-            this.#geometryFactory.appendOuterFace(cell, positions, normals, sourceIndices);
+            this.#geometryFactory.appendOuterFace(
+                cell,
+                positions,
+                normals,
+                sourceIndices,
+                tileIds,
+                outwardFaces,
+            );
             this.#surfaceIndexOffsets[cell.cellIndex] = offset;
             this.#surfaceIndexCounts[cell.cellIndex] = sourceIndices.length - offset;
         }
@@ -140,6 +149,8 @@ export class PersistentSliceMeshStore
         const geometry = new THREE.BufferGeometry();
         const position = new THREE.BufferAttribute(new Float32Array(positions), 3);
         const normal = new THREE.BufferAttribute(new Float32Array(normals), 3);
+        const tileId = new THREE.BufferAttribute(new Float32Array(tileIds), 1);
+        const outwardFace = new THREE.BufferAttribute(new Float32Array(outwardFaces), 1);
         const index = new THREE.BufferAttribute(
             new Uint32Array(this.#surfaceSourceIndices.length),
             1,
@@ -149,6 +160,8 @@ export class PersistentSliceMeshStore
         index.count = 0;
         geometry.setAttribute('position', position);
         geometry.setAttribute('normal', normal);
+        geometry.setAttribute('tileId', tileId);
+        geometry.setAttribute('outwardFace', outwardFace);
         geometry.setIndex(index);
         geometry.setDrawRange(0, 0);
         geometry.boundingSphere = this.#sphereForPositions(position.array);
@@ -263,6 +276,8 @@ export class PersistentSliceMeshStore
     {
         geometry.getAttribute('position').setUsage(THREE.DynamicDrawUsage);
         geometry.getAttribute('normal').setUsage(THREE.DynamicDrawUsage);
+        geometry.getAttribute('tileId').setUsage(THREE.DynamicDrawUsage);
+        geometry.getAttribute('outwardFace').setUsage(THREE.DynamicDrawUsage);
         geometry.index.setUsage(THREE.DynamicDrawUsage);
     }
 

@@ -246,7 +246,16 @@ export class FadeBatchManager
             const batch = this.#fadeBatches[i];
             const p     = Math.min(1, (this.#clock - batch.t0) / this.fadeDur);
 
-            for (const e of batch.entries) e.material.opacity = e.dir > 0 ? p : (1 - p);
+            for (const e of batch.entries)
+            {
+                const opacity = e.dir > 0 ? p : (1 - p);
+                e.material.opacity = opacity;
+
+                if (e.material.uniforms?.opacity)
+                {
+                    e.material.uniforms.opacity.value = opacity;
+                }
+            }
 
             if (p >= 1)
             {
@@ -408,10 +417,21 @@ export class FadeBatchManager
     // alphaHash approach) so overlapping staircase cells resolve correctly.
     #fadeMaterialClone(depth, initialOpacity)
     {
-        const mat       = this.#materials.depthMaterials[depth].clone();
+        const source    = this.#materials.depthMaterials[depth];
+        const mat       = source.clone();
         mat.transparent = true;
         mat.depthWrite  = true;
         mat.opacity     = initialOpacity;
+
+        if (source.uniforms?.tileDataTexture && mat.uniforms?.tileDataTexture)
+        {
+            mat.uniforms.tileDataTexture.value = source.uniforms.tileDataTexture.value;
+        }
+
+        if (mat.uniforms?.opacity)
+        {
+            mat.uniforms.opacity.value = initialOpacity;
+        }
 
         return mat;
     }

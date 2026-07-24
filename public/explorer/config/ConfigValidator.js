@@ -108,9 +108,101 @@ function validateBody(body, label)
         throw new Error(`[ConfigValidator] ${label}.shape.type must be 'sphere' or 'noise'`);
     }
 
+    assertInteger(body, 'seed', label, 0, 0xffffffff);
+    validateTerrain(body.terrain, `${label}.terrain`);
+
     if (!Array.isArray(body.depthColors) || body.depthColors.length === 0)
     {
         throw new Error(`[ConfigValidator] ${label}.depthColors must be a non-empty array`);
+    }
+
+    function validateTerrain(terrain, label)
+    {
+        if (!terrain || typeof terrain !== 'object')
+        {
+            throw new Error(`[ConfigValidator] ${label} must be an object`);
+        }
+
+        const positive = [
+            'maxDisplacement',
+            'macroFrequency',
+            'detailFrequency',
+            'warpFrequency',
+            'moistureFrequency',
+            'temperatureFrequency',
+            'lacunarity',
+            'textureWidth',
+            'shader.frequency',
+        ];
+        const nonNegative = [
+            'macroStrength',
+            'detailStrength',
+            'ridgeStrength',
+            'warpStrength',
+            'paletteVariation',
+            'shader.strength',
+            'shader.normalStrength',
+        ];
+
+        for (const path of positive) assertNumber(terrain, path, label, Number.EPSILON);
+        for (const path of nonNegative) assertNumber(terrain, path, label, 0);
+
+        assertInteger(terrain, 'detailOctaves', label, 1, 5);
+        assertInteger(terrain, 'climateOctaves', label, 3, 5);
+        assertInteger(terrain, 'textureWidth', label, 1, 16384);
+        assertInteger(terrain, 'shader.octaves', label, 1, 2);
+
+        for (const path of [
+            'gain',
+            'latitudeInfluence',
+            'coldThreshold',
+            'dryThreshold',
+            'wetThreshold',
+        ])
+        {
+            assertRange(terrain, path, label, 0, 1);
+        }
+
+        for (const path of ['seaLevel', 'snowLine'])
+        {
+            assertRange(terrain, path, label, -1, 1);
+        }
+
+        if (terrain.maxDisplacement >= 0.5)
+        {
+            throw new Error(`[ConfigValidator] ${label}.maxDisplacement must be < 0.5`);
+        }
+
+        if (terrain.dryThreshold >= terrain.wetThreshold)
+        {
+            throw new Error(`[ConfigValidator] ${label}.dryThreshold must be below wetThreshold`);
+        }
+
+        if (!Array.isArray(terrain.palette) || terrain.palette.length !== 6)
+        {
+            throw new Error(`[ConfigValidator] ${label}.palette must contain exactly 6 colors`);
+        }
+
+        for (let i = 0; i < terrain.palette.length; i++)
+        {
+            const color = terrain.palette[i];
+
+            if (!Number.isInteger(color) || color < 0 || color > 0xffffff)
+            {
+                throw new Error(`[ConfigValidator] ${label}.palette[${i}] must be a 24-bit integer color`);
+            }
+        }
+    }
+
+    function assertRange(obj, path, label, min, max)
+    {
+        assertNumber(obj, path, label, min);
+        const value = path.split('.').reduce((current, part) => current[part], obj);
+
+        if (value > max)
+        {
+            throw new Error(`[ConfigValidator] ${label}.${path} must be between ${min} and ${max}`);
+        }
     }
 
     // Validate each companion recursively.
@@ -187,4 +279,6 @@ export function validateConfigs(physical, behaviour)
     assertInteger(behaviour, 'debug.sliceProfiler.sampleWindow', 'behaviour', 1, 10000);
     assertNumber(behaviour, 'debug.sliceProfiler.hudIntervalMs', 'behaviour', 1);
     assertPath(behaviour, 'generation.useWorker', 'behaviour');
+    assertBoolean(behaviour, 'generation.useWorker', 'behaviour');
+    assertInteger(behaviour, 'generation.workerTileThreshold', 'behaviour', 1, 10000000);
 }

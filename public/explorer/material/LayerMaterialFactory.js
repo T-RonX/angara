@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { TileDataTexture } from '../texture/TileDataTexture.js';
+import { createProceduralSurfaceMaterial } from './ProceduralSurfaceMaterial.js';
 
 // ----------------------------------------------------------------------
 // LayerMaterialFactory — the single place that decides what the VISIBLE
@@ -17,17 +19,26 @@ export class LayerMaterialFactory
 
     #textureLoader;
     #textures = [];     // loaded textures to dispose
+    #tileTexture;
     #disposed = false;
 
-    constructor(body, layerModel, materialConfig)
+    constructor(body, layerModel, materialConfig, tileData, terrainField)
     {
         this.#textureLoader = new THREE.TextureLoader();
 
         const maps = this.#loadOptional(body.layerTextures);
         const normals = this.#loadOptional(body.layerNormalMaps);
 
-        this.depthMaterials = layerModel.depthColors.map((c, d) =>
-            this.#buildDepthMaterial(c, d, maps[d], normals[d], materialConfig));
+        this.#tileTexture = new TileDataTexture(tileData, body.terrain.textureWidth);
+        this.depthMaterials = layerModel.depthColors.map((c, d) => d === 0
+            ? createProceduralSurfaceMaterial({
+                body,
+                baseColor: c,
+                materialConfig,
+                tileTexture: this.#tileTexture,
+                terrainField,
+            })
+            : this.#buildDepthMaterial(c, d, maps[d], normals[d], materialConfig));
 
         this.coreMaterial = new THREE.MeshStandardMaterial({
             color: body.coreColor,
@@ -134,6 +145,7 @@ export class LayerMaterialFactory
         this.coreSkirtMaterial.dispose();
 
         for (const t of this.#textures) t.dispose();
+        this.#tileTexture.dispose();
 
         this.#textures.length = 0;
     }

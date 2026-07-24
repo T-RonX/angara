@@ -40,7 +40,7 @@ export class BodyGenService
 
             this.#pending.delete(msg.id);
 
-            if (msg.ok) entry.resolve({ faces: msg.faces, surface: msg.surface });
+            if (msg.ok) entry.resolve({ faces: msg.faces, surface: msg.surface, tileData: msg.tileData });
             else        entry.reject(new Error(msg.error));
         };
 

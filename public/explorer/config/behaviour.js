@@ -55,6 +55,9 @@ export const behaviour = {
         // loading overlay can render while a high-hexFrequency body builds.
         // false = synchronous (blocking) generation on the main thread.
         useWorker: true,
+        // Small bodies avoid worker startup/messaging overhead while preserving
+        // the same async API and pure generation path.
+        workerTileThreshold: 4096,
     },
 
     // Distance level-of-detail for the bodies. The ACTIVE body is always full

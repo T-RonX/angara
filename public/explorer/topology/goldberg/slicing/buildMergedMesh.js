@@ -19,6 +19,8 @@ export function buildMergedMesh(
 
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(size.floatCount), 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(size.floatCount), 3));
+    geo.setAttribute('tileId', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
+    geo.setAttribute('outwardFace', new THREE.BufferAttribute(new Float32Array(size.vertexCount), 1));
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(size.idxCount), 1));
 
     const faceToCell = new Array(size.idxCount / 3);
@@ -70,6 +72,8 @@ export function updateMergedMesh(
     const geo = mesh?.geometry;
     const position = geo?.getAttribute('position');
     const normal = geo?.getAttribute('normal');
+    const tileId = geo?.getAttribute('tileId');
+    const outwardFace = geo?.getAttribute('outwardFace');
     const index = geo?.index;
 
     if (
@@ -77,9 +81,13 @@ export function updateMergedMesh(
         || !(position?.array instanceof Float32Array)
         || !(normal?.array instanceof Float32Array)
         || !(index?.array instanceof Uint32Array)
+        || !(tileId?.array instanceof Float32Array)
+        || !(outwardFace?.array instanceof Float32Array)
         || position.itemSize !== 3
         || normal.itemSize !== 3
         || index.itemSize !== 1
+        || tileId.itemSize !== 1
+        || outwardFace.itemSize !== 1
     )
     {
         return null;
@@ -162,7 +170,7 @@ function measure(cells, geometryFactory, variant)
         idxCount += g.idx.length;
     }
 
-    return { floatCount, idxCount };
+    return { floatCount, vertexCount: floatCount / 3, idxCount };
 }
 
 function fill(
@@ -178,9 +186,13 @@ function fill(
     const position = geo.getAttribute('position');
     const normal = geo.getAttribute('normal');
     const index = geo.index;
+    const tileId = geo.getAttribute('tileId');
+    const outwardFace = geo.getAttribute('outwardFace');
     const positions = position.array;
     const normals = normal.array;
     const indices = index.array;
+    const tileIds = tileId.array;
+    const outwardFaces = outwardFace.array;
     let floatOff = 0;
     let idxOff = 0;
     let vertBase = 0;
@@ -192,6 +204,8 @@ function fill(
 
         positions.set(g.pos, floatOff);
         normals.set(g.nrm, floatOff);
+        tileIds.set(g.tileId, vertBase);
+        outwardFaces.set(g.outwardFace, vertBase);
 
         for (let j = 0; j < g.idx.length; j++)
         {
@@ -216,6 +230,8 @@ function fill(
     position.count = size.floatCount / 3;
     normal.count = size.floatCount / 3;
     index.count = size.idxCount;
+    tileId.count = size.vertexCount;
+    outwardFace.count = size.vertexCount;
     geo.setDrawRange(0, size.idxCount);
 
     if (markForUpload)
@@ -223,6 +239,8 @@ function fill(
         markUpdated(position, size.floatCount);
         markUpdated(normal, size.floatCount);
         markUpdated(index, size.idxCount);
+        markUpdated(tileId, size.vertexCount);
+        markUpdated(outwardFace, size.vertexCount);
     }
 }
 
@@ -231,11 +249,15 @@ function ensureCapacity(geo, size, dynamicDraw)
     const position = geo.getAttribute('position');
     const normal = geo.getAttribute('normal');
     const index = geo.index;
+    const tileId = geo.getAttribute('tileId');
+    const outwardFace = geo.getAttribute('outwardFace');
     const growFloats = position.array.length < size.floatCount
         || normal.array.length < size.floatCount;
+    const growVertices = tileId.array.length < size.vertexCount
+        || outwardFace.array.length < size.vertexCount;
     const growIndices = index.array.length < size.idxCount;
 
-    if (!growFloats && !growIndices) return false;
+    if (!growFloats && !growVertices && !growIndices) return false;
 
     // Three r160's renderer releases uploaded BufferAttributes only from the
     // geometry dispose event. Keep the geometry identity, but release every
@@ -257,6 +279,23 @@ function ensureCapacity(geo, size, dynamicDraw)
 
         geo.setAttribute('position', nextPosition);
         geo.setAttribute('normal', nextNormal);
+    }
+
+    if (growVertices)
+    {
+        const current = Math.min(tileId.array.length, outwardFace.array.length);
+        const capacity = grownCapacity(current, size.vertexCount, 1);
+        const nextTileId = new THREE.BufferAttribute(new Float32Array(capacity), 1);
+        const nextOutwardFace = new THREE.BufferAttribute(new Float32Array(capacity), 1);
+
+        if (dynamicDraw)
+        {
+            nextTileId.setUsage(THREE.DynamicDrawUsage);
+            nextOutwardFace.setUsage(THREE.DynamicDrawUsage);
+        }
+
+        geo.setAttribute('tileId', nextTileId);
+        geo.setAttribute('outwardFace', nextOutwardFace);
     }
 
     if (growIndices)

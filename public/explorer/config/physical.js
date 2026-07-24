@@ -6,7 +6,40 @@
 // in behaviour.js. Eventually this exact shape will be delivered by the
 // backend, so keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
-export const physical = {
+const terrain = (palette, overrides = {}) => ({
+    maxDisplacement: 0.1,
+    macroFrequency: 1.35,
+    macroStrength: 0.72,
+    ridgeStrength: 0.28,
+    detailFrequency: 3.4,
+    detailStrength: 0.28,
+    detailOctaves: 4,
+    lacunarity: 2.0,
+    gain: 0.5,
+    warpFrequency: 1.1,
+    warpStrength: 0.45,
+    climateOctaves: 4,
+    moistureFrequency: 1.7,
+    temperatureFrequency: 1.25,
+    latitudeInfluence: 0.62,
+    seaLevel: -0.2,
+    snowLine: 0.48,
+    coldThreshold: 0.3,
+    dryThreshold: 0.34,
+    wetThreshold: 0.68,
+    palette,
+    paletteVariation: 0.08,
+    textureWidth: 1024,
+    shader: {
+        octaves: 2,
+        frequency: 42,
+        strength: 0.055,
+        normalStrength: 0.32,
+    },
+    ...overrides,
+});
+
+const physicalTemplate = {
     // Global cell size: world units of body radius per unit of `hexFrequency`.
     // Every body derives its `radius = hexFrequency × cellSize`, so all bodies
     // share the same physical cell dimensions regardless of size. Anchored to
@@ -22,16 +55,13 @@ export const physical = {
         hexFrequency: 64,
         maxDepth: 5,              // number of crust layers (any reasonable number)
         shape: {
-            type: 'sphere',        // 'sphere' | 'noise'
-            seed: 1337,           // integer; same seed ⇒ identical body
-            octaves: 2,           // fBm octave count
-            baseFrequency: 1.4,   // noise frequency of the first octave
-            lacunarity: 2.0,      // frequency multiplier per octave
-            gain: 0.55,           // amplitude multiplier per octave
-            amplitude: 0.35,      // overall displacement strength (fraction of radius)
-            maxDisplacement: 0.11,// hard clamp on |displacement| (fraction) — keeps it star-shaped
-            axisScale: [1.0, 0.82, 1.15], // optional elongation (still star-shaped)
+            type: 'sphere',
+            axisScale: [1.0, 0.82, 1.15],
         },
+        terrain: terrain(
+            [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
+            { maxDisplacement: 0.11 },
+        ),
         axialTiltDeg:      23.4,  // obliquity (degrees); 0 = north pole aligned with world Y
         rotationPeriodSec: 1360,   // one full prograde spin in real-time seconds; 0 = stationary
 
@@ -106,14 +136,16 @@ export const physical = {
                 maxDepth: 4,
                 shape: {
                     type: 'noise',
-                    seed: 4242,
-                    octaves: 2,
-                    baseFrequency: 1.6,
-                    lacunarity: 2.0,
-                    gain: 0.55,
-                    amplitude: 0.35,
-                    maxDisplacement: 0.14
                 },
+                terrain: terrain(
+                    [0x374050, 0x8f8578, 0x9a8f81, 0x858078, 0x625e59, 0xd7d9dc],
+                    {
+                        maxDisplacement: 0.14,
+                        macroFrequency: 1.6,
+                        detailFrequency: 4.2,
+                        seaLevel: -0.75,
+                    },
+                ),
                 axialTiltDeg:      6.7,  // obliquity (degrees); 0 = north pole aligned with world Y
                 rotationPeriodSec: 1600,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
@@ -148,14 +180,16 @@ export const physical = {
                 maxDepth: 3,
                 shape: {
                     type: 'noise',
-                    seed: 9876,
-                    octaves: 3,
-                    baseFrequency: 2.1,
-                    lacunarity: 2.2,
-                    gain: 0.48,
-                    amplitude: 0.40,
-                    maxDisplacement: 0.16
                 },
+                terrain: terrain(
+                    [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
+                    {
+                        maxDisplacement: 0.16,
+                        macroFrequency: 2.1,
+                        detailFrequency: 4.8,
+                        seaLevel: -0.7,
+                    },
+                ),
                 axialTiltDeg:      57,  // obliquity (degrees); 0 = north pole aligned with world Y
                 rotationPeriodSec: 1145,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
@@ -189,14 +223,17 @@ export const physical = {
                 maxDepth: 3,
                 shape: {
                     type: 'sphere',
-                    seed: 1111,
-                    octaves: 1,
-                    baseFrequency: 0.5,
-                    lacunarity: 1.0,
-                    gain: 0.0,
-                    amplitude: 0.0,
-                    maxDisplacement: 0.0
                 },
+                terrain: terrain(
+                    [0x264b74, 0xb6d7ee, 0xcde8f5, 0x9abecc, 0x7196aa, 0xf4f8ff],
+                    {
+                        maxDisplacement: 0.07,
+                        macroFrequency: 1.0,
+                        detailFrequency: 3.0,
+                        seaLevel: -0.08,
+                        snowLine: 0.28,
+                    },
+                ),
                 axialTiltDeg:      28,   // obliquity (degrees); 0 = north pole aligned with world Y
                 rotationPeriodSec: 1240,  // one full prograde spin in real-time seconds; 0 = stationary
                 layerThicknesses: null,
@@ -310,3 +347,30 @@ export const physical = {
         },
     ],
 };
+
+function applySeeds(body, seedNode)
+{
+    if (!seedNode || seedNode.id !== body.id)
+    {
+        throw new Error(`[physical] Missing seed payload for body '${body.id}'`);
+    }
+
+    body.seed = seedNode.seed;
+
+    const childSeeds = new Map(
+        (seedNode.companions ?? []).map(child => [child.id, child]),
+    );
+
+    for (const companion of body.companions ?? [])
+    {
+        applySeeds(companion, childSeeds.get(companion.id));
+    }
+}
+
+export function createPhysical(seedPayload)
+{
+    const physical = structuredClone(physicalTemplate);
+    applySeeds(physical.body, seedPayload);
+
+    return physical;
+}

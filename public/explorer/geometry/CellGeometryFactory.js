@@ -24,20 +24,30 @@ export class CellGeometryFactory
     }
 
     // Append one cell's geometry, recording its triangle count on the cell.
-    appendCell(cell, positions, normals, indices)
+    appendCell(cell, positions, normals, indices, tileIds = null, outwardFaces = null)
     {
         const triStart = indices.length / 3;
 
-        this.#appendPrismCell(cell, positions, normals, indices);
+        this.#appendPrismCell(cell, positions, normals, indices, true, tileIds, outwardFaces);
 
         cell.triCount = indices.length / 3 - triStart;
     }
 
     // Append only the immutable outward-facing fan. The persistent slice atlas
     // uses this path so constructing it does not populate every cell's prism cache.
-    appendOuterFace(cell, positions, normals, indices)
+    appendOuterFace(cell, positions, normals, indices, tileIds = null, outwardFaces = null)
     {
-        this.#appendFan(cell.outerRing, +1, positions, normals, indices);
+        this.#appendFan(
+            cell.outerRing,
+            +1,
+            positions,
+            normals,
+            indices,
+            tileIds,
+            outwardFaces,
+            cell.cellIndex,
+            !cell.isAtmosphere,
+        );
     }
 
     // Cell geometry is STATIC (it depends only on the cell's corner rings, which
@@ -60,8 +70,8 @@ export class CellGeometryFactory
 
         if (cell.geoCache) return cell.geoCache;
 
-        const positions = [], normals = [], indices = [];
-        this.appendCell(cell, positions, normals, indices);
+        const positions = [], normals = [], indices = [], tileIds = [], outwardFaces = [];
+        this.appendCell(cell, positions, normals, indices, tileIds, outwardFaces);
 
         // #appendPrismCell always emits, in order: the outer (surface-facing)
         // fan (n-2 triangles), then the inner (core-facing / "bottom") fan
@@ -75,6 +85,8 @@ export class CellGeometryFactory
             pos: new Float32Array(positions),
             nrm: new Float32Array(normals),
             idx: new Uint32Array(indices),
+            tileId: new Float32Array(tileIds),
+            outwardFace: new Float32Array(outwardFaces),
             triCount: cell.triCount,
             innerFaceTriStart,
             innerFaceTriCount,
@@ -89,10 +101,18 @@ export class CellGeometryFactory
     {
         if (cell.wallGeoCache) return cell.wallGeoCache;
 
-        const positions = [], normals = [], indices = [];
+        const positions = [], normals = [], indices = [], tileIds = [], outwardFaces = [];
         const triStart = indices.length / 3;
 
-        this.#appendPrismCell(cell, positions, normals, indices, false);
+        this.#appendPrismCell(
+            cell,
+            positions,
+            normals,
+            indices,
+            false,
+            tileIds,
+            outwardFaces,
+        );
 
         const n = cell.outerRing.length;
 
@@ -100,6 +120,8 @@ export class CellGeometryFactory
             pos: new Float32Array(positions),
             nrm: new Float32Array(normals),
             idx: new Uint32Array(indices),
+            tileId: new Float32Array(tileIds),
+            outwardFace: new Float32Array(outwardFaces),
             triCount: indices.length / 3 - triStart,
             innerFaceTriStart: 0,
             innerFaceTriCount: n - 2,
@@ -123,7 +145,15 @@ export class CellGeometryFactory
         return geo;
     }
 
-    #appendPrismCell(cell, positions, normals, indices, includeOuter = true)
+    #appendPrismCell(
+        cell,
+        positions,
+        normals,
+        indices,
+        includeOuter = true,
+        tileIds = null,
+        outwardFaces = null,
+    )
     {
         const outer = cell.outerRing;
         const inner = cell.innerRing;
@@ -143,21 +173,66 @@ export class CellGeometryFactory
         const cen = new THREE.Vector3(dir.x * avgRadius, dir.y * avgRadius, dir.z * avgRadius);
 
         // Outer skin (radial-outward normals) and inner skin (inward).
-        if (includeOuter) this.#appendFan(outer, +1, positions, normals, indices);
-        this.#appendFan(inner, -1, positions, normals, indices);
+        if (includeOuter)
+        {
+            this.#appendFan(
+                outer,
+                +1,
+                positions,
+                normals,
+                indices,
+                tileIds,
+                outwardFaces,
+                cell.cellIndex,
+                cell.depth === 0 && !cell.isAtmosphere,
+            );
+        }
+        this.#appendFan(
+            inner,
+            -1,
+            positions,
+            normals,
+            indices,
+            tileIds,
+            outwardFaces,
+            cell.cellIndex,
+            false,
+        );
 
         // One flat side quad per ring edge.
         for (let k = 0; k < n; k++)
         {
             const k2 = (k + 1) % n;
-            this.#appendSideQuad(outer[k], outer[k2], inner[k2], inner[k], cen, positions, normals, indices);
+            this.#appendSideQuad(
+                outer[k],
+                outer[k2],
+                inner[k2],
+                inner[k],
+                cen,
+                positions,
+                normals,
+                indices,
+                tileIds,
+                outwardFaces,
+                cell.cellIndex,
+            );
         }
     }
 
     // Fan-triangulate a ring with radial normals. `dir` = +1 pushes the
     // normals outward (outer skin), -1 inward (inner skin). The winding is
     // flipped when needed so the visible face survives FrontSide culling.
-    #appendFan(ring, dir, positions, normals, indices)
+    #appendFan(
+        ring,
+        dir,
+        positions,
+        normals,
+        indices,
+        tileIds = null,
+        outwardFaces = null,
+        tileId = 0,
+        isOutward = false,
+    )
     {
         const n = ring.length;
 
@@ -176,6 +251,8 @@ export class CellGeometryFactory
             positions.push(p.x, p.y, p.z);
             const inv = dir / (Math.hypot(p.x, p.y, p.z) || 1);
             normals.push(p.x * inv, p.y * inv, p.z * inv);
+            tileIds?.push(tileId);
+            outwardFaces?.push(isOutward ? 1 : 0);
         }
 
         for (let i = 1; i < n - 1; i++)
@@ -187,7 +264,19 @@ export class CellGeometryFactory
 
     // A flat side quad [a,b outer][c,d inner], normal oriented away from the
     // cell centroid so it faces outward.
-    #appendSideQuad(a, b, c, d, cen, positions, normals, indices)
+    #appendSideQuad(
+        a,
+        b,
+        c,
+        d,
+        cen,
+        positions,
+        normals,
+        indices,
+        tileIds = null,
+        outwardFaces = null,
+        tileId = 0,
+    )
     {
         let nx = (b.y - a.y) * (d.z - a.z) - (b.z - a.z) * (d.y - a.y);
         let ny = (b.z - a.z) * (d.x - a.x) - (b.x - a.x) * (d.z - a.z);
@@ -209,6 +298,8 @@ export class CellGeometryFactory
         {
             positions.push(p.x, p.y, p.z);
             normals.push(nx, ny, nz);
+            tileIds?.push(tileId);
+            outwardFaces?.push(0);
         }
 
         indices.push(base, base + 1, base + 2, base + 3, base + 4, base + 5);

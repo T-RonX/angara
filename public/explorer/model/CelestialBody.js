@@ -6,6 +6,7 @@ import { ClipController } from '../slicing/ClipController.js';
 import { GoldbergTopology } from '../topology/GoldbergTopology.js';
 import { AtmosphereShell } from '../atmosphere/AtmosphereShell.js';
 import { SliceProfiler } from '../topology/goldberg/slicing/SliceProfiler.js';
+import { generateTileDataWithField } from '../texture/procedural/generateTileData.js';
 
 // ----------------------------------------------------------------------
 // CelestialBody -- one self-contained, positionable body in the scene. Owns
@@ -64,11 +65,14 @@ export class CelestialBody
             generated?.faces ?? null,
         );
         this.#cellGrid = this.#topology.grid;
+        const tileData = generated?.tileData ?? this.#generateTileData();
 
         this.#materials = new LayerMaterialFactory(
             this.#body,
             this.#layerModel,
             behaviour.materials,
+            tileData,
+            this.#topology.shapeField.terrainField,
         );
         this.#cellGeometry = new CellGeometryFactory();
 
@@ -133,7 +137,9 @@ export class CelestialBody
         {
             try
             {
-                if (service.isSupported)
+                const tileCount = 10 * bodyConfig.hexFrequency ** 2 + 2;
+
+                if (service.isSupported && tileCount >= behaviour.generation.workerTileThreshold)
                 {
                     generated = await service.generate(CelestialBody.#specFor(bodyConfig));
                 }
@@ -163,7 +169,24 @@ export class CelestialBody
             minSurface: coreRadius + 0.2 * nominalCrust,
             shape: body.shape ?? { type: 'sphere' },
             size: body.radius,
+            seed: body.seed,
+            terrain: body.terrain,
         };
+    }
+
+    #generateTileData()
+    {
+        const centroids = new Float32Array(this.#cellGrid.surfaceCells.length * 3);
+
+        for (const cell of this.#cellGrid.surfaceCells)
+        {
+            const offset = cell.cellIndex * 3;
+            centroids[offset] = cell.centroidDir.x;
+            centroids[offset + 1] = cell.centroidDir.y;
+            centroids[offset + 2] = cell.centroidDir.z;
+        }
+
+        return generateTileDataWithField(centroids, this.#topology.shapeField.terrainField);
     }
 
     get id()            { return this.#config.id ?? null; }

@@ -27,147 +27,27 @@ function clamp(v, lo, hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-// --- deterministic shape field (ported from model/ShapeField.js) -------
+import { TerrainField } from '../texture/procedural/TerrainField.js';
 
 class ShapeSampler
 {
-    constructor(shape, size)
+    constructor(shape, size, seed, terrain)
     {
         this.size = size;
-        this.type = shape?.type ?? 'sphere';
-        this.cfg = {
-            octaves:         shape?.octaves ?? 4,
-            baseFrequency:   shape?.baseFrequency ?? 1.6,
-            lacunarity:      shape?.lacunarity ?? 2.0,
-            gain:            shape?.gain ?? 0.5,
-            amplitude:       shape?.amplitude ?? 0.12,
-            maxDisplacement: shape?.maxDisplacement ?? 0.18,
-        };
-
         const axis = shape?.axisScale ?? [1, 1, 1];
-        this.axis = [axis[0] ?? 1, axis[1] ?? 1, axis[2] ?? 1];
-
-        if (this.type === 'noise') this.perm = this.#buildPermutation(shape?.seed ?? 0);
-    }
-
-    get isSphere()
-    {
-        return this.type !== 'noise';
+        this.field = new TerrainField(seed, terrain, axis);
+        this.maxDisplacement = terrain.maxDisplacement;
     }
 
     get maxRadius()
     {
-        return this.isSphere ? this.size : this.size * (1 + this.cfg.maxDisplacement);
+        return this.size * (1 + this.maxDisplacement);
     }
 
     // Radius in a unit direction (x,y,z assumed normalised).
     surfaceRadius(x, y, z)
     {
-        if (this.isSphere) return this.size;
-
-        const c = this.cfg;
-        let freq = c.baseFrequency;
-        let amp = 1;
-        let sum = 0;
-        let norm = 0;
-
-        const ax = x * this.axis[0];
-        const ay = y * this.axis[1];
-        const az = z * this.axis[2];
-
-        for (let o = 0; o < c.octaves; o++)
-        {
-            sum += amp * this.#perlin3(ax * freq, ay * freq, az * freq);
-            norm += amp;
-            freq *= c.lacunarity;
-            amp *= c.gain;
-        }
-
-        const fbm = norm > 0 ? sum / norm : 0;
-        const disp = clamp(fbm * c.amplitude, -c.maxDisplacement, c.maxDisplacement);
-
-        return this.size * (1 + disp);
-    }
-
-    #mulberry32(seed)
-    {
-        let a = seed >>> 0;
-
-        return () =>
-        {
-            a |= 0;
-            a = (a + 0x6D2B79F5) | 0;
-            let t = Math.imul(a ^ (a >>> 15), 1 | a);
-            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
-    }
-
-    #buildPermutation(seed)
-    {
-        const rng = this.#mulberry32(seed);
-        const p = new Uint8Array(256);
-
-        for (let i = 0; i < 256; i++) p[i] = i;
-
-        for (let i = 255; i > 0; i--)
-        {
-            const j = Math.floor(rng() * (i + 1));
-            const tmp = p[i];
-            p[i] = p[j];
-            p[j] = tmp;
-        }
-
-        const perm = new Uint8Array(512);
-        for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
-
-        return perm;
-    }
-
-    #fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-    #lerp(a, b, t) { return a + t * (b - a); }
-
-    #grad(hash, x, y, z)
-    {
-        const h = hash & 15;
-        const u = h < 8 ? x : y;
-        const v = h < 4 ? y : (h === 12 || h === 14 ? x : z);
-
-        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-    }
-
-    #perlin3(x, y, z)
-    {
-        const p = this.perm;
-        const X = Math.floor(x) & 255;
-        const Y = Math.floor(y) & 255;
-        const Z = Math.floor(z) & 255;
-
-        x -= Math.floor(x);
-        y -= Math.floor(y);
-        z -= Math.floor(z);
-
-        const u = this.#fade(x);
-        const v = this.#fade(y);
-        const w = this.#fade(z);
-
-        const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
-        const B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-
-        return this.#lerp(
-            this.#lerp(
-                this.#lerp(this.#grad(p[AA], x, y, z),     this.#grad(p[BA], x - 1, y, z), u),
-                this.#lerp(this.#grad(p[AB], x, y - 1, z), this.#grad(p[BB], x - 1, y - 1, z), u),
-                v,
-            ),
-            this.#lerp(
-                this.#lerp(this.#grad(p[AA + 1], x, y, z - 1),     this.#grad(p[BA + 1], x - 1, y, z - 1), u),
-                this.#lerp(this.#grad(p[AB + 1], x, y - 1, z - 1), this.#grad(p[BB + 1], x - 1, y - 1, z - 1), u),
-                v,
-            ),
-            w,
-        );
+        return this.size * (1 + this.field.sampleElevation(x, y, z) * this.maxDisplacement);
     }
 }
 
@@ -473,6 +353,8 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
     const normals = [];
     const indices = [];
     const faceCellIndex = [];
+    const tileIds = [];
+    const outward = [];
 
     for (let p = 0; p < count; p++)
     {
@@ -491,10 +373,17 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
         }
 
         const triStart = indices.length / 3;
+        const vertexStart = positions.length / 3;
         appendPrismCell(outer, inner, positions, normals, indices);
+        const vertexCount = positions.length / 3 - vertexStart;
         const triEnd = indices.length / 3;
 
         for (let t = triStart; t < triEnd; t++) faceCellIndex.push(p);
+        for (let v = 0; v < vertexCount; v++)
+        {
+            tileIds.push(p);
+            outward.push(v < outer.length ? 1 : 0);
+        }
     }
 
     return {
@@ -502,6 +391,8 @@ function buildSurfaceGeometry(faces, layerThicknesses, coreRadius, minSurface, s
         normals: new Float32Array(normals),
         indices: new Uint32Array(indices),
         faceCellIndex: new Uint32Array(faceCellIndex),
+        tileIds: new Float32Array(tileIds),
+        outward: new Float32Array(outward),
     };
 }
 
