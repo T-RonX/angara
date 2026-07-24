@@ -7,17 +7,17 @@
 // backend, so keep it serialisable (plain numbers / strings / arrays only).
 // ----------------------------------------------------------------------
 const terrain = (palette, overrides = {}) => ({
-    maxDisplacement: 0.1,
-    macroFrequency: 1.35,
-    macroStrength: 0.72,
-    ridgeStrength: 0.28,
-    detailFrequency: 3.4,
-    detailStrength: 0.28,
-    detailOctaves: 4,
-    lacunarity: 2.0,
-    gain: 0.5,
-    warpFrequency: 1.1,
-    warpStrength: 0.45,
+    maxDisplacement: 0.06,
+    macroFrequency: 1.0,
+    macroStrength: 0.82,
+    ridgeStrength: 0.1,
+    detailFrequency: 2.0,
+    detailStrength: 0.18,
+    detailOctaves: 3,
+    lacunarity: 1.9,
+    gain: 0.42,
+    warpFrequency: 0.8,
+    warpStrength: 0.2,
     climateOctaves: 4,
     moistureFrequency: 1.7,
     temperatureFrequency: 1.25,
@@ -28,13 +28,13 @@ const terrain = (palette, overrides = {}) => ({
     dryThreshold: 0.34,
     wetThreshold: 0.68,
     palette,
-    paletteVariation: 0.08,
+    paletteVariation: 0.03,
     textureWidth: 1024,
     shader: {
         octaves: 2,
-        frequency: 42,
-        strength: 0.055,
-        normalStrength: 0.32,
+        frequency: 14,
+        strength: 0.018,
+        normalStrength: 0.06,
     },
     ...overrides,
 });
@@ -60,7 +60,7 @@ const physicalTemplate = {
         },
         terrain: terrain(
             [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
-            { maxDisplacement: 0.11 },
+            { maxDisplacement: 0.055 },
         ),
         axialTiltDeg:      23.4,  // obliquity (degrees); 0 = north pole aligned with world Y
         rotationPeriodSec: 1360,   // one full prograde spin in real-time seconds; 0 = stationary
@@ -140,9 +140,10 @@ const physicalTemplate = {
                 terrain: terrain(
                     [0x374050, 0x8f8578, 0x9a8f81, 0x858078, 0x625e59, 0xd7d9dc],
                     {
-                        maxDisplacement: 0.14,
-                        macroFrequency: 1.6,
-                        detailFrequency: 4.2,
+                        maxDisplacement: 0.075,
+                        macroFrequency: 1.2,
+                        ridgeStrength: 0.14,
+                        detailFrequency: 2.4,
                         seaLevel: -0.75,
                     },
                 ),
@@ -184,9 +185,10 @@ const physicalTemplate = {
                 terrain: terrain(
                     [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
                     {
-                        maxDisplacement: 0.16,
-                        macroFrequency: 2.1,
-                        detailFrequency: 4.8,
+                        maxDisplacement: 0.085,
+                        macroFrequency: 1.35,
+                        ridgeStrength: 0.16,
+                        detailFrequency: 2.7,
                         seaLevel: -0.7,
                     },
                 ),
@@ -227,9 +229,10 @@ const physicalTemplate = {
                 terrain: terrain(
                     [0x264b74, 0xb6d7ee, 0xcde8f5, 0x9abecc, 0x7196aa, 0xf4f8ff],
                     {
-                        maxDisplacement: 0.07,
-                        macroFrequency: 1.0,
-                        detailFrequency: 3.0,
+                        maxDisplacement: 0.035,
+                        macroFrequency: 0.8,
+                        ridgeStrength: 0.06,
+                        detailFrequency: 1.7,
                         seaLevel: -0.08,
                         snowLine: 0.28,
                     },
