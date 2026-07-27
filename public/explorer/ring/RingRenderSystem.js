@@ -4,10 +4,11 @@ export class RingRenderSystem
     #starSystem;
     #disposed = false;
 
-    constructor(registry, starSystem)
+    constructor(registry, starSystem, nightDarkness)
     {
         this.#registry = registry;
         this.#starSystem = starSystem;
+        this.setNightDarkness(nightDarkness);
     }
 
     update()
@@ -23,6 +24,16 @@ export class RingRenderSystem
                 this.#starSystem.colors,
                 energies,
             );
+        }
+    }
+
+    setNightDarkness(nightDarkness)
+    {
+        if (this.#disposed) return;
+
+        for (const body of this.#registry.bodies)
+        {
+            body.rings?.setNightDarkness(nightDarkness);
         }
     }
 

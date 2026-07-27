@@ -13,6 +13,7 @@ export class RingSystem
     #material;
     #shadowUniforms;
     #body;
+    #ambient;
     #worldQuaternion = new THREE.Quaternion();
     #parentWorldQuaternion = new THREE.Quaternion();
     #axialTilt = new THREE.Quaternion();
@@ -28,6 +29,7 @@ export class RingSystem
     {
         this.#body = body;
         const config = body.rings;
+        this.#ambient = config.ambient;
         const profile = buildRingProfile(config, body.seed);
         const innerRadius = config.innerRadius * body.radius;
         const outerRadius = config.outerRadius * body.radius;
@@ -178,6 +180,11 @@ export class RingSystem
     setLodVisible(visible)
     {
         this.mesh.visible = visible;
+    }
+
+    setNightDarkness(nightDarkness)
+    {
+        this.#material.uniforms.uAmbient.value = this.#ambient * nightDarkness;
     }
 
     dispose()

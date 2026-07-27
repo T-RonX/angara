@@ -275,7 +275,11 @@ export class ExplorerApplication
 
         await this.#buildBodyTree(this.#physical.body, null);
 
-        this.#ringRenderSystem = new RingRenderSystem(this.#registry, this.#starSystem);
+        this.#ringRenderSystem = new RingRenderSystem(
+            this.#registry,
+            this.#starSystem,
+            this.#behaviour.lighting.nightDarkness,
+        );
         this.#atmosphereSystem = new AtmosphereSystem(
             this.#registry, this.#starSystem, this.#behaviour,
         );
@@ -340,7 +344,11 @@ export class ExplorerApplication
         this.#sliderPanel = new SliderPanel(
             this.#starSystem,
             this.#behaviour.lighting,
-            night => this.#lightingRig.applyNight(night),
+            night =>
+            {
+                this.#lightingRig.applyNight(night);
+                this.#ringRenderSystem.setNightDarkness(night);
+            },
         );
     }
 
