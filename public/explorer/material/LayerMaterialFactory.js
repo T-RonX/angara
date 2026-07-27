@@ -22,7 +22,7 @@ export class LayerMaterialFactory
     #tileTexture;
     #disposed = false;
 
-    constructor(body, layerModel, materialConfig, tileData, terrainField)
+    constructor(body, layerModel, materialConfig, tileData, terrainField, ringShadow = null)
     {
         this.#textureLoader = new THREE.TextureLoader();
 
@@ -37,6 +37,7 @@ export class LayerMaterialFactory
                 materialConfig,
                 tileTexture: this.#tileTexture,
                 terrainField,
+                ringShadow,
             })
             : this.#buildDepthMaterial(c, d, maps[d], normals[d], materialConfig));
 

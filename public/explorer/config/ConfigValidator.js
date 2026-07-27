@@ -24,6 +24,7 @@ const BEHAVIOUR_REQUIRED = [
 const MAX_BIOMES = 32;
 const MAX_BIOME_REGIONS = 64;
 const MAX_BIOME_RULES = 128;
+const MAX_RING_PROFILE_WIDTH = 16384;
 
 function assertNumber(obj, path, label, min = -Infinity)
 {
@@ -82,6 +83,130 @@ function assertPath(obj, path, label)
     }
 }
 
+function assertRange(obj, path, label, min, max)
+{
+    assertNumber(obj, path, label, min);
+    const value = path.split('.').reduce((current, part) => current[part], obj);
+
+    if (value > max)
+    {
+        throw new Error(`[ConfigValidator] ${label}.${path} must be between ${min} and ${max}`);
+    }
+}
+
+function validateRings(rings, label, minSurfaceRadius)
+{
+    if (!rings || typeof rings !== 'object' || Array.isArray(rings))
+    {
+        throw new Error(`[ConfigValidator] ${label} must be a plain object`);
+    }
+
+    assertBoolean(rings, 'show', label);
+    assertNumber(rings, 'innerRadius', label, Number.EPSILON);
+    assertNumber(rings, 'outerRadius', label, Number.EPSILON);
+    assertInteger(rings, 'textureWidth', label, 16, MAX_RING_PROFILE_WIDTH);
+    assertRange(rings, 'ambient', label, 0, 1);
+    assertRange(rings, 'diffuse', label, 0, 4);
+    assertRange(rings, 'forwardScattering', label, 0, 4);
+    assertRange(rings, 'backScattering', label, 0, 4);
+
+    if (rings.innerRadius <= minSurfaceRadius)
+    {
+        throw new Error(
+            `[ConfigValidator] ${label}.innerRadius must be > the maximum surface radius `
+            + `multiplier (${minSurfaceRadius})`,
+        );
+    }
+
+    if (rings.outerRadius <= rings.innerRadius)
+    {
+        throw new Error(`[ConfigValidator] ${label}.outerRadius must be > innerRadius`);
+    }
+
+    for (const angle of ['inclinationDeg', 'ascendingNodeDeg'])
+    {
+        if (rings[angle] !== undefined)
+        {
+            assertNumber(rings, angle, label);
+        }
+    }
+
+    if (!Array.isArray(rings.bands))
+    {
+        throw new Error(`[ConfigValidator] ${label}.bands must be an array`);
+    }
+
+    if (rings.show && rings.bands.length === 0)
+    {
+        throw new Error(`[ConfigValidator] ${label}.bands must be non-empty when rings are enabled`);
+    }
+
+    let previousInner = -Infinity;
+    let previousOuter = -Infinity;
+
+    for (let i = 0; i < rings.bands.length; i++)
+    {
+        const band = rings.bands[i];
+        const bandLabel = `${label}.bands[${i}]`;
+
+        if (!band || typeof band !== 'object' || Array.isArray(band))
+        {
+            throw new Error(`[ConfigValidator] ${bandLabel} must be a plain object`);
+        }
+
+        assertNumber(band, 'innerRadius', bandLabel, Number.EPSILON);
+        assertNumber(band, 'outerRadius', bandLabel, Number.EPSILON);
+        assertRange(band, 'opacity', bandLabel, 0, 1);
+        assertRange(band, 'density', bandLabel, 0, 1);
+        assertNumber(band, 'edgeSoftness', bandLabel, 0);
+        assertNumber(band, 'variationScale', bandLabel, Number.EPSILON);
+        assertRange(band, 'variationStrength', bandLabel, 0, 1);
+
+        if (!Number.isInteger(band.color) || band.color < 0 || band.color > 0xffffff)
+        {
+            throw new Error(`[ConfigValidator] ${bandLabel}.color must be a 24-bit integer color`);
+        }
+
+        if (band.innerRadius < rings.innerRadius || band.outerRadius > rings.outerRadius)
+        {
+            throw new Error(`[ConfigValidator] ${bandLabel} radii must be within the ring system bounds`);
+        }
+
+        if (band.outerRadius <= band.innerRadius)
+        {
+            throw new Error(`[ConfigValidator] ${bandLabel}.outerRadius must be > innerRadius`);
+        }
+
+        const texelWidth = (rings.outerRadius - rings.innerRadius) / rings.textureWidth;
+
+        if (band.outerRadius - band.innerRadius < texelWidth)
+        {
+            throw new Error(
+                `[ConfigValidator] ${bandLabel} width must be at least one profile texel `
+                + `(${texelWidth})`,
+            );
+        }
+
+        if (band.edgeSoftness * 2 > band.outerRadius - band.innerRadius)
+        {
+            throw new Error(`[ConfigValidator] ${bandLabel}.edgeSoftness must not exceed half the band width`);
+        }
+
+        if (band.innerRadius < previousInner)
+        {
+            throw new Error(`[ConfigValidator] ${label}.bands must be sorted by innerRadius`);
+        }
+
+        if (band.innerRadius < previousOuter)
+        {
+            throw new Error(`[ConfigValidator] ${label}.bands must not overlap`);
+        }
+
+        previousInner = band.innerRadius;
+        previousOuter = band.outerRadius;
+    }
+}
+
 function validateBody(body, label)
 {
     if (!body || typeof body !== 'object')
@@ -118,6 +243,13 @@ function validateBody(body, label)
     if (!Array.isArray(body.depthColors) || body.depthColors.length === 0)
     {
         throw new Error(`[ConfigValidator] ${label}.depthColors must be a non-empty array`);
+    }
+
+    if (body.rings !== undefined)
+    {
+        const maxSurfaceRadius = 1
+            + body.terrain.maxDisplacement * (body.terrain.displacementMultiplier ?? 1);
+        validateRings(body.rings, `${label}.rings`, maxSurfaceRadius);
     }
 
     function validateTerrain(terrain, label)
@@ -287,18 +419,12 @@ function validateBody(body, label)
         }
     }
 
-    function assertRange(obj, path, label, min, max)
+    // Validate each companion recursively.
+    if (body.companions !== undefined && !Array.isArray(body.companions))
     {
-        assertNumber(obj, path, label, min);
-        const value = path.split('.').reduce((current, part) => current[part], obj);
-
-        if (value > max)
-        {
-            throw new Error(`[ConfigValidator] ${label}.${path} must be between ${min} and ${max}`);
-        }
+        throw new Error(`[ConfigValidator] ${label}.companions must be an array`);
     }
 
-    // Validate each companion recursively.
     for (let i = 0; i < (body.companions ?? []).length; i++)
     {
         const companion = body.companions[i];

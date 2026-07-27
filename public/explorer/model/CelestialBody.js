@@ -7,6 +7,7 @@ import { GoldbergTopology } from '../topology/GoldbergTopology.js';
 import { AtmosphereShell } from '../atmosphere/AtmosphereShell.js';
 import { SliceProfiler } from '../topology/goldberg/slicing/SliceProfiler.js';
 import { generateTileDataWithField } from '../texture/procedural/generateTileData.js';
+import { RingSystem } from '../ring/RingSystem.js';
 
 // ----------------------------------------------------------------------
 // CelestialBody -- one self-contained, positionable body in the scene. Owns
@@ -39,6 +40,7 @@ export class CelestialBody
     #sliceBuilder;
     #sliceProfiler;
     #gridLines;
+    #rings;
 
     #atmosphere;        // AtmosphereShell | null (per-body haze)
     #atmosphereConfig;  // resolved per-body atmosphere config (always an object)
@@ -66,6 +68,9 @@ export class CelestialBody
         );
         this.#cellGrid = this.#topology.grid;
         const tileData = generated?.tileData ?? this.#generateTileData();
+        this.#rings = bodyConfig.rings?.show
+            ? new RingSystem(bodyConfig, this.#topology.shapeField.maxRadius, starCount)
+            : null;
 
         this.#materials = new LayerMaterialFactory(
             this.#body,
@@ -73,6 +78,7 @@ export class CelestialBody
             behaviour.materials,
             tileData,
             this.#topology.shapeField.terrainField,
+            this.#rings?.shadowUniforms ?? null,
         );
         this.#cellGeometry = new CellGeometryFactory(this.#topology.shapeField.terrainField);
 
@@ -81,6 +87,11 @@ export class CelestialBody
         );
         this.#gridLines = this.#topology.buildGridLines();
         this.#bodyMesh.add(this.#gridLines);
+
+        if (this.#rings)
+        {
+            this.#bodyMesh.add(this.#rings.mesh);
+        }
 
         this.#sliceProfiler = new SliceProfiler(behaviour.debug.sliceProfiler);
         this.#clip = new ClipController(
@@ -207,6 +218,7 @@ export class CelestialBody
     get sliceProfiler()     { return this.#sliceProfiler; }
     get atmosphere()        { return this.#atmosphere; }
     get atmosphereConfig()  { return this.#atmosphereConfig; }
+    get rings()              { return this.#rings; }
     get shapeField()        { return this.#topology.shapeField; }
     get surfaceMesh()       { return this.#bodyMesh.surfaceMeshes[0] ?? null; }
 
@@ -221,6 +233,7 @@ export class CelestialBody
         this.#sliceBuilder?.dispose();
         this.#sliceProfiler?.dispose();
         this.#atmosphere?.dispose();
+        this.#rings?.dispose();
         this.#gridLines?.geometry.dispose();
         this.#gridLines?.material.dispose();
         this.#bodyMesh?.dispose();

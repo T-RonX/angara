@@ -53,7 +53,10 @@ export class LodController
 
             const group = body.group;
             const dist = camPos.distanceTo(group.position);
-            const angular = dist > 1e-3 ? body.radius / dist : Infinity;
+            const ringScale = body.config.rings?.show
+                ? body.config.rings.outerRadius
+                : 1;
+            const angular = dist > 1e-3 ? body.radius * ringScale / dist : Infinity;
 
             const current = this.#level.get(body) ?? 'full';
             const lo = this.#cfg.impostorBelowAngular;
@@ -91,6 +94,7 @@ export class LodController
         }
 
         if (bodyMesh.core) bodyMesh.core.visible = full;
+        body.rings?.setLodVisible(full);
 
         const existing = this.#impostors.get(body);
 

@@ -18,7 +18,7 @@
         "dev": "encore dev",
         "watch": "encore dev --watch",
         "build": "encore production --progress",
-        "test:explorer": "node --experimental-default-type=module public/explorer/tests/proceduralTerrain.test.mjs"
+        "test:explorer": "node --experimental-default-type=module public/explorer/tests/run.mjs"
     },
     "dependencies": {
         "pinia": "^3.0",

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ringShadowShader } from '../ring/RingShader.js';
 
 export function createProceduralSurfaceMaterial({
     body,
@@ -6,6 +7,7 @@ export function createProceduralSurfaceMaterial({
     materialConfig,
     tileTexture,
     terrainField,
+    ringShadow = null,
 })
 {
     const terrain = body.terrain;
@@ -29,14 +31,27 @@ export function createProceduralSurfaceMaterial({
         biomeColors: { value: biomeColors },
     });
 
+    if (ringShadow)
+    {
+        Object.assign(uniforms, ringShadow);
+    }
+
     const material = new THREE.ShaderMaterial({
         name: `ProceduralSurface:${body.id}`,
         defines: {
             ...(terrain.shader.octaves === 2 ? { TERRAIN_TWO_OCTAVES: '1' } : {}),
+            ...(ringShadow ? {
+                USE_PLANETARY_RINGS: '1',
+                RING_SUN_COUNT: ringShadow.uRingSunDirection.value.length,
+            } : {}),
         },
         uniforms,
-        vertexShader: terrainVertexShader(standard.vertexShader),
-        fragmentShader: terrainFragmentShader(standard.fragmentShader, resolvedBiomes),
+        vertexShader: terrainVertexShader(standard.vertexShader, ringShadow !== null),
+        fragmentShader: terrainFragmentShader(
+            standard.fragmentShader,
+            resolvedBiomes,
+            ringShadow !== null,
+        ),
         lights: true,
         clipping: true,
         side: THREE.FrontSide,
@@ -47,8 +62,13 @@ export function createProceduralSurfaceMaterial({
     return material;
 }
 
-function terrainVertexShader(source)
+function terrainVertexShader(source, hasRings)
 {
+    const ringDeclaration = hasRings ? '\nout vec3 vRingWorldPosition;' : '';
+    const ringAssignment = hasRings
+        ? '\nvRingWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;'
+        : '';
+
     return source
         .replace(
             '#define STANDARD',
@@ -59,7 +79,7 @@ attribute vec3 terrainClimate;
 flat out float vTileId;
 flat out float vOutwardFace;
 out vec3 vTerrainClimate;
-out vec3 vTerrainPosition;`,
+out vec3 vTerrainPosition;${ringDeclaration}`,
         )
         .replace(
             '#include <begin_vertex>',
@@ -67,13 +87,59 @@ out vec3 vTerrainPosition;`,
 vTileId = tileId;
 vOutwardFace = outwardFace;
 vTerrainClimate = terrainClimate;
-vTerrainPosition = normalize(position);`,
+vTerrainPosition = normalize(position);${ringAssignment}`,
         );
 }
 
-function terrainFragmentShader(source, biomes)
+function terrainFragmentShader(source, biomes, hasRings)
 {
     const biomeShader = buildBiomeShader(biomes);
+    const ringDeclarations = hasRings
+        ? `
+in vec3 vRingWorldPosition;
+${ringShadowShader}`
+        : '';
+    const ringDirectWrapper = hasRings
+        ? `
+#include <lights_physical_pars_fragment>
+
+void RE_Direct_Ring(
+    const in IncidentLight directLight,
+    const in vec3 geometryPosition,
+    const in vec3 geometryNormal,
+    const in vec3 geometryViewDir,
+    const in vec3 geometryClearcoatNormal,
+    const in PhysicalMaterial material,
+    inout ReflectedLight reflectedLight
+)
+{
+    IncidentLight transmittedLight = directLight;
+
+    if (vOutwardFace > 0.5)
+    {
+        vec3 worldLightDirection = normalize(
+            transpose(mat3(viewMatrix)) * directLight.direction
+        );
+        transmittedLight.color *= ringDirectTransmittance(
+            vRingWorldPosition,
+            worldLightDirection
+        );
+    }
+
+    RE_Direct_Physical(
+        transmittedLight,
+        geometryPosition,
+        geometryNormal,
+        geometryViewDir,
+        geometryClearcoatNormal,
+        material,
+        reflectedLight
+    );
+}
+
+#undef RE_Direct
+#define RE_Direct RE_Direct_Ring`
+        : null;
     const declarations = `
 flat in float vTileId;
 flat in float vOutwardFace;
@@ -87,6 +153,7 @@ uniform float terrainFrequency;
 uniform float terrainStrength;
 uniform float terrainNormalStrength;
 uniform vec3 biomeColors[${biomes.length}];
+${ringDeclarations}
 
 vec3 terrainGradient(vec3 lattice)
 {
@@ -176,7 +243,7 @@ vec4 readTile()
 ${biomeShader}
 `;
 
-    return source
+    let shader = source
         .replace('#define STANDARD', `#define STANDARD\n${declarations}`)
         .replace(
             '#include <color_fragment>',
@@ -209,7 +276,17 @@ if (vOutwardFace > 0.5 && terrainNormalStrength > 0.0)
     normal = normalize(normal - perturbation * terrainNormalStrength / (2.0 * noiseEpsilon));
 }`,
         );
-}
+
+        if (ringDirectWrapper)
+        {
+            shader = shader.replace(
+                '#include <lights_physical_pars_fragment>',
+                ringDirectWrapper,
+            );
+        }
+
+        return shader;
+    }
 
 function buildBiomeShader(biomes)
 {

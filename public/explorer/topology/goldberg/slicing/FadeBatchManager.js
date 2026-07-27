@@ -428,6 +428,19 @@ export class FadeBatchManager
             mat.uniforms.tileDataTexture.value = source.uniforms.tileDataTexture.value;
         }
 
+        for (const name of [
+            'uRingProfile',
+            'uRingCenterWorld',
+            'uRingNormalWorld',
+            'uRingSunDirection',
+        ])
+        {
+            if (source.uniforms?.[name] && mat.uniforms?.[name])
+            {
+                mat.uniforms[name] = source.uniforms[name];
+            }
+        }
+
         if (mat.uniforms?.opacity)
         {
             mat.uniforms.opacity.value = initialOpacity;

@@ -322,7 +322,7 @@ export class BodyInteractionSession
     {
         if (this.#disposed) return;
         this.#disposed = true;
-
+        this.#body.clip.onCutChanged = null;
         this.#body.clip.onCutChanged = null;
         this.#hover.dispose();
         this.#highlights.dispose();

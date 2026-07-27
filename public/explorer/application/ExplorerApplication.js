@@ -22,6 +22,7 @@ import { InputBinding } from '../input/InputBinding.js';
 import { ModeController } from '../mode/ModeController.js';
 import { ActiveBodyController } from './ActiveBodyController.js';
 import { BodyInteractionSessionFactory } from './BodyInteractionSessionFactory.js';
+import { RingRenderSystem } from '../ring/RingRenderSystem.js';
 
 // ----------------------------------------------------------------------
 // ExplorerApplication — the internal orchestrator that assembles every
@@ -55,6 +56,7 @@ export class ExplorerApplication
     #starField;
     #starSystem;
     #atmosphereSystem;
+    #ringRenderSystem;
 
     #bodyGenService = null;
     #bodyController;
@@ -186,6 +188,7 @@ export class ExplorerApplication
         this.#bodyPicker?.dispose();
         this.#sliderPanel?.dispose();
         this.#hud?.dispose();
+        this.#ringRenderSystem?.dispose();
 
         // Dispose every registered body before the scene context.
         for (const body of this.#registry?.bodies ?? [])
@@ -272,6 +275,7 @@ export class ExplorerApplication
 
         await this.#buildBodyTree(this.#physical.body, null);
 
+        this.#ringRenderSystem = new RingRenderSystem(this.#registry, this.#starSystem);
         this.#atmosphereSystem = new AtmosphereSystem(
             this.#registry, this.#starSystem, this.#behaviour,
         );
@@ -516,6 +520,7 @@ export class ExplorerApplication
         }
         this.#starSystem.setOcclusionBodies(this.#occlusionRecords);
         this.#starSystem.update(now, this.#scene.camera);
+        this.#ringRenderSystem.update();
 
         // 10. Atmosphere update.
         this.#atmosphereSystem.update(
