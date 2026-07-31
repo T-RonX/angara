@@ -86,7 +86,7 @@ export class CelestialBody
             scene, this.#cellGrid, this.#cellGeometry, this.#materials, this.#layerModel, generated?.surface ?? null,
         );
         this.#gridLines = this.#topology.buildGridLines();
-        this.#bodyMesh.add(this.#gridLines);
+        this.#bodyMesh.add(this.#gridLines.lines);
 
         if (this.#rings)
         {
@@ -222,6 +222,15 @@ export class CelestialBody
     get shapeField()        { return this.#topology.shapeField; }
     get surfaceMesh()       { return this.#bodyMesh.surfaceMeshes[0] ?? null; }
 
+    updateGridOutline(camera)
+    {
+        this.#gridLines.update(
+            camera,
+            this.#bodyMesh.group,
+            this.surfaceMesh?.visible === true,
+        );
+    }
+
     // Release all GPU resources owned by this body. Idempotent.
     dispose()
     {
@@ -234,8 +243,7 @@ export class CelestialBody
         this.#sliceProfiler?.dispose();
         this.#atmosphere?.dispose();
         this.#rings?.dispose();
-        this.#gridLines?.geometry.dispose();
-        this.#gridLines?.material.dispose();
+        this.#gridLines?.dispose();
         this.#bodyMesh?.dispose();
         this.#materials?.dispose();
 

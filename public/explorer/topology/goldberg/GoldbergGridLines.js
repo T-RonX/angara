@@ -1,64 +1,140 @@
 import * as THREE from 'three';
 
-// ----------------------------------------------------------------------
-// GoldbergGridLines — the faint hexsphere cell outlines drawn just above the
-// surface. Like the lon/lat GridLines it is hidden by default (the per-cell
-// hover highlight reveals structure on demand) but handy for debugging. Each
-// surface cell contributes its closed outer ring as line segments.
-//
-// The outline geometry is ~2M vertices at high hexFrequency and, being hidden
-// by default, was a pure load-time cost for nothing. It is therefore built
-// LAZILY: the LineSegments starts with empty geometry and materialises the
-// outlines the first time it is actually rendered while visible (via
-// onBeforeRender). Turning it on later pays the one-off build; never turning it
-// on costs nothing. The feature is unchanged.
-// ----------------------------------------------------------------------
+// Close-range cell outlines are kept as a separate, lazily materialised
+// overlay. High-frequency bodies never pay for the large line buffer unless
+// the camera gets close enough for individual Goldberg cells to be useful.
 export class GoldbergGridLines
 {
     lines;
 
+    #body;
+    #faces;
+    #shapeField;
+    #config;
+    #worldPosition = new THREE.Vector3();
     #built = false;
+    #disposed = false;
 
-    constructor(planet, faces, shapeField)
+    constructor(body, faces, shapeField, config)
     {
-        const mat = new THREE.LineBasicMaterial({ color: planet.gridColor, transparent: true, opacity: 0.55 });
+        this.#body = body;
+        this.#faces = faces;
+        this.#shapeField = shapeField;
+        this.#config = config;
 
-        this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+        const material = new THREE.LineBasicMaterial({
+            color: body.gridColor,
+            transparent: true,
+            opacity: 0,
+            depthTest: true,
+            depthWrite: false,
+        });
+
+        this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), material);
         this.lines.visible = false;
-
-        this.lines.onBeforeRender = () =>
-        {
-            if (this.#built) return;
-
-            this.#built = true;
-            this.lines.geometry.dispose();
-            this.lines.geometry = this.#buildGeometry(planet, faces, shapeField);
-        };
     }
 
-    #buildGeometry(planet, faces, shapeField)
+    update(camera, bodyGroup, surfaceVisible)
     {
-        const { radius } = planet;
-        const lift = (radius + 0.05) / radius; // nudge just above the surface
-        const pts = [];
+        if (this.#disposed || !this.#config.enabled || !surfaceVisible)
+        {
+            this.lines.visible = false;
 
-        // Place each corner at the (possibly displaced) surface radius in its
-        // own direction so the outlines hug an irregular body; a sphere shape
-        // field returns the constant `radius`, identical to before.
-        const cornerR = u => (shapeField ? shapeField.surfaceRadius(u) : radius) * lift;
+            return;
+        }
 
-        for (const face of faces)
+        bodyGroup.getWorldPosition(this.#worldPosition);
+        const radiusDistance = camera.position.distanceTo(this.#worldPosition) / this.#body.radius;
+
+        if (radiusDistance >= this.#config.fadeEndRadius)
+        {
+            this.lines.visible = false;
+
+            return;
+        }
+
+        if (!this.#built)
+        {
+            this.#built = true;
+            this.lines.geometry.dispose();
+            this.lines.geometry = this.#buildGeometry();
+            this.#faces = null;
+            this.#shapeField = null;
+        }
+
+        const fade = 1 - smoothstep(
+            this.#config.fadeStartRadius,
+            this.#config.fadeEndRadius,
+            radiusDistance,
+        );
+        this.lines.material.opacity = this.#config.opacity * fade;
+        this.lines.visible = this.lines.material.opacity > 0.001;
+    }
+
+    #buildGeometry()
+    {
+        let segmentCount = 0;
+
+        for (const face of this.#faces) segmentCount += face.corners.length;
+
+        const positions = new Float32Array(segmentCount * 2 * 3);
+        const lift = this.#body.radius * this.#config.surfaceLift;
+        let offset = 0;
+
+        for (const face of this.#faces)
         {
             const ring = face.corners;
 
-            for (let k = 0; k < ring.length; k++)
+            for (let corner = 0; corner < ring.length; corner++)
             {
-                const a = ring[k];
-                const b = ring[(k + 1) % ring.length];
-                pts.push(a.clone().multiplyScalar(cornerR(a)), b.clone().multiplyScalar(cornerR(b)));
+                offset = writePoint(
+                    positions,
+                    offset,
+                    ring[corner],
+                    this.#shapeField.surfaceRadius(ring[corner]) + lift,
+                );
+                const next = ring[(corner + 1) % ring.length];
+                offset = writePoint(
+                    positions,
+                    offset,
+                    next,
+                    this.#shapeField.surfaceRadius(next) + lift,
+                );
             }
         }
 
-        return new THREE.BufferGeometry().setFromPoints(pts);
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.computeBoundingSphere();
+
+        return geometry;
     }
+
+    dispose()
+    {
+        if (this.#disposed) return;
+        this.#disposed = true;
+
+        this.lines.removeFromParent();
+        this.lines.geometry.dispose();
+        this.lines.material.dispose();
+        this.#faces = null;
+        this.#shapeField = null;
+    }
+}
+
+function writePoint(target, offset, point, radius)
+{
+    target[offset++] = point.x * radius;
+    target[offset++] = point.y * radius;
+    target[offset++] = point.z * radius;
+
+    return offset;
+}
+
+function smoothstep(edge0, edge1, value)
+{
+    const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+
+    return t * t * (3 - 2 * t);
 }

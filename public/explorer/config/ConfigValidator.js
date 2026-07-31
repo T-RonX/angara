@@ -18,13 +18,16 @@ const BODY_REQUIRED = [
 const BEHAVIOUR_REQUIRED = [
     'scene', 'camera', 'input', 'generation', 'lod',
     'transition', 'atmosphere', 'slice', 'lighting', 'starfield',
-    'highlights', 'materials', 'debug',
+    'highlights', 'materials', 'cellOutlines', 'debug',
 ];
 
 const MAX_BIOMES = 32;
 const MAX_BIOME_REGIONS = 64;
 const MAX_BIOME_RULES = 128;
 const MAX_RING_PROFILE_WIDTH = 16384;
+const BIOME_STRUCTURE_TYPES = new Set([
+    'none', 'waves', 'dunes', 'craters', 'ridges', 'cracks', 'ice', 'strata',
+]);
 
 function assertNumber(obj, path, label, min = -Infinity)
 {
@@ -259,47 +262,81 @@ function validateBody(body, label)
             throw new Error(`[ConfigValidator] ${label} must be an object`);
         }
 
-        const positive = [
-            'maxDisplacement',
-            'macroFrequency',
-            'detailFrequency',
-            'warpFrequency',
-            'moistureFrequency',
-            'temperatureFrequency',
-            'lacunarity',
-            'textureWidth',
-            'shader.frequency',
-        ];
-        const nonNegative = [
-            'macroStrength',
-            'detailStrength',
-            'ridgeStrength',
-            'warpStrength',
-            'shader.strength',
-            'shader.normalStrength',
-        ];
+        if (!['temperate', 'barren', 'arid', 'glacial'].includes(terrain.profile))
+        {
+            throw new Error(
+                `[ConfigValidator] ${label}.profile must be 'temperate', 'barren', 'arid', or 'glacial'`,
+            );
+        }
 
-        for (const path of positive) assertNumber(terrain, path, label, Number.EPSILON);
-        for (const path of nonNegative) assertNumber(terrain, path, label, 0);
+        for (const path of [
+            'maxDisplacement',
+            'continental.frequency',
+            'mountains.frequency',
+            'mountains.warpFrequency',
+            'detail.frequency',
+            'feature.frequency',
+            'climate.moistureFrequency',
+            'climate.temperatureFrequency',
+            'surface.macroFrequency',
+            'surface.microFrequency',
+        ])
+        {
+            assertNumber(terrain, path, label, Number.EPSILON);
+        }
 
         if (terrain.displacementMultiplier !== undefined)
         {
             assertNumber(terrain, 'displacementMultiplier', label, 0);
         }
 
-        assertInteger(terrain, 'detailOctaves', label, 1, 5);
-        assertInteger(terrain, 'climateOctaves', label, 3, 5);
+        for (const band of ['continental', 'mountains', 'detail'])
+        {
+            assertInteger(terrain, `${band}.octaves`, label, 1, 5);
+            assertRange(terrain, `${band}.lacunarity`, label, 1, 4);
+            assertRange(terrain, `${band}.gain`, label, 0, 1);
+            assertRange(terrain, `${band}.strength`, label, 0, 1);
+        }
+
+        assertRange(terrain, 'continental.seaLevel', label, -1, 1);
+        assertRange(terrain, 'mountains.warpStrength', label, 0, 1);
+        assertRange(terrain, 'mountains.maskMin', label, -1, 1);
+        assertRange(terrain, 'mountains.maskMax', label, -1, 1);
+        assertRange(terrain, 'mountains.sharpness', label, 0.25, 12);
+        assertRange(terrain, 'feature.strength', label, 0, 1);
+        assertRange(terrain, 'feature.sharpness', label, 0.25, 12);
+
+        if (terrain.mountains.maskMin >= terrain.mountains.maskMax)
+        {
+            throw new Error(`[ConfigValidator] ${label}.mountains.maskMin must be < maskMax`);
+        }
+
+        assertInteger(terrain, 'climate.octaves', label, 1, 5);
+        assertRange(terrain, 'climate.lacunarity', label, 1, 4);
+        assertRange(terrain, 'climate.gain', label, 0, 1);
+        assertRange(terrain, 'climate.latitudeInfluence', label, 0, 1);
+        assertRange(terrain, 'climate.altitudeCooling', label, 0, 1);
         assertInteger(terrain, 'textureWidth', label, 1, 16384);
-        assertInteger(terrain, 'shader.octaves', label, 1, 2);
 
         for (const path of [
-            'gain',
-            'latitudeInfluence',
             'biomeColorVariation',
             'biomeJitter',
+            'surface.albedoVariation',
+            'surface.macroNormalStrength',
+            'surface.microNormalStrength',
+            'surface.roughnessMin',
+            'surface.roughnessMax',
+            'surface.slopeStrength',
+            'surface.cellTintStrength',
+            'surface.cellRoughnessStrength',
         ])
         {
             assertRange(terrain, path, label, 0, 1);
+        }
+
+        if (terrain.surface.roughnessMin > terrain.surface.roughnessMax)
+        {
+            throw new Error(`[ConfigValidator] ${label}.surface.roughnessMin must be <= roughnessMax`);
         }
 
         const displacementMultiplier = terrain.displacementMultiplier ?? 1;
@@ -342,6 +379,46 @@ function validateBody(body, label)
             {
                 throw new Error(`[ConfigValidator] ${biomeLabel}.color must be a 24-bit integer color`);
             }
+
+            if (!biome.surface || typeof biome.surface !== 'object')
+            {
+                throw new Error(`[ConfigValidator] ${biomeLabel}.surface must be an object`);
+            }
+
+            for (const path of [
+                'macroNormalMultiplier',
+                'microNormalMultiplier',
+                'albedoVariation',
+            ])
+            {
+                assertRange(biome.surface, path, `${biomeLabel}.surface`, 0, 1);
+            }
+
+            assertRange(
+                biome.surface,
+                'microFrequencyMultiplier',
+                `${biomeLabel}.surface`,
+                0.1,
+                2,
+            );
+            assertRange(biome.surface, 'roughnessBias', `${biomeLabel}.surface`, -1, 1);
+
+            if (!biome.surface.structure || typeof biome.surface.structure !== 'object')
+            {
+                throw new Error(`[ConfigValidator] ${biomeLabel}.surface.structure must be an object`);
+            }
+
+            const structure = biome.surface.structure;
+
+            if (!BIOME_STRUCTURE_TYPES.has(structure.type))
+            {
+                throw new Error(
+                    `[ConfigValidator] ${biomeLabel}.surface.structure.type is not supported`,
+                );
+            }
+
+            assertRange(structure, 'frequency', `${biomeLabel}.surface.structure`, 0.1, 128);
+            assertRange(structure, 'strength', `${biomeLabel}.surface.structure`, 0, 1);
 
             if (!Array.isArray(biome.regions) || biome.regions.length === 0)
             {
@@ -489,9 +566,44 @@ export function validateConfigs(physical, behaviour)
     assertNumber(behaviour, 'lighting.skyDistance', 'behaviour', 1);
     assertNumber(behaviour, 'lighting.nightDarkness', 'behaviour', 0);
     assertNumber(behaviour, 'starfield.count', 'behaviour', 0);
-    assertNumber(behaviour, 'materials.roughness', 'behaviour', 0);
+    assertRange(behaviour, 'materials.roughness', 'behaviour', 0, 1);
     assertNumber(behaviour, 'materials.emissiveScale', 'behaviour', 0);
     assertNumber(behaviour, 'highlights.hoverOpacity', 'behaviour', 0);
+    assertBoolean(behaviour, 'cellOutlines.enabled', 'behaviour');
+    assertRange(behaviour, 'cellOutlines.opacity', 'behaviour', 0, 1);
+    assertNumber(behaviour, 'cellOutlines.fadeStartRadius', 'behaviour', 1);
+    assertNumber(behaviour, 'cellOutlines.fadeEndRadius', 'behaviour', 1);
+    assertRange(behaviour, 'cellOutlines.surfaceLift', 'behaviour', 0, 0.01);
+    assertNumber(behaviour, 'materials.procedural.detailFadeStart', 'behaviour', 0);
+    assertNumber(behaviour, 'materials.procedural.detailFadeEnd', 'behaviour', 0);
+    assertNumber(behaviour, 'materials.procedural.normalFadeStart', 'behaviour', 0);
+    assertNumber(behaviour, 'materials.procedural.normalFadeEnd', 'behaviour', 0);
+
+    if (behaviour.cellOutlines.fadeStartRadius >= behaviour.cellOutlines.fadeEndRadius)
+    {
+        throw new Error('[ConfigValidator] behaviour.cellOutlines.fadeStartRadius must be < fadeEndRadius');
+    }
+
+    if (
+        behaviour.materials.procedural.detailFadeStart
+        >= behaviour.materials.procedural.detailFadeEnd
+    )
+    {
+        throw new Error(
+            '[ConfigValidator] behaviour.materials.procedural.detailFadeStart must be < detailFadeEnd',
+        );
+    }
+
+    if (
+        behaviour.materials.procedural.normalFadeStart
+        >= behaviour.materials.procedural.normalFadeEnd
+    )
+    {
+        throw new Error(
+            '[ConfigValidator] behaviour.materials.procedural.normalFadeStart must be < normalFadeEnd',
+        );
+    }
+
     assertBoolean(behaviour, 'slice.viewCull.enabled', 'behaviour');
     assertNumber(behaviour, 'slice.viewCull.paddingCells', 'behaviour', 0);
     assertBoolean(behaviour, 'debug.sliceProfiler.enabled', 'behaviour');

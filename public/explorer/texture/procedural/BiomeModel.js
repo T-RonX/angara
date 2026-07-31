@@ -142,6 +142,10 @@ function resolveBiomes(seed, biomes, jitter)
         resolvedBiomes.push(Object.freeze({
             color: biome.color,
             regions: Object.freeze(resolvedRegions),
+            surface: Object.freeze({
+                ...biome.surface,
+                structure: Object.freeze({ ...biome.surface.structure }),
+            }),
         }));
         biomeRegionOffsets.push(resolvedRegions.length + biomeRegionOffsets.at(-1));
     }

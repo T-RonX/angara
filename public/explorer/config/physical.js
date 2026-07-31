@@ -9,17 +9,38 @@
 // Channels are elevation (0, -1..1), moisture (1, 0..1), and temperature
 // (2, 0..1). Rules in a region are ANDed; regions are ORed. `blend` is the
 // smooth distance outside a rule's hard min/max bounds.
-const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
+const biomeSurface = (
+    macroNormalMultiplier,
+    microNormalMultiplier,
+    microFrequencyMultiplier,
+    albedoVariation,
+    roughnessBias,
+    structure,
+) => ({
+    macroNormalMultiplier,
+    microNormalMultiplier,
+    microFrequencyMultiplier,
+    albedoVariation,
+    roughnessBias,
+    structure,
+});
+
+const classicBiomes = (colors, [e0, e3, t0, m0, m1], surfaces) =>
 {
     const e1 = e0 + 0.14;
     const e2 = e3 * 0.72;
     const rule = (channel, min, max, blend) => ({ channel, min, max, blend });
 
     return [
-        { color: colors[0], regions: [[rule(0, -1, e0, 0.06)]] },
+        {
+            color: colors[0],
+            regions: [[rule(0, -1, e0, 0.06)]],
+            surface: surfaces[0],
+        },
         {
             color: colors[1],
             regions: [[rule(0, e0, e1, 0.1), rule(2, t0, 1, 0.05)]],
+            surface: surfaces[1],
         },
         {
             color: colors[2],
@@ -28,6 +49,7 @@ const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
                 rule(1, 0, m0, 0.08),
                 rule(2, t0, 1, 0.05),
             ]],
+            surface: surfaces[2],
         },
         {
             color: colors[3],
@@ -43,6 +65,7 @@ const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
                     rule(2, t0, 1, 0.05),
                 ],
             ],
+            surface: surfaces[3],
         },
         {
             color: colors[4],
@@ -51,6 +74,7 @@ const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
                 rule(1, m0, m1, 0.08),
                 rule(2, t0, 1, 0.05),
             ]],
+            surface: surfaces[4],
         },
         {
             color: colors[5],
@@ -58,103 +82,342 @@ const classicBiomes = (colors, [e0, e3, t0, m0, m1]) =>
                 [rule(0, e0, e3, 0.08), rule(2, 0, t0, 0.05)],
                 [rule(0, e3, 1, 0.12)],
             ],
+            surface: surfaces[5],
         },
     ];
 };
 
-// Reusable named presets own climate classification and surface colours only.
-const biomePresets = {
+// Reusable physical presets keep each body family coherent from its largest
+// landforms down to its shader-only surface response.
+const terrainPresets = {
     temperate: {
+        profile: 'temperate',
+        maxDisplacement: 0.045,
+        displacementMultiplier: 1,
+        continental: {
+            frequency: 0.72,
+            strength: 0.68,
+            octaves: 4,
+            lacunarity: 2.03,
+            gain: 0.5,
+            seaLevel: -0.02,
+        },
+        mountains: {
+            frequency: 2.35,
+            strength: 0.34,
+            octaves: 4,
+            lacunarity: 2.08,
+            gain: 0.48,
+            warpFrequency: 1.15,
+            warpStrength: 0.32,
+            maskMin: -0.02,
+            maskMax: 0.58,
+            sharpness: 2.2,
+        },
+        detail: {
+            frequency: 7.5,
+            strength: 0.07,
+            octaves: 3,
+            lacunarity: 2.15,
+            gain: 0.44,
+        },
+        feature: {
+            frequency: 3.2,
+            strength: 0.035,
+            sharpness: 2.0,
+        },
+        climate: {
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            moistureFrequency: 1.65,
+            temperatureFrequency: 1.2,
+            latitudeInfluence: 0.68,
+            altitudeCooling: 0.24,
+        },
         biomes: classicBiomes(
-            [0x183f70, 0xd2ba79, 0xb89151, 0x6f8b57, 0x315b39, 0xe8edf2],
-            [-0.2, 0.48, 0.3, 0.34, 0.68],
+            [0x173b63, 0xc5ad72, 0x9d7748, 0x647f4c, 0x2f5738, 0xd9dfe2],
+            [-0.16, 0.5, 0.3, 0.34, 0.68],
+            [
+                biomeSurface(0.15, 0.08, 0.55, 0.035, -0.12, { type: 'waves', frequency: 7, strength: 0.08 }),
+                biomeSurface(0.45, 0.22, 0.7, 0.09, 0.08, { type: 'dunes', frequency: 9, strength: 0.18 }),
+                biomeSurface(0.75, 0.36, 0.85, 0.12, 0.16, { type: 'ridges', frequency: 8, strength: 0.22 }),
+                biomeSurface(0.35, 0.2, 0.8, 0.1, 0.04, { type: 'none', frequency: 1, strength: 0 }),
+                biomeSurface(0.5, 0.3, 0.9, 0.11, 0.1, { type: 'cracks', frequency: 12, strength: 0.12 }),
+                biomeSurface(0.3, 0.16, 0.65, 0.06, -0.18, { type: 'ice', frequency: 8, strength: 0.18 }),
+            ],
         ),
         biomeJitter: 0.015,
-        biomeColorVariation: 0.03,
+        biomeColorVariation: 0.025,
+        surface: {
+            macroFrequency: 6,
+            microFrequency: 96,
+            albedoVariation: 0.13,
+            macroNormalStrength: 0.025,
+            microNormalStrength: 0.006,
+            roughnessMin: 0.58,
+            roughnessMax: 0.94,
+            slopeStrength: 0.62,
+            cellTintStrength: 0.012,
+            cellRoughnessStrength: 0.025,
+        },
     },
     barren: {
+        profile: 'barren',
+        maxDisplacement: 0.06,
+        displacementMultiplier: 1,
+        continental: {
+            frequency: 1.05,
+            strength: 0.52,
+            octaves: 4,
+            lacunarity: 2.1,
+            gain: 0.5,
+            seaLevel: -0.1,
+        },
+        mountains: {
+            frequency: 3.2,
+            strength: 0.28,
+            octaves: 4,
+            lacunarity: 2.14,
+            gain: 0.46,
+            warpFrequency: 1.7,
+            warpStrength: 0.24,
+            maskMin: -0.45,
+            maskMax: 0.52,
+            sharpness: 2.8,
+        },
+        detail: {
+            frequency: 9,
+            strength: 0.085,
+            octaves: 3,
+            lacunarity: 2.2,
+            gain: 0.42,
+        },
+        feature: {
+            frequency: 5.5,
+            strength: 0.16,
+            sharpness: 5.5,
+        },
+        climate: {
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            moistureFrequency: 1.8,
+            temperatureFrequency: 1.35,
+            latitudeInfluence: 0.42,
+            altitudeCooling: 0.16,
+        },
         biomes: classicBiomes(
-            [0x374050, 0x8f8578, 0x9a8f81, 0x858078, 0x625e59, 0xd7d9dc],
-            [-0.75, 0.48, 0.3, 0.34, 0.68],
+            [0x30343b, 0x81786d, 0x94887a, 0x77716a, 0x5c5752, 0xc9c9c7],
+            [-0.72, 0.5, 0.3, 0.34, 0.68],
+            [
+                biomeSurface(0.2, 0.1, 0.55, 0.05, 0.12, { type: 'craters', frequency: 6, strength: 0.3 }),
+                biomeSurface(0.65, 0.28, 0.8, 0.1, 0.16, { type: 'craters', frequency: 10, strength: 0.42 }),
+                biomeSurface(0.8, 0.34, 0.9, 0.12, 0.2, { type: 'ridges', frequency: 9, strength: 0.3 }),
+                biomeSurface(0.45, 0.2, 0.7, 0.08, 0.1, { type: 'none', frequency: 1, strength: 0 }),
+                biomeSurface(0.55, 0.26, 0.85, 0.1, 0.14, { type: 'cracks', frequency: 14, strength: 0.16 }),
+                biomeSurface(0.38, 0.15, 0.65, 0.06, 0.04, { type: 'craters', frequency: 5, strength: 0.18 }),
+            ],
         ),
         biomeJitter: 0.015,
-        biomeColorVariation: 0.03,
+        biomeColorVariation: 0.025,
+        surface: {
+            macroFrequency: 9,
+            microFrequency: 128,
+            albedoVariation: 0.16,
+            macroNormalStrength: 0.032,
+            microNormalStrength: 0.008,
+            roughnessMin: 0.72,
+            roughnessMax: 0.98,
+            slopeStrength: 0.74,
+            cellTintStrength: 0.01,
+            cellRoughnessStrength: 0.02,
+        },
     },
     arid: {
+        profile: 'arid',
+        maxDisplacement: 0.065,
+        displacementMultiplier: 1,
+        continental: {
+            frequency: 0.9,
+            strength: 0.58,
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            seaLevel: -0.08,
+        },
+        mountains: {
+            frequency: 2.8,
+            strength: 0.38,
+            octaves: 4,
+            lacunarity: 2.12,
+            gain: 0.47,
+            warpFrequency: 1.25,
+            warpStrength: 0.38,
+            maskMin: -0.3,
+            maskMax: 0.62,
+            sharpness: 2.45,
+        },
+        detail: {
+            frequency: 8,
+            strength: 0.075,
+            octaves: 3,
+            lacunarity: 2.18,
+            gain: 0.43,
+        },
+        feature: {
+            frequency: 13,
+            strength: 0.075,
+            sharpness: 2.4,
+        },
+        climate: {
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            moistureFrequency: 2.1,
+            temperatureFrequency: 1.1,
+            latitudeInfluence: 0.55,
+            altitudeCooling: 0.18,
+        },
         biomes: classicBiomes(
-            [0x342f2a, 0xa0826d, 0xa67c52, 0x7d684d, 0x4e493d, 0xc4b79e],
-            [-0.7, 0.48, 0.3, 0.34, 0.68],
+            [0x332b26, 0x9b775e, 0xa56e42, 0x786047, 0x4c4538, 0xc5ad8b],
+            [-0.68, 0.5, 0.3, 0.34, 0.68],
+            [
+                biomeSurface(0.2, 0.1, 0.5, 0.04, 0.08, { type: 'none', frequency: 1, strength: 0 }),
+                biomeSurface(0.42, 0.18, 0.65, 0.1, 0.06, { type: 'dunes', frequency: 12, strength: 0.3 }),
+                biomeSurface(0.76, 0.3, 0.8, 0.13, 0.16, { type: 'ridges', frequency: 7, strength: 0.32 }),
+                biomeSurface(0.5, 0.22, 0.75, 0.09, 0.11, { type: 'strata', frequency: 10, strength: 0.2 }),
+                biomeSurface(0.58, 0.26, 0.85, 0.1, 0.13, { type: 'cracks', frequency: 15, strength: 0.18 }),
+                biomeSurface(0.36, 0.16, 0.6, 0.06, 0.03, { type: 'strata', frequency: 6, strength: 0.12 }),
+            ],
         ),
         biomeJitter: 0.015,
-        biomeColorVariation: 0.03,
+        biomeColorVariation: 0.025,
+        surface: {
+            macroFrequency: 7,
+            microFrequency: 112,
+            albedoVariation: 0.18,
+            macroNormalStrength: 0.028,
+            microNormalStrength: 0.007,
+            roughnessMin: 0.66,
+            roughnessMax: 0.97,
+            slopeStrength: 0.7,
+            cellTintStrength: 0.012,
+            cellRoughnessStrength: 0.025,
+        },
     },
     glacial: {
+        profile: 'glacial',
+        maxDisplacement: 0.032,
+        displacementMultiplier: 1,
+        continental: {
+            frequency: 0.62,
+            strength: 0.62,
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            seaLevel: -0.02,
+        },
+        mountains: {
+            frequency: 2.05,
+            strength: 0.26,
+            octaves: 4,
+            lacunarity: 2.08,
+            gain: 0.46,
+            warpFrequency: 0.9,
+            warpStrength: 0.28,
+            maskMin: -0.12,
+            maskMax: 0.6,
+            sharpness: 2.0,
+        },
+        detail: {
+            frequency: 6.5,
+            strength: 0.055,
+            octaves: 3,
+            lacunarity: 2.12,
+            gain: 0.42,
+        },
+        feature: {
+            frequency: 8.5,
+            strength: 0.1,
+            sharpness: 4.2,
+        },
+        climate: {
+            octaves: 4,
+            lacunarity: 2,
+            gain: 0.5,
+            moistureFrequency: 1.4,
+            temperatureFrequency: 0.9,
+            latitudeInfluence: 0.76,
+            altitudeCooling: 0.28,
+        },
         biomes: classicBiomes(
-            [0x264b74, 0xb6d7ee, 0xcde8f5, 0x9abecc, 0x7196aa, 0xf4f8ff],
+            [0x244769, 0xaacde2, 0xc6e0ea, 0x91b5c3, 0x678d9f, 0xf0f4f5],
             [-0.08, 0.28, 0.3, 0.34, 0.68],
+            [
+                biomeSurface(0.12, 0.06, 0.5, 0.03, -0.2, { type: 'waves', frequency: 6, strength: 0.06 }),
+                biomeSurface(0.36, 0.16, 0.65, 0.07, -0.08, { type: 'ice', frequency: 9, strength: 0.28 }),
+                biomeSurface(0.5, 0.22, 0.8, 0.09, -0.03, { type: 'ice', frequency: 13, strength: 0.34 }),
+                biomeSurface(0.42, 0.2, 0.75, 0.08, 0.02, { type: 'cracks', frequency: 10, strength: 0.16 }),
+                biomeSurface(0.48, 0.22, 0.85, 0.09, 0.06, { type: 'ridges', frequency: 8, strength: 0.18 }),
+                biomeSurface(0.24, 0.12, 0.6, 0.05, -0.14, { type: 'ice', frequency: 6, strength: 0.16 }),
+            ],
         ),
         biomeJitter: 0.015,
-        biomeColorVariation: 0.03,
+        biomeColorVariation: 0.02,
+        surface: {
+            macroFrequency: 5,
+            microFrequency: 104,
+            albedoVariation: 0.11,
+            macroNormalStrength: 0.02,
+            microNormalStrength: 0.005,
+            roughnessMin: 0.3,
+            roughnessMax: 0.88,
+            slopeStrength: 0.48,
+            cellTintStrength: 0.008,
+            cellRoughnessStrength: 0.018,
+        },
     },
 };
 
-const terrain = (biomeName, overrides = {}) =>
+const terrain = (profileName, overrides = {}) =>
 {
-    const biome = biomePresets[biomeName];
+    const preset = terrainPresets[profileName];
 
-    if (!biome)
+    if (!preset)
     {
-        throw new Error(`[physical] Unknown biome preset '${biomeName}'`);
+        throw new Error(`[physical] Unknown terrain preset '${profileName}'`);
     }
 
     return {
-        // Maximum radial displacement as a body-radius fraction. Practical: 0–0.2.
-        maxDisplacement: 0.06,
-        // Multiplies maxDisplacement without changing the terrain field. Range: 0–4.
-        displacementMultiplier: 1,
-        // Broad Perlin features around the sphere. Lower = continents; higher = ranges. Practical: 0.3–3.
-        macroFrequency: 1.0,
-        // Relative contribution of broad Perlin elevation. Practical: 0–1.
-        macroStrength: 0.82,
-        // Folds broad noise into mountain ridges. 0 = rolling, 1 = strongly ridged. Range: 0–1.
-        ridgeStrength: 0.1,
-        // Scale of CPU simplex landform detail. Practical: 1–8.
-        detailFrequency: 2.0,
-        // Relative contribution of CPU simplex detail. Practical: 0–0.5.
-        detailStrength: 0.18,
-        // CPU detail layers; quality cost is paid once during generation. Range: 1–5.
-        detailOctaves: 3,
-        // Frequency multiplier between CPU octaves. Practical: 1.5–3.
-        lacunarity: 1.9,
-        // Amplitude retained by each CPU octave. Practical: 0.25–0.7.
-        gain: 0.42,
-        // Scale of the domain warp that bends detail patterns. Practical: 0.2–3.
-        warpFrequency: 0.8,
-        // Domain-warp distance; high values create turbulent/swirl-like terrain. Practical: 0–1.
-        warpStrength: 0.2,
-        // CPU climate layers for moisture and temperature. Range: 3–5.
-        climateOctaves: 4,
-        // Moisture-region scale. Practical: 0.3–4.
-        moistureFrequency: 1.7,
-        // Temperature-region scale. Practical: 0.3–4.
-        temperatureFrequency: 1.25,
-        // Temperature controlled by latitude instead of noise. Range: 0–1.
-        latitudeInfluence: 0.62,
-        ...biome,
-        biomes: structuredClone(biome.biomes),
-        // Tile-data texture row width; affects packing only, not visual scale. Range: 1–16384.
+        ...structuredClone(preset),
         textureWidth: 1024,
-        shader: {
-            // Per-pixel fBm layers. Keep at 1–2 for fragment performance.
-            octaves: 2,
-            // Object-space micro-detail density. Practical: 8–80.
-            frequency: 80,
-            // Micro-noise color modulation. Practical: 0–0.06; higher values overpower biome color.
-            strength: 0.035,
-            // Analytic bump strength. Keep at 0 to avoid noisy day/night terminators; practical close-up range: 0–0.003.
-            normalStrength: 0,
-        },
         ...overrides,
+        continental: {
+            ...preset.continental,
+            ...(overrides.continental ?? {}),
+        },
+        mountains: {
+            ...preset.mountains,
+            ...(overrides.mountains ?? {}),
+        },
+        detail: {
+            ...preset.detail,
+            ...(overrides.detail ?? {}),
+        },
+        feature: {
+            ...preset.feature,
+            ...(overrides.feature ?? {}),
+        },
+        climate: {
+            ...preset.climate,
+            ...(overrides.climate ?? {}),
+        },
+        surface: {
+            ...preset.surface,
+            ...(overrides.surface ?? {}),
+        },
+        biomes: structuredClone(overrides.biomes ?? preset.biomes),
     };
 };
 
@@ -180,8 +443,8 @@ const physicalTemplate = {
         terrain: terrain(
             'temperate',
             {
-                maxDisplacement: 0.055,
-                displacementMultiplier: 0.22,
+                maxDisplacement: 0.04,
+                displacementMultiplier: 0.9,
             },
         ),
         axialTiltDeg:      23.4,  // obliquity (degrees); 0 = north pole aligned with world Y
@@ -327,10 +590,10 @@ const physicalTemplate = {
                 terrain: terrain(
                     'barren',
                     {
-                        maxDisplacement: 0.075,
-                        macroFrequency: 1.2,
-                        ridgeStrength: 0.14,
-                        detailFrequency: 2.4,
+                        maxDisplacement: 0.055,
+                        mountains: {
+                            strength: 0.32,
+                        },
                     },
                 ),
                 axialTiltDeg:      6.7,  // obliquity (degrees); 0 = north pole aligned with world Y
@@ -371,13 +634,12 @@ const physicalTemplate = {
                 terrain: terrain(
                     'arid',
                     {
-                        maxDisplacement: 0.085,
-                        displacementMultiplier: 3.4,
-                        macroFrequency: 2.35,
-                        macroStrength: 0.4,
-                        ridgeStrength: 0.28,
-                        detailFrequency: 2.7,
-                        detailStrength: 0.24,
+                        maxDisplacement: 0.07,
+                        displacementMultiplier: 1.15,
+                        mountains: {
+                            frequency: 3.15,
+                            strength: 0.42,
+                        },
                     },
                 ),
                 axialTiltDeg:      57,  // obliquity (degrees); 0 = north pole aligned with world Y
@@ -417,10 +679,7 @@ const physicalTemplate = {
                 terrain: terrain(
                     'glacial',
                     {
-                        maxDisplacement: 0.035,
-                        macroFrequency: 0.8,
-                        ridgeStrength: 0.06,
-                        detailFrequency: 1.7,
+                        maxDisplacement: 0.028,
                     },
                 ),
                 axialTiltDeg:      28,   // obliquity (degrees); 0 = north pole aligned with world Y

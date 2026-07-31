@@ -72,6 +72,16 @@ export const behaviour = {
         impostorSegments: 24,
     },
 
+    // Subtle Goldberg outlines are a close-range navigation cue. Geometry is
+    // allocated lazily only after the camera enters this body-radius range.
+    cellOutlines: {
+        enabled: true,
+        opacity: 0.18,
+        fadeStartRadius: 1.18,
+        fadeEndRadius: 2.35,
+        surfaceLift: 0.00035,
+    },
+
     // Smooth fly-in / fly-out when entering or leaving resource mode.
     transition: {
         modeTransitionMs: 700,
@@ -193,5 +203,12 @@ export const behaviour = {
         coreRoughness: 1,
         coreCapOffsetFactor: -1,
         coreCapOffsetUnits: -1,
+        procedural: {
+            detailFadeStart: 0.35,
+            detailFadeEnd: 1.6,
+            // Relief fades sooner than albedo detail to prevent distant normal-map shimmer.
+            normalFadeStart: 0.08,
+            normalFadeEnd: 0.32,
+        },
     },
 };

@@ -37,37 +37,40 @@ export class LodController
 
     update()
     {
-        if (!this.#cfg.enabled) return;
-
         const camPos = this.#camera.position;
 
         for (const body of this.#registry.bodies)
         {
-            // The active body is always full detail (it can enter resource mode).
-            if (body === this.#registry.active)
+            if (this.#cfg.enabled)
             {
-                this.#apply(body, 'full');
+                // The active body is always full detail (it can enter resource mode).
+                if (body === this.#registry.active)
+                {
+                    this.#apply(body, 'full');
+                }
+                else
+                {
+                    const group = body.group;
+                    const dist = camPos.distanceTo(group.position);
+                    const ringScale = body.config.rings?.show
+                        ? body.config.rings.outerRadius
+                        : 1;
+                    const angular = dist > 1e-3 ? body.radius * ringScale / dist : Infinity;
 
-                continue;
+                    const current = this.#level.get(body) ?? 'full';
+                    const lo = this.#cfg.impostorBelowAngular;
+                    const hi = lo * this.#cfg.hysteresis;
+
+                    let next = current;
+
+                    if (current === 'full' && angular < lo) next = 'impostor';
+                    else if (current === 'impostor' && angular > hi) next = 'full';
+
+                    this.#apply(body, next);
+                }
             }
 
-            const group = body.group;
-            const dist = camPos.distanceTo(group.position);
-            const ringScale = body.config.rings?.show
-                ? body.config.rings.outerRadius
-                : 1;
-            const angular = dist > 1e-3 ? body.radius * ringScale / dist : Infinity;
-
-            const current = this.#level.get(body) ?? 'full';
-            const lo = this.#cfg.impostorBelowAngular;
-            const hi = lo * this.#cfg.hysteresis;
-
-            let next = current;
-
-            if (current === 'full' && angular < lo) next = 'impostor';
-            else if (current === 'impostor' && angular > hi) next = 'full';
-
-            this.#apply(body, next);
+            body.updateGridOutline(this.#camera);
         }
     }
 
@@ -81,8 +84,8 @@ export class LodController
         const full = active || level === 'full';
         const bodyMesh = body.bodyMesh;
 
-        // Toggle the surface + core (NOT the grid lines, which must stay hidden)
-        // against the impostor. The active body is always full detail; because
+        // Toggle the surface + core against the impostor. The outline controller
+        // observes surface visibility after this update. The active body is always full detail; because
         // #apply only runs on a LEVEL CHANGE and the active body never changes
         // level, this never fights the resource-mode slice machinery
         // (BodyMesh.hideAll / restoreView) ? it only restores the surface when a

@@ -27,6 +27,7 @@ export class GoldbergTopology
     #fadeMs;
     #wallBandCells;
     #viewCull;
+    #cellOutlines;
 
     constructor(body, layerModel, atmosphere, atmosphereRadius, behaviour, faceData = null)
     {
@@ -49,6 +50,7 @@ export class GoldbergTopology
             enabled: true,
             paddingCells: 2,
         };
+        this.#cellOutlines = behaviour.cellOutlines;
     }
 
     get grid()        { return this.#grid; }
@@ -80,7 +82,12 @@ export class GoldbergTopology
 
     buildGridLines()
     {
-        return new GoldbergGridLines(this.#body, this.#grid.faces, this.#shapeField).lines;
+        return new GoldbergGridLines(
+            this.#body,
+            this.#grid.faces,
+            this.#shapeField,
+            this.#cellOutlines,
+        );
     }
 
     cellTypeLabel(cell)
