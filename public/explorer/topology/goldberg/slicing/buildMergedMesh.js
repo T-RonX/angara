@@ -30,7 +30,6 @@ export function buildMergedMesh(
         geo,
         faceToCell,
         cells,
-        geometryFactory,
         size,
         false,
         variant,
@@ -121,7 +120,6 @@ export function updateMergedMesh(
         geo,
         faceToCell,
         cells,
-        geometryFactory,
         size,
         true,
         variant,
@@ -165,23 +163,25 @@ function measure(cells, geometryFactory, variant)
 {
     let floatCount = 0;
     let idxCount = 0;
+    const cellGeometry = new Array(cells.length);
 
-    for (const cell of cells)
+    for (let i = 0; i < cells.length; i++)
     {
+        const cell = cells[i];
         const g = geometryFactory.cellArrays(cell, variant);
 
+        cellGeometry[i] = g;
         floatCount += g.pos.length;
         idxCount += g.idx.length;
     }
 
-    return { floatCount, vertexCount: floatCount / 3, idxCount };
+    return { floatCount, vertexCount: floatCount / 3, idxCount, cellGeometry };
 }
 
 function fill(
     geo,
     faceToCell,
     cells,
-    geometryFactory,
     size,
     markForUpload,
     variant,
@@ -206,9 +206,10 @@ function fill(
     const writesTerrainClimate = variant === CELL_GEOMETRY_VARIANT.FULL
         && cells.some(cell => cell.depth === 0 && !cell.isAtmosphere);
 
-    for (const cell of cells)
+    for (let cellOffset = 0; cellOffset < cells.length; cellOffset++)
     {
-        const g = geometryFactory.cellArrays(cell, variant);
+        const cell = cells[cellOffset];
+        const g = size.cellGeometry[cellOffset];
 
         positions.set(g.pos, floatOff);
         normals.set(g.nrm, floatOff);

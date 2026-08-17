@@ -132,7 +132,7 @@ export const behaviour = {
         // geometry rebuild is throttled. 0 = rebuild every frame (unlimited);
         // 33.333 = ~30 rebuilds/sec (default). Deferred rebuilds are flushed when
         // motion stops, so the geometry never gets stuck stale.
-        rebuildIntervalMs: 33.3333,
+        rebuildIntervalMs: 100,
 
     },
 
