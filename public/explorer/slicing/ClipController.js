@@ -23,7 +23,8 @@ export class ClipController
     worldPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     cutKey = null; // signature of the last applied cut (null = never built)
 
-    onCutChanged = null; // called after the plane / caps update (hover invalidation)
+    onCutChanged = null; // called after the cut's current slice has been applied
+    onSliceApplied = null; // called after asynchronous or synchronous mesh application
 
     #focus;
     #cutStrategy;
@@ -47,6 +48,7 @@ export class ClipController
     setSliceBuilder(sliceBuilder)
     {
         this.#sliceBuilder = sliceBuilder;
+        sliceBuilder.setOnApplied(kind => this.#handleSliceApplied(kind));
     }
 
     setBodyGroup(group)
@@ -89,6 +91,7 @@ export class ClipController
         if (!forced && now - this.#lastBuildT < this.#rebuildIntervalMs)
         {
             this.#pendingRebuild = true;
+            this.#sliceBuilder.invalidatePending();
             this.#profiler.increment('cutThrottled');
 
             return false;
@@ -96,14 +99,12 @@ export class ClipController
 
         if (forced) this.#profiler.increment('cutForced');
 
-        this.#sliceBuilder.build(slab);
+        const applied = this.#sliceBuilder.build(slab);
         this.cutKey = `${this.#focus.lon},${this.#focus.lat}`;
         this.#lastBuildT = now;
         this.#pendingRebuild = false;
 
-        if (this.onCutChanged) this.onCutChanged();
-
-        return true;
+        return applied;
     }
 
     // Force any deferred rebuild through immediately — call once the motion
@@ -114,5 +115,11 @@ export class ClipController
         if (!this.#pendingRebuild) return false;
 
         return this.updateCut(this.plane.constant, false, { throttle: false });
+    }
+
+    #handleSliceApplied(kind)
+    {
+        if (kind === 'cut' && this.onCutChanged) this.onCutChanged();
+        if (this.onSliceApplied) this.onSliceApplied(kind);
     }
 }

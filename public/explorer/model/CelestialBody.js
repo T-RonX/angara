@@ -238,6 +238,7 @@ export class CelestialBody
         this.#disposed = true;
 
         this.#clip.onCutChanged = null;
+        this.#clip.onSliceApplied = null;
 
         this.#sliceBuilder?.dispose();
         this.#sliceProfiler?.dispose();

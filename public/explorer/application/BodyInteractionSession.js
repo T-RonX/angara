@@ -116,8 +116,16 @@ export class BodyInteractionSession
             this.#highlights, this.#hud, body.group, this.#pointerSource,
         );
 
-        // Clip → hover invalidation.
-        body.clip.onCutChanged = () => this.#hover.invalidate();
+        // Slice application invalidates picks only after its current meshes exist.
+        body.clip.onCutChanged = () =>
+        {
+            this.#hover.invalidate();
+            this.#highlights.rebuildResourceSelection();
+        };
+        body.clip.onSliceApplied = kind =>
+        {
+            if (kind === 'view') this.#hover.invalidate();
+        };
 
         // Crust camera.
         this.#crustCamera = new CrustCamera(
@@ -208,10 +216,7 @@ export class BodyInteractionSession
 
     updateViewCull(camera)
     {
-        if (this.#body.sliceBuilder.updateViewCull(camera))
-        {
-            this.#hover.invalidate();
-        }
+        this.#body.sliceBuilder.updateViewCull(camera);
     }
 
     updateHover()
@@ -323,7 +328,7 @@ export class BodyInteractionSession
         if (this.#disposed) return;
         this.#disposed = true;
         this.#body.clip.onCutChanged = null;
-        this.#body.clip.onCutChanged = null;
+        this.#body.clip.onSliceApplied = null;
         this.#hover.dispose();
         this.#highlights.dispose();
     }

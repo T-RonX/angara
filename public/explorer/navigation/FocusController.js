@@ -51,9 +51,7 @@ export class FocusController
     {
         if (cutChanged || this.#clip.cutKey === null)
         {
-            const built = this.#clip.updateCut(0, false, { throttle });
-
-            if (built) this.#highlights.rebuildResourceSelection();
+            this.#clip.updateCut(0, false, { throttle });
         }
 
         this.#crustCamera.positionCrustCamera();
@@ -66,6 +64,6 @@ export class FocusController
     {
         if (!this.#wasMoving) return;
 
-        if (this.#clip.flush()) this.#highlights.rebuildResourceSelection();
+        this.#clip.flush();
     }
 }

@@ -5,6 +5,7 @@ import { FadeBatchManager }       from './slicing/FadeBatchManager.js';
 import { AtmospherePickRenderer } from './slicing/AtmospherePickRenderer.js';
 import { CoreDiscRenderer }       from './slicing/CoreDiscRenderer.js';
 import { CoreSkirtRenderer }      from './slicing/CoreSkirtRenderer.js';
+import { SliceRebuildService }    from '../../worker/SliceRebuildService.js';
 
 // ----------------------------------------------------------------------
 // CellSliceBuilder — the hexsphere SliceBuilder. Unlike the lon/lat CapBuilder
@@ -70,6 +71,13 @@ export class CellSliceBuilder
     #coreDisc;
     #coreSkirt;
     #profiler;
+    #sliceWorker = null;
+    #workerRevision = 0;
+    #pendingCut = false;
+    #onApplied = null;
+    #eps;
+    #wallBandDist;
+    #maxDepth;
 
     constructor(ctx)
     {
@@ -107,6 +115,9 @@ export class CellSliceBuilder
 
         const fadeDur = Math.max(0.001, (ctx.fadeMs ?? 260) / 1000);
         this.#fadesEnabled = (ctx.fadeMs ?? 260) > 0.001;
+        this.#eps = eps;
+        this.#wallBandDist = wallBandDist;
+        this.#maxDepth = layerModel.maxDepth;
 
         this.sliceGroup = new THREE.Group();
         this.sliceGroup.visible = false;
@@ -162,6 +173,34 @@ export class CellSliceBuilder
             stretch: ctx.skirtStretch ?? 0.4,
         });
 
+        const workerConfig = ctx.worker ?? { enabled: true, minimumColumns: 4096 };
+
+        if (
+            workerConfig.enabled
+            && surfaceCount >= workerConfig.minimumColumns
+        )
+        {
+            const worker = new SliceRebuildService({
+                workerFactory: ctx.sliceWorkerFactory,
+            });
+
+            if (worker.isSupported) this.#sliceWorker = worker;
+            else worker.dispose();
+        }
+
+    }
+
+    setOnApplied(callback)
+    {
+        this.#onApplied = callback;
+    }
+
+    // The clip controller calls this when a throttled cut advances without a
+    // rebuild, so an already-running response can never apply an older plane.
+    invalidatePending()
+    {
+        this.#workerRevision++;
+        this.#pendingCut = true;
     }
 
     // Resource mode: hide the whole base body, show the rebuilt slice group,
@@ -169,6 +208,7 @@ export class CellSliceBuilder
     enter()
     {
         this.#ensureInitialized();
+        this.#cancelWorkerRequests();
         this.#bodyMesh.hideAll();
         this.sliceGroup.visible = true;
 
@@ -184,6 +224,7 @@ export class CellSliceBuilder
 
     exit()
     {
+        this.#cancelWorkerRequests();
         this.sliceGroup.visible = false;
         this.#fadeMgr.retireAll();
         this.#clearAll();
@@ -219,12 +260,25 @@ export class CellSliceBuilder
     {
         this.#ensureInitialized();
 
+        if (this.#sliceWorker?.isSupported)
+        {
+            this.#requestWorkerCollect(slab);
+
+            return false;
+        }
+
+        return this.#buildSynchronously(slab);
+    }
+
+    #buildSynchronously(slab, request = null)
+    {
         const startedAt = this.#profiler.now();
         this.#profiler.increment('buildScans');
 
-        const plane = this.#clip.plane;
-        const n     = plane.normal;
-        const k     = plane.constant;
+        const n = request
+            ? { x: request.normal[0], y: request.normal[1], z: request.normal[2] }
+            : this.#clip.plane.normal;
+        const k = request?.constant ?? this.#clip.plane.constant;
 
         const inc = this.#collector.collect(
             n,
@@ -232,18 +286,29 @@ export class CellSliceBuilder
             this.#fadesEnabled,
             !slab,
         );
+        const applied = this.#applyCutMembership(inc, n, k, slab);
+        this.#profiler.recordSince('buildTotal', startedAt);
+
+        return applied;
+    }
+
+    #applyCutMembership(inc, n, k, slab)
+    {
         this.#physicalMembership = {
             surface: inc.surface,
             surfaceHash: inc.surfaceHash,
             wallCandidates: inc.wallCandidates,
+            workerPhysical: inc.workerPhysical ?? null,
         };
+        this.#pendingCut = false;
+        this.#atmPick.markDirty(n, k);
 
         if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
         {
             this.#profiler.increment('unchangedMembership');
-            this.#profiler.recordSince('buildTotal', startedAt);
+            this.#emitApplied('cut');
 
-            return;
+            return false;
         }
 
         this.#lastCount = inc.count;
@@ -251,8 +316,6 @@ export class CellSliceBuilder
 
         // Record the cut and flag the (invisible) atmosphere pick shell dirty --
         // it is rebuilt lazily on the next pick, not here (see ensureAtmosphere).
-        this.#atmPick.markDirty(n, k);
-
         // Hard (non-fade) rebuild during the transition sweep or when the fade
         // is disabled; otherwise the whole revealed set would fade at once.
         if (slab || !this.#fadesEnabled)
@@ -283,9 +346,9 @@ export class CellSliceBuilder
             }
 
             this.#refreshCapMeshes();
-            this.#profiler.recordSince('buildTotal', startedAt);
+            this.#emitApplied('cut');
 
-            return;
+            return true;
         }
 
         this.#profiler.increment('fadingRebuilds');
@@ -327,7 +390,171 @@ export class CellSliceBuilder
             diff,
         );
         this.#refreshCapMeshes();
-        this.#profiler.recordSince('buildTotal', startedAt);
+        this.#emitApplied('cut');
+
+        return true;
+    }
+
+    #requestWorkerCollect(slab)
+    {
+        const plane = this.#clip.plane;
+        const request = {
+            kind: 'collect',
+            normal: [plane.normal.x, plane.normal.y, plane.normal.z],
+            constant: plane.constant,
+            eps: this.#eps,
+            maxDepth: this.#maxDepth,
+            cellStride: this.#collector.cellStride,
+            wallBandDist: this.#wallBandDist,
+            applyViewCull: !slab,
+            frustumPlanes: slab ? null : this.#collector.getWorkerFrustumPlanes(),
+            measure: this.#profiler.enabled,
+        };
+
+        this.#pendingCut = true;
+        this.#requestWorker(request, payload =>
+        {
+            const inc = this.#collector.decodeWorkerResult(payload.result, this.#fadesEnabled);
+
+            return this.#applyCutMembership(
+                inc,
+                { x: request.normal[0], y: request.normal[1], z: request.normal[2] },
+                request.constant,
+                slab,
+            );
+        }, () => this.#buildSynchronously(slab, request));
+    }
+
+    #requestWorkerRefocus()
+    {
+        const request = {
+            kind: 'refocus',
+            physical: this.#physicalMembership.workerPhysical,
+            maxDepth: this.#maxDepth,
+            cellStride: this.#collector.cellStride,
+            applyViewCull: true,
+            frustumPlanes: this.#collector.getWorkerFrustumPlanes(),
+            measure: this.#profiler.enabled,
+        };
+
+        this.#requestWorker(request, payload =>
+        {
+            const inc = this.#collector.decodeWorkerResult(payload.result, this.#fadesEnabled);
+
+            return this.#applyViewMembership(inc);
+        }, () => this.#refocusSynchronously());
+    }
+
+    #requestWorker(request, apply, fallback)
+    {
+        const requestRevision = ++this.#workerRevision;
+        let failed = false;
+        this.#profiler.increment('workerRequests');
+
+        const serviceRevision = this.#sliceWorker.request(
+            this.#collector.getWorkerSnapshot(),
+            request,
+            {
+                onResult: payload =>
+                {
+                    if (this.#disposed || requestRevision !== this.#workerRevision)
+                    {
+                        this.#profiler.increment('workerStale');
+
+                        return;
+                    }
+
+                    this.#profiler.recordTiming('workerLatency', payload.latencyMs);
+                    this.#profiler.recordTiming('workerCalculation', payload.calcMs);
+                    const applyStartedAt = this.#profiler.now();
+
+                    if (apply(payload)) this.#profiler.increment('workerApplied');
+                    this.#profiler.recordSince('workerApply', applyStartedAt);
+                },
+                onStale: () => this.#profiler.increment('workerStale'),
+                onCoalesced: () => this.#profiler.increment('workerCoalesced'),
+                onFailure: error =>
+                {
+                    failed = true;
+
+                    if (this.#disposed || requestRevision !== this.#workerRevision)
+                    {
+                        this.#profiler.increment('workerStale');
+
+                        return;
+                    }
+
+                    this.#profiler.increment('workerFallbacks');
+                    console.error('[explorer] slice worker rebuild failed; falling back to synchronous', error);
+                    fallback();
+                },
+            },
+        );
+
+        if (serviceRevision === null && !failed)
+        {
+            this.#profiler.increment('workerFallbacks');
+            fallback();
+        }
+    }
+
+    #refocusSynchronously(startedAt = this.#profiler.now())
+    {
+        const inc = this.#collector.refocus(this.#physicalMembership, this.#fadesEnabled);
+        const applied = this.#applyViewMembership(inc);
+        this.#profiler.recordSince('visibilitySync', startedAt);
+
+        return applied;
+    }
+
+    #applyViewMembership(inc)
+    {
+        if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
+        {
+            this.#profiler.increment('unchangedMembership');
+
+            return false;
+        }
+
+        this.#lastCount = inc.count;
+        this.#lastHash = inc.hash;
+        this.#atmPick.markDirty(this.#clip.plane.normal, this.#clip.plane.constant);
+
+        // View-window changes are not physical reveal/hide transitions. Retire
+        // any temporal fades and seed their state from the new visible window.
+        const updateSurface = this.#fadeMgr.hasFadingInSurface;
+
+        this.#fadeMgr.reset();
+        this.#meshStore.sync(
+            inc.byDepth,
+            inc.wallSurface,
+            { updateSurface },
+        );
+
+        if (this.#fadesEnabled)
+        {
+            this.#fadeMgr.commitBatch(
+                inc.keys,
+                inc.byDepth,
+                inc.wallSurface,
+                inc.wallKeys,
+                { hasAdded: false, hasRemoved: false },
+            );
+        }
+
+        const skirtStartedAt = this.#profiler.now();
+        this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
+        this.#profiler.recordSince('coreSkirt', skirtStartedAt);
+        this.#refreshCapMeshes();
+        this.#profiler.increment('visibilityUpdates');
+        this.#emitApplied('view');
+
+        return true;
+    }
+
+    #emitApplied(kind)
+    {
+        if (!this.#disposed && this.sliceGroup.visible) this.#onApplied?.(kind);
     }
 
     // Advance every in-flight fade batch; called once per frame from the
@@ -411,50 +638,22 @@ export class CellSliceBuilder
             return false;
         }
 
-        const inc = this.#collector.refocus(
-            this.#physicalMembership,
-            this.#fadesEnabled,
-        );
-        this.#atmPick.markDirty(this.#clip.plane.normal, this.#clip.plane.constant);
-
-        if (inc.count === this.#lastCount && inc.hash === this.#lastHash)
+        // A throttled cut has no current physical membership to refocus. Its
+        // final flush owns the next full scan, so a view change must not revive
+        // the previous cut while waiting for that scan.
+        if (this.#pendingCut)
         {
-            return true;
+            return false;
         }
 
-        this.#lastCount = inc.count;
-        this.#lastHash = inc.hash;
-
-        // View-window changes are not physical reveal/hide transitions. Retire
-        // any temporal fades and seed their state from the new visible window.
-        const updateSurface = this.#fadeMgr.hasFadingInSurface;
-
-        this.#fadeMgr.reset();
-        this.#meshStore.sync(
-            inc.byDepth,
-            inc.wallSurface,
-            { updateSurface },
-        );
-
-        if (this.#fadesEnabled)
+        if (this.#sliceWorker?.isSupported && this.#physicalMembership.workerPhysical)
         {
-            this.#fadeMgr.commitBatch(
-                inc.keys,
-                inc.byDepth,
-                inc.wallSurface,
-                inc.wallKeys,
-                { hasAdded: false, hasRemoved: false },
-            );
+            this.#requestWorkerRefocus();
+
+            return false;
         }
 
-        const skirtStartedAt = this.#profiler.now();
-        this.#coreSkirt.rebuild(inc.byDepth[inc.byDepth.length - 1]);
-        this.#profiler.recordSince('coreSkirt', skirtStartedAt);
-        this.#refreshCapMeshes();
-        this.#profiler.increment('visibilityUpdates');
-        this.#profiler.recordSince('visibilitySync', startedAt);
-
-        return true;
+        return this.#refocusSynchronously(startedAt);
     }
 
     // Rebuild the pick list from the CURRENT meshes (persistent + transient
@@ -495,6 +694,13 @@ export class CellSliceBuilder
         this.capMeshes.length = 0;
     }
 
+    #cancelWorkerRequests()
+    {
+        this.#workerRevision++;
+        this.#pendingCut = false;
+        this.#sliceWorker?.cancelPending();
+    }
+
     #ensureInitialized()
     {
         this.#collector.ensureInitialized();
@@ -508,7 +714,11 @@ export class CellSliceBuilder
         if (this.#disposed) return;
         this.#disposed = true;
 
+        this.#cancelWorkerRequests();
         this.#clearAll();
+        this.#sliceWorker?.dispose();
+        this.#sliceWorker = null;
+        this.#onApplied = null;
         this.#meshStore.dispose();
         this.#fadeMgr.dispose();
         this.#coreDisc.dispose();

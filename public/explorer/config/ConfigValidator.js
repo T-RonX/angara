@@ -606,6 +606,8 @@ export function validateConfigs(physical, behaviour)
 
     assertBoolean(behaviour, 'slice.viewCull.enabled', 'behaviour');
     assertNumber(behaviour, 'slice.viewCull.paddingCells', 'behaviour', 0);
+    assertBoolean(behaviour, 'slice.worker.enabled', 'behaviour');
+    assertInteger(behaviour, 'slice.worker.minimumColumns', 'behaviour', 1, 100000000);
     assertBoolean(behaviour, 'debug.sliceProfiler.enabled', 'behaviour');
     assertInteger(behaviour, 'debug.sliceProfiler.sampleWindow', 'behaviour', 1, 10000);
     assertNumber(behaviour, 'debug.sliceProfiler.hudIntervalMs', 'behaviour', 1);

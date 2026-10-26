@@ -127,6 +127,14 @@ export const behaviour = {
             paddingCells: 2,
         },
 
+        // Move expensive column-membership scans off the render thread for large
+        // surfaces. Small bodies stay synchronous because worker startup and
+        // result messaging cost more than their scan.
+        worker: {
+            enabled: true,
+            minimumColumns: 4096,
+        },
+
         // Cap on slice rebuild frequency (ms) while actively dragging the cut plane.
         // The plane orientation updates every frame regardless, but the expensive
         // geometry rebuild is throttled. 0 = rebuild every frame (unlimited);

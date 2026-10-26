@@ -27,6 +27,7 @@ export class GoldbergTopology
     #fadeMs;
     #wallBandCells;
     #viewCull;
+    #sliceWorker;
     #cellOutlines;
 
     constructor(body, layerModel, atmosphere, atmosphereRadius, behaviour, faceData = null)
@@ -50,6 +51,10 @@ export class GoldbergTopology
             enabled: true,
             paddingCells: 2,
         };
+        this.#sliceWorker = behaviour?.slice?.worker ?? {
+            enabled: true,
+            minimumColumns: 4096,
+        };
         this.#cellOutlines = behaviour.cellOutlines;
     }
 
@@ -72,6 +77,7 @@ export class GoldbergTopology
             skirtStretch: this.#body.coreSkirt?.stretch ?? 0.4,
             wallBandCells: this.#wallBandCells,
             viewCull: this.#viewCull,
+            worker: this.#sliceWorker,
         });
     }
 
